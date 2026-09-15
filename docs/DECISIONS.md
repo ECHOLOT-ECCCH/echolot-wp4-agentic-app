@@ -119,3 +119,16 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
 - The credential test endpoint runs a five-token completion through the real model class and records
   a `usage_records` row with purpose `probe`. Provider errors are returned with any key-like text
   masked.
+
+## 2026-09-15 Agent package at M0.9
+
+- Tools return `ToolReturn(return_value={"summary", "data", "artifacts", "cost"}, metadata=[DataChunk
+  "data-ui-action", ...])` via `to_tool_return`; data above ~24k characters is replaced by a truncated
+  preview and a note so the model asks for narrower output or an artifact.
+- Tool errors are returned as results (`error_result`) rather than raised, so the model can recover.
+- The system prompt is an instructions function rendered per run from `prompts/system.md` with a
+  project block and the DMLex cheat sheet; toolsets are selected by project type in `toolsets_for`.
+- `PydanticAIRuntime.dispatch_chat` wraps `VercelAIAdapter.dispatch_request(sdk_version=7)` and maps
+  the adapter's `on_complete(AgentRunResult)` to a `RunSummary` (messages JSON, usage, model name).
+- Agent tests use `FunctionModel` scripts against the migrated test database; `TestModel` covers the
+  smoke path. Both need no API keys.

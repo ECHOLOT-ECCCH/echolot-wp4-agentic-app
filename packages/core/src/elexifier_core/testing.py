@@ -62,15 +62,16 @@ def migrate(url: str) -> None:
     command.upgrade(cfg, "head")
 
 
-def truncate_all(url: str) -> None:
+async def truncate_all_async(url: str) -> None:
     """Empty every application table (keeps the schema). Fast per-test isolation."""
     tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+    conn = await asyncpg.connect(to_dsn(url))
+    try:
+        await conn.execute(f"TRUNCATE {tables} RESTART IDENTITY CASCADE")
+    finally:
+        await conn.close()
 
-    async def run() -> None:
-        conn = await asyncpg.connect(to_dsn(url))
-        try:
-            await conn.execute(f"TRUNCATE {tables} RESTART IDENTITY CASCADE")
-        finally:
-            await conn.close()
 
-    asyncio.run(run())
+def truncate_all(url: str) -> None:
+    """Synchronous variant for sync fixtures (must not be called from a running event loop)."""
+    asyncio.run(truncate_all_async(url))
