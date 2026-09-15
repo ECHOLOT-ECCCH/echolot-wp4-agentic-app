@@ -13,7 +13,7 @@ from sqlalchemy import text
 from elexifier_api import __version__
 from elexifier_api.auth.oidc import OidcClient
 from elexifier_api.auth.session import SessionStore
-from elexifier_api.routers import auth, me
+from elexifier_api.routers import auth, files, me, projects
 from elexifier_api.schemas import HealthOut
 from elexifier_api.state import AppState
 from elexifier_core.crypto import SecretBox
@@ -88,6 +88,8 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
 
     app.include_router(auth.router)
     app.include_router(me.router)
+    app.include_router(projects.router)
+    app.include_router(files.router)
     return app
 
 

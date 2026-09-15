@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     s3_secret_key: str | None = None
     s3_region: str = "garage"
 
+    # Limits
+    max_upload_mb: int = 2048
+    max_preview_bytes: int = (
+        5 * 1024 * 1024
+    )  # whole-file previews above this are refused (PLAN 7.13)
+
     # Sandbox runner
     sandbox_runner_url: str = "http://localhost:8010"
     sandbox_runner_token: str = "dev-runner-token"

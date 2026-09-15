@@ -38,6 +38,7 @@ class StorageStat:
     size: int
     etag: str | None = None
     content_type: str | None = None
+    sha256: str | None = None  # set by ``put`` (computed while streaming), not by ``stat``
 
 
 def make_key(project_id: str, kind: str, file_id: str, filename: str) -> str:
@@ -85,7 +86,7 @@ class Storage(Protocol):
 
 
 class LocalStorage:
-    """Files under a root directory. ``etag`` is the sha256 of the content."""
+    """Files under a root directory."""
 
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root).resolve()
@@ -117,7 +118,7 @@ class LocalStorage:
             raise
         if content_type:
             await anyio.Path(_sidecar(path)).write_text(content_type, encoding="utf-8")
-        return StorageStat(size=size, etag=digest.hexdigest(), content_type=content_type)
+        return StorageStat(size=size, sha256=digest.hexdigest(), content_type=content_type)
 
     async def open(
         self, key: str, byte_range: tuple[int, int] | None = None
@@ -227,7 +228,7 @@ class S3Storage:
             digest.update(body)
             async with self._client() as s3:
                 await s3.put_object(Bucket=self.bucket, Key=key, Body=body, **extra)
-            return StorageStat(size=len(body), etag=digest.hexdigest(), content_type=content_type)
+            return StorageStat(size=len(body), sha256=digest.hexdigest(), content_type=content_type)
 
         async with self._client() as s3:
             upload = await s3.create_multipart_upload(Bucket=self.bucket, Key=key, **extra)
@@ -259,7 +260,7 @@ class S3Storage:
             except BaseException:
                 await s3.abort_multipart_upload(Bucket=self.bucket, Key=key, UploadId=upload_id)
                 raise
-        return StorageStat(size=size, etag=digest.hexdigest(), content_type=content_type)
+        return StorageStat(size=size, sha256=digest.hexdigest(), content_type=content_type)
 
     async def open(
         self, key: str, byte_range: tuple[int, int] | None = None

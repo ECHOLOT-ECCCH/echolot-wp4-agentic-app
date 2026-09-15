@@ -31,7 +31,7 @@ async def test_put_open_stat_delete(storage: LocalStorage) -> None:
     key = make_key("p1", "source", "f1", "dict.xml")
     stat = await storage.put(key, b"<a>hello</a>", content_type="application/xml")
     assert stat.size == 12
-    assert stat.etag and len(stat.etag) == 64
+    assert stat.sha256 and len(stat.sha256) == 64
     assert await _collect(storage.open(key)) == b"<a>hello</a>"
     head = await storage.stat(key)
     assert head.size == 12

@@ -91,3 +91,14 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   run the app through `asgi-lifespan` so the real lifespan (event bus, engine) is exercised.
 - The workspace root lists all members as dependencies so `uv sync` and `uv add` never drop a member
   from the environment.
+
+## 2026-09-15 File upload design at M0.7
+
+- `POST /api/projects/{id}/files` accepts a raw body (file name in `?name=` or `X-File-Name`) as the
+  primary path: it streams straight from the request into storage while hashing, so API memory stays
+  flat (verified: 100 MB upload and download at a constant ~34 MB RSS). `multipart/form-data` with a
+  `file` part is also accepted for forms and tools; Starlette spools it to disk.
+- Size limits: `MAX_UPLOAD_MB` (default 2048) enforced while streaming, partial objects removed;
+  `MAX_PREVIEW_BYTES` (default 5 MB) caps the whole-file content endpoint per PLAN 7.13.
+- Instance administrators (`users.role = admin`) get owner rights on every project; non-members get
+  404 so project existence is not revealed.
