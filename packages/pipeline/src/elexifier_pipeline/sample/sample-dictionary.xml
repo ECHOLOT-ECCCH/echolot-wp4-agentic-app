@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dictionary lang="sl">
+  <entry id="e1">
+    <form><orth>hiša</orth><pron>ˈxíːʃa</pron></form>
+    <gramGrp><pos>sam.</pos><gen>ž</gen></gramGrp>
+    <sense n="1"><def>stavba, v kateri ljudje prebivajo</def><cit type="example"><quote>zidati hišo</quote></cit></sense>
+    <sense n="2"><def>družina, rod</def></sense>
+  </entry>
+  <entry id="e2">
+    <form><orth>brati</orth></form>
+    <gramGrp><pos>glag.</pos></gramGrp>
+    <sense n="1"><def>razpoznavati znake pisave in dojemati njihov pomen</def><cit type="example"><quote>brati knjigo</quote></cit></sense>
+  </entry>
+</dictionary>

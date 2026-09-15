@@ -7,3 +7,4 @@ src/routeTree.gen.ts
 src/components/ui
 src/components/assistant-ui
 pnpm-lock.yaml
+e2e/.auth

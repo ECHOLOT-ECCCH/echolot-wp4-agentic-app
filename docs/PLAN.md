@@ -26,9 +26,9 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M0 Foundation
-- Next task: M0.13 (M0.4 compose check and M0.6 browser login check pending Docker)
+- Next task: M0.14 (M0.4 compose check and M0.6 browser login check pending Docker; CI run pending a GitHub remote)
 - Blockers: Docker Desktop waits for a macOS admin password (privileged helper). Until then dev infra runs on a temporary local PostgreSQL 14 (port 5433, see .env).
-- Last update: 2026-09-15 (M0.12 done)
+- Last update: 2026-09-15 (M0.13 done)
 
 Update this block at the end of every task.
 
@@ -462,7 +462,7 @@ Goal: a user logs in through Keycloak, creates a project, uploads files, preview
 - [x] M0.10 Chat endpoint and persistence. Conversations routes; chat endpoint per 7.2 with `sdk_version=7`; `agent_runs` persistence; `PUT messages`; SSE events endpoint per 7.6. Test: streaming chat with provider `test` through the adapter returns a well-formed data stream. Acceptance: curl the chat endpoint with a test-provider project and see streamed chunks.
 - [x] M0.11 Web shell. Auth guard; projects list and create; workspace route with ThreePane; left pane files with upload and progress; middle pane TextPreview and PdfViewer; right pane assistant-ui chat with model picker, conversation list, GenericToolCard, ui-action dispatch; settings page for credentials; SSE client. Acceptance: manual walk-through: login, create project, upload XML and PDF, preview both, ask the agent "what files do I have" and see the tool card and answer.
 - [x] M0.12 Approval spike. Add a temporary tool `demo_requires_approval` with `requires_approval=True`; verify the approval card appears, approve resumes and runs the tool, deny produces a denied result. If broken in the installed versions, implement the fallback in 7.3 and record it in `docs/DECISIONS.md`. Remove the demo tool. Acceptance: both outcomes observed in the browser and covered by an API test.
-- [ ] M0.13 Quality gates and CI. `make check` runs ruff, pyright, pytest, eslint, tsc, vitest; Playwright smoke: login with dev user, create project, upload sample XML, preview, send a chat message using provider `test`; `.github/workflows/ci.yml` with a Postgres service running `make check` and the web build. Acceptance: CI green on the default branch.
+- [x] M0.13 Quality gates and CI. (workflow written and `make check` + Playwright green locally; first CI run needs a GitHub remote) `make check` runs ruff, pyright, pytest, eslint, tsc, vitest; Playwright smoke: login with dev user, create project, upload sample XML, preview, send a chat message using provider `test`; `.github/workflows/ci.yml` with a Postgres service running `make check` and the web build. Acceptance: CI green on the default branch.
 - [ ] M0.14 Production compose. `docker-compose.yml` with caddy, api, worker (placeholder task), sandbox-runner (stub returning 501 until M3), postgres, garage, keycloak; Dockerfiles; `Caddyfile` serving the web build and proxying `/api`, `/auth`, `/events`; `docs/self-hosting.md`. Acceptance: on a clean machine `cp .env.example .env && docker compose up` serves the app at `http://localhost` with working login. Tag `m0`.
 
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)

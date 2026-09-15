@@ -196,3 +196,18 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   approval card labels the buttons "Allow" and "Deny".
 - The router's `on_cancel` wiring from M0.10 had not been applied (edit anchored on formatted text);
   it is in place now. Lesson recorded: after `ruff format`, re-read before anchoring edits.
+
+## 2026-09-15 Quality gates at M0.13
+
+- `make check` = ruff check + ruff format --check + pyright + pytest + oxlint/prettier + tsc + vitest.
+  Playwright (`make e2e` / `pnpm -C apps/web e2e`) starts the API and Vite itself (`webServer`),
+  reusing running servers outside CI.
+- Browser tests authenticate with a session written directly to the database by
+  `python -m elexifier_api.devtools session` (a global setup project stores it as Playwright storage
+  state). This keeps auth unmocked in the running app while not depending on Keycloak. The real OIDC
+  round trip is covered by `e2e/keycloak-login.spec.ts`, which runs when `E2E_KEYCLOAK=1` (CI's
+  e2e job starts Postgres and Keycloak with the dev compose file).
+- Sample fixtures live in `packages/pipeline/src/elexifier_pipeline/sample/` (tiny XML and a
+  hand-built two-page PDF) and are shared by tests, smoke runs and later pipeline tests.
+- CI (`.github/workflows/ci.yml`): job `check` with a Postgres service, job `e2e` with docker
+  compose; Playwright report uploaded on failure. First green run is pending a GitHub remote.

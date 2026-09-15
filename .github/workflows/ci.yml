@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ELX_SECRET_KEY: b2r2m2eZ3xZlYQ0T0m4Y5gk0YQ1r5x6zBxJ3v4eKk9k=
+  ELX_SESSION_SECRET: ci-session-secret-0123456789
+  ELX_ENABLE_TEST_MODEL: "1"
+  ELX_REQUIRE_DB: "1"
+  DATABASE_URL: postgresql+asyncpg://elexifier:elexifier@localhost:5432/elexifier
+  TEST_DATABASE_URL: postgresql+asyncpg://elexifier:elexifier@localhost:5432/elexifier_test
+
+jobs:
+  check:
+    name: Lint, types, tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: elexifier
+          POSTGRES_PASSWORD: elexifier
+          POSTGRES_DB: elexifier
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U elexifier -d elexifier"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: uv sync
+      - run: pnpm install --frozen-lockfile
+      - name: Create the test database
+        run: PGPASSWORD=elexifier psql -h localhost -U elexifier -d postgres -c "CREATE DATABASE elexifier_test"
+      - run: make check
+      - run: pnpm -C apps/web build
+
+  e2e:
+    name: Browser smoke (Playwright)
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: uv sync
+      - run: pnpm install --frozen-lockfile
+      - name: Start PostgreSQL and Keycloak
+        run: docker compose -f deploy/compose/docker-compose.dev.yml up -d postgres keycloak
+      - name: Wait for Keycloak realm
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/realms/elexifier >/dev/null; then echo ready; exit 0; fi
+            sleep 5
+          done
+          docker compose -f deploy/compose/docker-compose.dev.yml logs keycloak | tail -50
+          exit 1
+      - run: make upgrade
+      - run: pnpm -C apps/web exec playwright install --with-deps chromium
+      - run: pnpm -C apps/web e2e
+        env:
+          E2E_KEYCLOAK: "1"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7

@@ -40,3 +40,4 @@ apps/web/test-results/
 
 # Docker / misc
 *.log
+apps/web/e2e/.auth/
