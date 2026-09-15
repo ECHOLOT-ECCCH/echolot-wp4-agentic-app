@@ -57,7 +57,7 @@ web: check-node
 	pnpm -C $(WEB) dev
 
 worker:
-	uv run python -m elexifier_core.jobs worker
+	uv run python -m elexifier_core.worker worker
 
 runner:
 	uv run uvicorn elexifier_sandbox.runner.main:app --port 8010
@@ -83,6 +83,7 @@ migration:
 
 upgrade:
 	uv run alembic -c packages/core/alembic.ini upgrade head
+	uv run python -m elexifier_core.worker schema
 
 test-db:
 	$(COMPOSE_DEV) exec -T postgres psql -U elexifier -d postgres -c "CREATE DATABASE elexifier_test" || true

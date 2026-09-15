@@ -1,0 +1,59 @@
+# Development infrastructure: PostgreSQL, Keycloak and (profile s3) Garage.
+# The API, worker and web app run on the host in development (make api / make worker / make web).
+name: elexifier-dev
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: elexifier
+      POSTGRES_PASSWORD: elexifier
+      POSTGRES_DB: elexifier
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elexifier -d elexifier"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: elexifier
+      KC_DB_PASSWORD: elexifier
+      KC_HTTP_PORT: "8080"
+      KC_HOSTNAME: http://localhost:8080
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-elexifier.json:/opt/keycloak/data/import/realm-elexifier.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  garage:
+    image: dxflrs/garage:v2.3.0
+    profiles: ["s3"]
+    ports:
+      - "3900:3900"
+      - "3903:3903"
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+
+volumes:
+  postgres-data:
+  garage-meta:
+  garage-data:

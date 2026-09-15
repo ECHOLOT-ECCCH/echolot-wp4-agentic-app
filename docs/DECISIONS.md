@@ -55,3 +55,21 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   under `src/components/ui` are vendored and may be edited (excluded from lint and format).
 - Installed: ai 7.0, @ai-sdk/react 4.0, @assistant-ui/react 0.15, @assistant-ui/react-ai-sdk 1.4,
   @tanstack/react-router 1.170, react-pdf 11, vitest 5, playwright 1.63.
+
+## 2026-09-15 Core package choices at M0.5
+
+- S3 client: aioboto3 (well-known API, streaming multipart uploads, presigned URLs, works with Garage).
+- Local storage stores the content type in a `.content-type` sidecar file next to the object; the
+  `etag` for local objects is the sha256 of the content computed during upload.
+- Events: one asyncpg LISTEN connection per API process (`EventBus`), publish with `pg_notify` inside
+  the caller's transaction so events are delivered on commit. Payloads above ~7.9 kB are truncated to
+  identifiers; consumers fetch details through the API.
+- Procrastinate app lives in `elexifier_core.jobs`; the CLI is `elexifier_core.worker` so the app
+  module is never `__main__`. `make upgrade` applies Alembic migrations and then creates the
+  Procrastinate tables if missing (idempotent). Procrastinate schema upgrades use its own migrations.
+- Migrations generated with Alembic autogenerate; the migration test upgrades, downgrades and
+  re-upgrades the test database and `alembic check` must report no drift.
+- Development note: Docker Desktop blocked on an admin prompt during this task, so migrations and
+  DB tests were verified against a temporary Homebrew PostgreSQL 14 on port 5433 (scratch data
+  directory, not a system service). The compose stack targets PostgreSQL 16; re-run `make test`
+  against it once Docker is available.
