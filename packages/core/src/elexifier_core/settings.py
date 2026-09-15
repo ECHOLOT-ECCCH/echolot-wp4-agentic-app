@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -109,6 +110,7 @@ def _plain_dsn(sqlalchemy_url: str) -> str:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")  # keep logs clean
     return Settings()  # type: ignore[call-arg]  # values come from the environment
 
 

@@ -132,3 +132,25 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   the adapter's `on_complete(AgentRunResult)` to a `RunSummary` (messages JSON, usage, model name).
 - Agent tests use `FunctionModel` scripts against the migrated test database; `TestModel` covers the
   smoke path. Both need no API keys.
+
+## 2026-09-15 Chat endpoint at M0.10
+
+- The chat request body is the AI SDK `useChat` payload (`trigger`, `id`, `messages`) plus an
+  optional `model` object (`provider`, `model_id`, `credential_id`) that overrides the project's
+  default model for that turn. The key always comes from a credential owned by the calling user
+  (the referenced one, else their first credential for that provider).
+- Persistence: the request's messages replace the stored conversation before the run (source of
+  truth for reload); after the run `on_complete` appends the assistant-side messages converted with
+  `VercelAIAdapter.dump_messages(..., sdk_version=7)`, stores the Pydantic AI message history and
+  usage on `agent_runs`, and writes a `usage_records` row. `PUT .../messages` remains as a client
+  fallback.
+- The agent runs in a background task feeding a queue that the streaming response consumes. A
+  browser disconnect therefore does not abort the turn: the run finishes, is persisted and shows up
+  on reload. Runs whose `on_complete` never fires are marked `cancelled` (or `failed` when an error
+  chunk or exception occurred). `runtime.drain()` waits for in-flight runs at shutdown.
+- Bug fixed on the way: `server_default="now()"` (a string) freezes the timestamp at table creation
+  in PostgreSQL; use `func.now()`. Migration 0001 regenerated (nothing deployed yet).
+- The SSE generator (`elexifier_api.sse.project_event_stream`) waits on a per-subscriber queue with a
+  heartbeat timeout; `asyncio.wait_for` on an async generator's `__anext__` would cancel and kill
+  the generator. httpx's in-process ASGI transport buffers streaming responses, so the SSE generator
+  is unit-tested directly and the endpoint test covers authorization only.

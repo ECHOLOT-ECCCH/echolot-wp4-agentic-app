@@ -118,3 +118,20 @@ class ProviderOut(BaseModel):
     needs_api_key: bool
     needs_base_url: bool
     docs_url: str
+
+
+class ConversationCreate(BaseModel):
+    title: str | None = Field(default=None, max_length=255)
+
+
+class ConversationOut(ApiModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    title: str
+    created_by: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MessagesIn(BaseModel):
+    messages: list[dict[str, Any]]

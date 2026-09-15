@@ -10,7 +10,7 @@ import asyncio
 import contextlib
 import json
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -157,21 +157,33 @@ class EventBus:
             except asyncio.QueueFull:
                 log.warning("event_bus.subscriber_slow", project_id=event.project_id)
 
-    async def subscribe(self, project_id: uuid.UUID | str) -> AsyncGenerator[ProjectEvent]:
-        """Async generator of events for one project. Consume with ``contextlib.aclosing`` so the
-        subscription is removed as soon as the consumer stops."""
+    @contextlib.asynccontextmanager
+    async def subscription(
+        self, project_id: uuid.UUID | str, maxsize: int = 1000
+    ) -> AsyncIterator[asyncio.Queue[ProjectEvent]]:
+        """Register a queue for one project for the duration of the context.
+
+        Waiting on ``queue.get()`` with a timeout is safe; cancelling it does not end the
+        subscription (unlike cancelling an async generator's ``__anext__``).
+        """
         key = str(project_id)
-        queue: asyncio.Queue[ProjectEvent] = asyncio.Queue(maxsize=1000)
+        queue: asyncio.Queue[ProjectEvent] = asyncio.Queue(maxsize=maxsize)
         self._subscribers.setdefault(key, set()).add(queue)
         try:
-            while True:
-                yield await queue.get()
+            yield queue
         finally:
             subs = self._subscribers.get(key)
             if subs is not None:
                 subs.discard(queue)
                 if not subs:
                     self._subscribers.pop(key, None)
+
+    async def subscribe(self, project_id: uuid.UUID | str) -> AsyncGenerator[ProjectEvent]:
+        """Async generator of events for one project. Consume with ``contextlib.aclosing`` so the
+        subscription is removed as soon as the consumer stops."""
+        async with self.subscription(project_id) as queue:
+            while True:
+                yield await queue.get()
 
     @property
     def subscriber_count(self) -> int:

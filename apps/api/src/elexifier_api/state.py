@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from elexifier_agent.catalog import ModelCatalog
+from elexifier_agent.runtime import AgentRuntime
 from elexifier_api.auth.oidc import OidcClient
 from elexifier_api.auth.session import SessionStore
 from elexifier_core.crypto import SecretBox
@@ -24,3 +25,4 @@ class AppState:
     oidc: OidcClient
     event_bus: EventBus
     catalog: ModelCatalog
+    runtime: AgentRuntime

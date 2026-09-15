@@ -26,9 +26,9 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M0 Foundation
-- Next task: M0.10 (M0.4 compose check and M0.6 browser login check pending Docker)
+- Next task: M0.11 (M0.4 compose check and M0.6 browser login check pending Docker)
 - Blockers: Docker Desktop waits for a macOS admin password (privileged helper). Until then dev infra runs on a temporary local PostgreSQL 14 (port 5433, see .env).
-- Last update: 2026-09-15 (M0.9 done)
+- Last update: 2026-09-15 (M0.10 done)
 
 Update this block at the end of every task.
 
@@ -459,7 +459,7 @@ Goal: a user logs in through Keycloak, creates a project, uploads files, preview
 - [x] M0.7 Projects and files. Routes per section 9 (projects, members, files); streaming upload with sha256; download proxy with range support; content endpoint for files up to 5 MB; audit log entries. Tests with httpx ASGI client. Acceptance: upload a 100 MB file through curl with constant API memory (check with `ps`), download matches sha256.
 - [x] M0.8 Credentials and models. Routes per section 9; encryption; OpenRouter model list fetch with caching; `model_registry.json`; test endpoint sends a five-token completion with the selected model; usage recorded. Tests mock HTTP. Acceptance: add an OpenRouter key in the API, list models, test succeeds (ask the user for a key or use provider `test`).
 - [x] M0.9 Agent package. `contracts.py` (7.1), `deps.py`, `models.py` (7.4), `prompts/system.md` and `prompts/dmlex_cheatsheet.md` (identity as conversion engineer for lexicographers; process: understand source, confirm semantics with the user, sample before full run, validate, export, keep the spec updated; never guess meaning of unknown elements; one step at a time; use ui-actions to show things), `tools/project.py` with `list_files` and `read_file_head(file_id, max_bytes<=8192)`, `agent.py` (`build_agent(source_type, model)` with `output_type=[str, DeferredToolRequests]`), `runtime.py` (`AgentRuntime` protocol and `PydanticAIRuntime`). Tests with `TestModel` and `FunctionModel`. Acceptance: `make test` green.
-- [ ] M0.10 Chat endpoint and persistence. Conversations routes; chat endpoint per 7.2 with `sdk_version=7`; `agent_runs` persistence; `PUT messages`; SSE events endpoint per 7.6. Test: streaming chat with provider `test` through the adapter returns a well-formed data stream. Acceptance: curl the chat endpoint with a test-provider project and see streamed chunks.
+- [x] M0.10 Chat endpoint and persistence. Conversations routes; chat endpoint per 7.2 with `sdk_version=7`; `agent_runs` persistence; `PUT messages`; SSE events endpoint per 7.6. Test: streaming chat with provider `test` through the adapter returns a well-formed data stream. Acceptance: curl the chat endpoint with a test-provider project and see streamed chunks.
 - [ ] M0.11 Web shell. Auth guard; projects list and create; workspace route with ThreePane; left pane files with upload and progress; middle pane TextPreview and PdfViewer; right pane assistant-ui chat with model picker, conversation list, GenericToolCard, ui-action dispatch; settings page for credentials; SSE client. Acceptance: manual walk-through: login, create project, upload XML and PDF, preview both, ask the agent "what files do I have" and see the tool card and answer.
 - [ ] M0.12 Approval spike. Add a temporary tool `demo_requires_approval` with `requires_approval=True`; verify the approval card appears, approve resumes and runs the tool, deny produces a denied result. If broken in the installed versions, implement the fallback in 7.3 and record it in `docs/DECISIONS.md`. Remove the demo tool. Acceptance: both outcomes observed in the browser and covered by an API test.
 - [ ] M0.13 Quality gates and CI. `make check` runs ruff, pyright, pytest, eslint, tsc, vitest; Playwright smoke: login with dev user, create project, upload sample XML, preview, send a chat message using provider `test`; `.github/workflows/ci.yml` with a Postgres service running `make check` and the web build. Acceptance: CI green on the default branch.

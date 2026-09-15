@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises: 
-Create Date: 2026-09-15 09:51:20.126867+00:00
+Create Date: 2026-09-15 10:21:26.454622+00:00
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ def upgrade() -> None:
     sa.Column('usage', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('status', sa.String(length=16), nullable=False),
     sa.Column('error', sa.Text(), nullable=True),
-    sa.Column('started_at', sa.DateTime(timezone=True), server_default='now()', nullable=False),
+    sa.Column('started_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('finished_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.ForeignKeyConstraint(['conversation_id'], ['conversations.id'], name=op.f('fk_agent_runs_conversation_id_conversations'), ondelete='CASCADE'),
