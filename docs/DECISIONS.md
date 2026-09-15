@@ -33,3 +33,12 @@ stack is pdfplumber + pypdfium2 to keep the license options open.
   Homebrew but node@20 is linked; the Makefile checks the node major version and prints how to fix it.
 - pnpm is provided through `corepack enable` (bundled with Node), pinned in the root `package.json`
   `packageManager` field.
+
+## 2026-09-15 Installed library versions at M0.2
+
+`uv sync` resolved Pydantic AI 2.43 (the plan's snippets were written against 1.x docs), FastAPI 0.141,
+SQLAlchemy 2.0.53, Alembic 1.20, ruff 0.16, pyright 1.1.414, pytest 9.1. Consequences: every Pydantic AI
+API named in PLAN section 7 (VercelAIAdapter parameters, DeferredToolRequests, OpenRouterModel) must be
+checked against the installed 2.x version in M0.9 and M0.10; contracts stay the same. ruff 0.16 formats
+Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff. pytest runs with
+`--import-mode=importlib` so test modules in different packages may share names.

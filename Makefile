@@ -1,5 +1,7 @@
 # Elexifier Agentic App. Compatible with GNU Make 3.81 (macOS default).
 SHELL := /bin/bash
+# A stale VIRTUAL_ENV from pyenv or similar only produces uv warnings; uv always uses .venv here.
+unexport VIRTUAL_ENV
 .DEFAULT_GOAL := help
 
 COMPOSE_DEV := docker compose -f deploy/compose/docker-compose.dev.yml
