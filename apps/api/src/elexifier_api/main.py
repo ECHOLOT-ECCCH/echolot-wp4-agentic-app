@@ -10,10 +10,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from elexifier_agent.catalog import ModelCatalog
 from elexifier_api import __version__
 from elexifier_api.auth.oidc import OidcClient
 from elexifier_api.auth.session import SessionStore
-from elexifier_api.routers import auth, files, me, projects
+from elexifier_api.routers import auth, credentials, files, me, projects
 from elexifier_api.schemas import HealthOut
 from elexifier_api.state import AppState
 from elexifier_core.crypto import SecretBox
@@ -41,6 +42,7 @@ def build_state(settings: Settings) -> AppState:
             redirect_uri=f"{api_base}/auth/callback",
         ),
         event_bus=EventBus(settings.database_dsn),
+        catalog=ModelCatalog(),
     )
 
 
@@ -59,6 +61,7 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
         finally:
             await app_state.event_bus.stop()
             await app_state.oidc.aclose()
+            await app_state.catalog.aclose()
             await app_state.db.dispose()
 
     app = FastAPI(
@@ -88,6 +91,7 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
 
     app.include_router(auth.router)
     app.include_router(me.router)
+    app.include_router(credentials.router)
     app.include_router(projects.router)
     app.include_router(files.router)
     return app

@@ -102,3 +102,20 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   `MAX_PREVIEW_BYTES` (default 5 MB) caps the whole-file content endpoint per PLAN 7.13.
 - Instance administrators (`users.role = admin`) get owner rights on every project; non-members get
   404 so project existence is not revealed.
+
+## 2026-09-15 Model catalog at M0.8
+
+- Model lists come live from each provider (OpenRouter public catalog; OpenAI, DeepSeek and any
+  OpenAI-compatible endpoint via `GET /models`; Anthropic `GET /v1/models`; Google
+  `GET /v1beta/models`) and are merged with a small curated `model_registry.json` that only adds
+  labels, capability flags and a `recommended` marker. Curated ids missing from the live list are not
+  shown, so stale curated entries are harmless. Capabilities unknown to a provider are `null`.
+- Catalog responses are cached in-process for an hour per provider, endpoint and key hash.
+- Pydantic AI 2.43 verified: `OpenRouterModel`/`OpenRouterProvider`, `OpenAIResponsesModel` for
+  OpenAI, `OpenAIChatModel` + `DeepSeekProvider`, `AnthropicModel`, `GoogleModel`, `TestModel`;
+  `AgentRunResult.usage` is a property. `DataChunk` lives in
+  `pydantic_ai.ui.vercel_ai.response_types`; `VercelAIAdapter.dispatch_request` accepts
+  `sdk_version=7`, `deps`, `message_history`, `deferred_tool_results`, `on_complete`.
+- The credential test endpoint runs a five-token completion through the real model class and records
+  a `usage_records` row with purpose `probe`. Provider errors are returned with any key-like text
+  masked.

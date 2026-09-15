@@ -77,3 +77,44 @@ class FileOut(ApiModel):
     meta: dict[str, Any]
     created_by: uuid.UUID | None
     created_at: datetime
+
+
+class CredentialCreate(BaseModel):
+    provider: str = Field(min_length=1, max_length=32)
+    label: str = Field(min_length=1, max_length=100)
+    api_key: str | None = Field(default=None, max_length=4096)
+    base_url: str | None = Field(default=None, max_length=1024)
+    declared_capabilities: dict[str, Any] = Field(default_factory=dict)
+
+
+class CredentialOut(ApiModel):
+    id: uuid.UUID
+    provider: str
+    label: str
+    base_url: str | None
+    key_hint: str
+    declared_capabilities: dict[str, Any]
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class ProbeRequest(BaseModel):
+    model_id: str | None = Field(default=None, max_length=200)
+
+
+class ProbeOut(BaseModel):
+    ok: bool
+    model_id: str
+    latency_ms: int
+    message: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reply: str = ""
+
+
+class ProviderOut(BaseModel):
+    name: str
+    label: str
+    needs_api_key: bool
+    needs_base_url: bool
+    docs_url: str
