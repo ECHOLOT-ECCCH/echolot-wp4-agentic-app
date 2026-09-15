@@ -1,0 +1,31 @@
+# SITE_ADDRESS: ":80" for plain http on localhost, or a domain such as "dictionaries.example.org"
+# for automatic HTTPS. Set it in .env.
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	@backend path /api/* /auth/* /healthz
+	handle @backend {
+		reverse_proxy api:8000 {
+			# stream chat and server-sent events without buffering
+			flush_interval -1
+			transport http {
+				read_timeout 0
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	request_body {
+		max_size 2GB
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

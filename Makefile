@@ -10,7 +10,7 @@ PROFILE ?=
 WEB := apps/web
 NODE_MIN := 22
 
-.PHONY: help setup check-node dev-infra dev-infra-down api web worker runner check test e2e migration upgrade test-db images up
+.PHONY: help setup check-node dev-infra dev-infra-down api web worker runner check test e2e migration upgrade test-db images up down logs garage-init
 
 help:
 	@echo "Targets:"
@@ -28,7 +28,9 @@ help:
 	@echo "  upgrade         apply migrations"
 	@echo "  test-db         create the elexifier_test database"
 	@echo "  images          build docker images"
-	@echo "  up              start the production compose stack"
+	@echo "  up / down       start or stop the production compose stack"
+	@echo "  logs            follow production stack logs"
+	@echo "  garage-init     bootstrap the dev Garage node (PROFILE=s3)"
 
 check-node:
 	@v=$$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0); \
@@ -93,3 +95,14 @@ images:
 
 up:
 	$(COMPOSE_PROD) up -d
+
+down:
+	$(COMPOSE_PROD) down
+
+logs:
+	$(COMPOSE_PROD) logs -f --tail=100
+
+garage-init:
+	$(COMPOSE_DEV) --profile s3 run --rm -e S3_BUCKET=elexifier -e S3_ACCESS_KEY=GK0000000000000000000000dev \
+	  -e S3_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000dev \
+	  -v $(PWD)/deploy/compose/garage/init.sh:/init.sh:ro --entrypoint /bin/sh garage /init.sh

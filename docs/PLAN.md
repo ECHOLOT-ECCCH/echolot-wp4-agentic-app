@@ -25,10 +25,21 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M0 Foundation
-- Next task: M0.14 (M0.4 compose check and M0.6 browser login check pending Docker; CI run pending a GitHub remote)
-- Blockers: Docker Desktop waits for a macOS admin password (privileged helper). Until then dev infra runs on a temporary local PostgreSQL 14 (port 5433, see .env).
-- Last update: 2026-09-15 (M0.13 done)
+- Current milestone: M0 Foundation (code complete; three acceptance checks need Docker)
+- Next task: finish the Docker-dependent checks, then tag `m0` and start M1 (expand its checklist first)
+  1. `make dev-infra` and confirm the Keycloak realm and account-console login (M0.4)
+  2. `make api` + `make web`, sign in through Keycloak in the browser (M0.6); run
+     `E2E_KEYCLOAK=1 pnpm -C apps/web e2e` for the automated version
+  3. `cp .env.example .env` (real secrets) and `docker compose -f deploy/compose/docker-compose.yml up -d --build`,
+     open http://localhost and sign in (M0.14); fix whatever the first build reveals (Garage bootstrap
+     script and Dockerfiles are untested); then `git tag m0`
+  4. Push to a GitHub remote so `.github/workflows/ci.yml` runs (M0.13 acceptance)
+- Blockers: Docker Desktop waits for a macOS admin password (privileged helper install). Until then
+  development runs against a temporary Homebrew PostgreSQL 14 on port 5433 (`pg_ctl -D <scratch>/pg`),
+  configured in the local `.env`; switch `.env` back to port 5432 once the compose Postgres runs.
+- Open decisions for the project owner: repository license (docs/DECISIONS.md), a real provider key
+  for a live model check.
+- Last update: 2026-09-15 (M0.1–M0.13 done, M0.14 written)
 
 Update this block at the end of every task.
 
@@ -463,7 +474,7 @@ Goal: a user logs in through Keycloak, creates a project, uploads files, preview
 - [x] M0.11 Web shell. Auth guard; projects list and create; workspace route with ThreePane; left pane files with upload and progress; middle pane TextPreview and PdfViewer; right pane assistant-ui chat with model picker, conversation list, GenericToolCard, ui-action dispatch; settings page for credentials; SSE client. Acceptance: manual walk-through: login, create project, upload XML and PDF, preview both, ask the agent "what files do I have" and see the tool card and answer.
 - [x] M0.12 Approval spike. Add a temporary tool `demo_requires_approval` with `requires_approval=True`; verify the approval card appears, approve resumes and runs the tool, deny produces a denied result. If broken in the installed versions, implement the fallback in 7.3 and record it in `docs/DECISIONS.md`. Remove the demo tool. Acceptance: both outcomes observed in the browser and covered by an API test.
 - [x] M0.13 Quality gates and CI. (workflow written and `make check` + Playwright green locally; first CI run needs a GitHub remote) `make check` runs ruff, pyright, pytest, eslint, tsc, vitest; Playwright smoke: login with dev user, create project, upload sample XML, preview, send a chat message using provider `test`; `.github/workflows/ci.yml` with a Postgres service running `make check` and the web build. Acceptance: CI green on the default branch.
-- [ ] M0.14 Production compose. `docker-compose.yml` with caddy, api, worker (placeholder task), sandbox-runner (stub returning 501 until M3), postgres, garage, keycloak; Dockerfiles; `Caddyfile` serving the web build and proxying `/api`, `/auth`, `/events`; `docs/self-hosting.md`. Acceptance: on a clean machine `cp .env.example .env && docker compose up` serves the app at `http://localhost` with working login. Tag `m0`.
+- [ ] M0.14 Production compose. (files written: compose, Dockerfiles, Caddyfile, Garage bootstrap, self-hosting guide; build and login check pending Docker) `docker-compose.yml` with caddy, api, worker (placeholder task), sandbox-runner (stub returning 501 until M3), postgres, garage, keycloak; Dockerfiles; `Caddyfile` serving the web build and proxying `/api`, `/auth`, `/events`; `docs/self-hosting.md`. Acceptance: on a clean machine `cp .env.example .env && docker compose up` serves the app at `http://localhost` with working login. Tag `m0`.
 
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)
 

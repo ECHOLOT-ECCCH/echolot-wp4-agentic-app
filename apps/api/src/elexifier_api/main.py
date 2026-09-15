@@ -41,6 +41,7 @@ def build_state(settings: Settings) -> AppState:
             client_id=settings.oidc_client_id,
             client_secret=settings.oidc_client_secret,
             redirect_uri=f"{api_base}/auth/callback",
+            internal_issuer=settings.oidc_internal_issuer,
         ),
         event_bus=EventBus(settings.database_dsn),
         catalog=ModelCatalog(),

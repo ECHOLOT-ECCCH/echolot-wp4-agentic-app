@@ -199,3 +199,38 @@ async def test_logout_redirects_to_idp_when_id_token_known(
     assert params["client_id"] == ["elexifier-web"]
     assert params["post_logout_redirect_uri"] == ["http://testserver"]
     assert "id_token_hint" in params
+
+
+async def test_internal_issuer_rewrites_browser_endpoints(fake_idp: FakeIdp) -> None:
+    """Server-side calls use the internal issuer; browser redirects keep the public one."""
+    import httpx as _httpx
+
+    from elexifier_api.auth.oidc import OidcClient
+
+    internal = "http://keycloak:8080/realms/elexifier"
+    metadata = {
+        "issuer": ISSUER,
+        "authorization_endpoint": f"{internal}/protocol/openid-connect/auth",
+        "token_endpoint": f"{internal}/protocol/openid-connect/token",
+        "end_session_endpoint": f"{internal}/protocol/openid-connect/logout",
+        "jwks_uri": f"{internal}/protocol/openid-connect/certs",
+    }
+
+    def handler(request: _httpx.Request) -> _httpx.Response:
+        assert request.url.host == "keycloak"
+        return _httpx.Response(200, json=metadata)
+
+    client = OidcClient(
+        issuer=ISSUER,
+        client_id="elexifier-web",
+        client_secret="s",
+        redirect_uri="http://testserver/auth/callback",
+        http=_httpx.AsyncClient(transport=_httpx.MockTransport(handler)),
+        internal_issuer=internal,
+    )
+    resolved = await client.metadata()
+    assert resolved["authorization_endpoint"].startswith(ISSUER)
+    assert resolved["end_session_endpoint"].startswith(ISSUER)
+    assert resolved["token_endpoint"].startswith(internal)
+    assert resolved["jwks_uri"].startswith(internal)
+    await client.aclose()

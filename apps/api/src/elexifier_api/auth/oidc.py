@@ -60,8 +60,10 @@ class OidcClient:
         metadata: dict[str, Any] | None = None,
         jwks: dict[str, Any] | None = None,
         leeway_s: int = 60,
+        internal_issuer: str | None = None,
     ) -> None:
         self.issuer = issuer.rstrip("/")
+        self.internal_issuer = internal_issuer.rstrip("/") if internal_issuer else None
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
@@ -80,14 +82,23 @@ class OidcClient:
     # --- discovery -----------------------------------------------------------------------
 
     async def metadata(self) -> dict[str, Any]:
+        """Discovery document. When an internal issuer is configured (compose network), server-side
+        endpoints come from it while browser-facing endpoints are rewritten to the public issuer."""
         if self._metadata is None or time.monotonic() - self._metadata_at > METADATA_TTL_S:
-            url = f"{self.issuer}/.well-known/openid-configuration"
+            base = self.internal_issuer or self.issuer
+            url = f"{base}/.well-known/openid-configuration"
             try:
                 resp = await self._http.get(url)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise OidcError(f"cannot fetch OIDC discovery document from {url}: {exc}") from exc
-            self._metadata = resp.json()
+            metadata = dict(resp.json())
+            if self.internal_issuer:
+                for key in ("authorization_endpoint", "end_session_endpoint"):
+                    value = metadata.get(key)
+                    if isinstance(value, str) and value.startswith(self.internal_issuer):
+                        metadata[key] = self.issuer + value[len(self.internal_issuer) :]
+            self._metadata = metadata
             self._metadata_at = time.monotonic()
         return self._metadata
 

@@ -211,3 +211,20 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   hand-built two-page PDF) and are shared by tests, smoke runs and later pipeline tests.
 - CI (`.github/workflows/ci.yml`): job `check` with a Postgres service, job `e2e` with docker
   compose; Playwright report uploaded on failure. First green run is pending a GitHub remote.
+
+## 2026-09-15 Production compose written at M0.14 (unverified: Docker unavailable in this session)
+
+- One `deploy/compose/docker-compose.yml`: caddy (serves the built SPA and proxies the API, automatic
+  HTTPS via `SITE_ADDRESS`), api (runs Alembic + Procrastinate schema on start), worker (same image),
+  sandbox-runner (stub answering 501 until M3, contract already enforced), postgres, garage + a
+  one-shot garage-init, keycloak (`start --import-realm`, backchannel dynamic hostname).
+- Inter-service URLs are fixed in the compose file; secrets and public URLs come from `.env`
+  (`SITE_URL`, `SITE_ADDRESS`, `KEYCLOAK_URL`, `POSTGRES_PASSWORD`, keys). `.env.example` therefore
+  serves both host development (top) and the compose stack (bottom section).
+- New setting `OIDC_INTERNAL_ISSUER`: the API fetches discovery, tokens and JWKS from
+  `http://keycloak:8080/...` while `iss` and the browser-facing endpoints stay on the public
+  `KEYCLOAK_URL`. Keycloak needs `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` for this.
+- Known unverified pieces to check on the first `docker compose up`: the Garage bootstrap script
+  (CLI reachability via `rpc_public_addr = garage:3901`, `layout`/`key import` flags), the uv-based
+  Dockerfiles, Keycloak 26.4 `start --optimized` with a runtime DB config (drop `--optimized` if it
+  complains), Caddy `flush_interval -1` for the chat stream.

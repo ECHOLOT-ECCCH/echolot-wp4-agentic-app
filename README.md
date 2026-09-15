@@ -35,6 +35,16 @@ make web          # Vite on :5173 (proxies /api, /auth, /events to :8000)
 
 Log in with `dev@example.com` / `dev` (imported Keycloak realm).
 
+## Run the whole stack with Docker
+
+```bash
+cp .env.example .env            # then set ELX_SECRET_KEY and ELX_SESSION_SECRET to real values
+docker compose -f deploy/compose/docker-compose.yml up -d --build
+```
+
+Open http://localhost (sign in with `dev@example.com` / `dev`). See [docs/self-hosting.md](docs/self-hosting.md)
+for domains, HTTPS, identity federation, storage and backups.
+
 ## Layout
 
 | Path | Contents |

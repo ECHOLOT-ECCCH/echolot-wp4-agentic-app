@@ -47,6 +47,11 @@ class Settings(BaseSettings):
 
     # OIDC
     oidc_issuer: str = "http://localhost:8080/realms/elexifier"
+    oidc_internal_issuer: str | None = Field(
+        default=None,
+        description="Issuer URL reachable from the API container (e.g. http://keycloak:8080/realms/x)"
+        " when the public issuer is not routable server-side; tokens still carry oidc_issuer",
+    )
     oidc_client_id: str = "elexifier-web"
     oidc_client_secret: str = "dev-client-secret"
 
