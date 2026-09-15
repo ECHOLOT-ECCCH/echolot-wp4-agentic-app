@@ -25,21 +25,15 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M0 Foundation (code complete; three acceptance checks need Docker)
-- Next task: finish the Docker-dependent checks, then tag `m0` and start M1 (expand its checklist first)
-  1. `make dev-infra` and confirm the Keycloak realm and account-console login (M0.4)
-  2. `make api` + `make web`, sign in through Keycloak in the browser (M0.6); run
-     `E2E_KEYCLOAK=1 pnpm -C apps/web e2e` for the automated version
-  3. `cp .env.example .env` (real secrets) and `docker compose -f deploy/compose/docker-compose.yml up -d --build`,
-     open http://localhost and sign in (M0.14); fix whatever the first build reveals (Garage bootstrap
-     script and Dockerfiles are untested); then `git tag m0`
-  4. Push to a GitHub remote so `.github/workflows/ci.yml` runs (M0.13 acceptance)
-- Blockers: Docker Desktop waits for a macOS admin password (privileged helper install). Until then
-  development runs against a temporary Homebrew PostgreSQL 14 on port 5433 (`pg_ctl -D <scratch>/pg`),
-  configured in the local `.env`; switch `.env` back to port 5432 once the compose Postgres runs.
-- Open decisions for the project owner: repository license (docs/DECISIONS.md), a real provider key
-  for a live model check.
-- Last update: 2026-09-15 (M0.1–M0.13 done, M0.14 written)
+- Current milestone: M0 Foundation is complete and tagged `m0`.
+- Next task: expand the M1 checklist in section 13 into numbered tasks (M1.1 ...) at the top of a new
+  "Milestone 1" section, then start with the document parse job and entry index.
+- Blockers: none. Development runs against `make dev-infra` (Postgres 16, Keycloak, Garage under
+  profile `s3`); the local `.env` points at localhost:5432.
+- Open decisions for the project owner: repository license (docs/DECISIONS.md); a real provider key
+  for a live model check (everything so far ran on the built-in test model); pushing to a GitHub
+  remote so the CI workflow gets its first run.
+- Last update: 2026-09-15 (M0 done, `m0` tagged)
 
 Update this block at the end of every task.
 
@@ -464,17 +458,17 @@ Goal: a user logs in through Keycloak, creates a project, uploads files, preview
 - [x] M0.1 Repository bootstrap. `git init`; `.gitignore` (Python, Node, `.env`, `data/`); `README.md`; copy this plan to `docs/PLAN.md`; create `CLAUDE.md`, `docs/DECISIONS.md`, `docs/BACKLOG.md` per section 11; `Makefile` skeleton; ask the user for the license once (AskUserQuestion), continue without blocking. Acceptance: first commit exists, `cat docs/PLAN.md | head` shows this plan.
 - [x] M0.2 Python workspace. Root `pyproject.toml` with `[tool.uv.workspace] members = ["apps/api", "packages/*"]`; packages `elexifier_core`, `elexifier_agent`, `elexifier_pipeline`, `elexifier_api` with `src/` layout; ruff, pyright, pytest configured at the root; one trivial test per package. Acceptance: `uv sync && uv run pytest` passes; `uv run ruff check . && uv run pyright` clean.
 - [x] M0.3 Web bootstrap. `pnpm create vite apps/web --template react-ts`; add the section 5 web dependencies; Tailwind v4; shadcn init with `button, dialog, dropdown-menu, tabs, resizable, scroll-area, sonner, input, badge, tooltip`; TanStack Router file-based routing; ESLint flat config, Prettier, Vitest; Vite proxy for `/api`, `/auth`, `/events`. Acceptance: `pnpm -C apps/web build && pnpm -C apps/web test` pass.
-- [ ] M0.4 Dev infrastructure. `docker-compose.dev.yml` with postgres:16 and keycloak:26 (`start-dev --import-realm`) plus a `garage` service under profile `s3`; realm import per 7.11; `.env.example`; `make dev-infra`. Acceptance: `http://localhost:8080` shows the realm; login as `dev@example.com` works in the Keycloak account console.
+- [x] M0.4 Dev infrastructure. `docker-compose.dev.yml` with postgres:16 and keycloak:26 (`start-dev --import-realm`) plus a `garage` service under profile `s3`; realm import per 7.11; `.env.example`; `make dev-infra`. Acceptance: `http://localhost:8080` shows the realm; login as `dev@example.com` works in the Keycloak account console.
 - [x] M0.5 Core package. `settings.py` (pydantic-settings); async engine and session factory; models for the M0 tables (section 8); Alembic with migration 0001; `storage.py` with LocalStorage and S3Storage; `crypto.py` (Fernet encrypt/decrypt, key rotation-ready); `events.py` (notify + listener). Tests: crypto round trip, LocalStorage put/open/stat/delete, S3Storage against garage when `S3_ENDPOINT` is set (skip otherwise), migration upgrade and downgrade on `elexifier_test`. Acceptance: `make test` green.
-- [x] M0.6 API skeleton and auth. (browser login against Keycloak still to be verified once Docker runs) App factory, structured logging with key redaction, `/healthz`; OIDC BFF per 7.11; sessions; CSRF; `GET /api/me`; test helper that creates a user and session directly. Acceptance: browser login through Keycloak with the dev user returns the profile from `/api/me`; `make test` green.
+- [x] M0.6 API skeleton and auth. App factory, structured logging with key redaction, `/healthz`; OIDC BFF per 7.11; sessions; CSRF; `GET /api/me`; test helper that creates a user and session directly. Acceptance: browser login through Keycloak with the dev user returns the profile from `/api/me`; `make test` green.
 - [x] M0.7 Projects and files. Routes per section 9 (projects, members, files); streaming upload with sha256; download proxy with range support; content endpoint for files up to 5 MB; audit log entries. Tests with httpx ASGI client. Acceptance: upload a 100 MB file through curl with constant API memory (check with `ps`), download matches sha256.
 - [x] M0.8 Credentials and models. Routes per section 9; encryption; OpenRouter model list fetch with caching; `model_registry.json`; test endpoint sends a five-token completion with the selected model; usage recorded. Tests mock HTTP. Acceptance: add an OpenRouter key in the API, list models, test succeeds (ask the user for a key or use provider `test`).
 - [x] M0.9 Agent package. `contracts.py` (7.1), `deps.py`, `models.py` (7.4), `prompts/system.md` and `prompts/dmlex_cheatsheet.md` (identity as conversion engineer for lexicographers; process: understand source, confirm semantics with the user, sample before full run, validate, export, keep the spec updated; never guess meaning of unknown elements; one step at a time; use ui-actions to show things), `tools/project.py` with `list_files` and `read_file_head(file_id, max_bytes<=8192)`, `agent.py` (`build_agent(source_type, model)` with `output_type=[str, DeferredToolRequests]`), `runtime.py` (`AgentRuntime` protocol and `PydanticAIRuntime`). Tests with `TestModel` and `FunctionModel`. Acceptance: `make test` green.
 - [x] M0.10 Chat endpoint and persistence. Conversations routes; chat endpoint per 7.2 with `sdk_version=7`; `agent_runs` persistence; `PUT messages`; SSE events endpoint per 7.6. Test: streaming chat with provider `test` through the adapter returns a well-formed data stream. Acceptance: curl the chat endpoint with a test-provider project and see streamed chunks.
 - [x] M0.11 Web shell. Auth guard; projects list and create; workspace route with ThreePane; left pane files with upload and progress; middle pane TextPreview and PdfViewer; right pane assistant-ui chat with model picker, conversation list, GenericToolCard, ui-action dispatch; settings page for credentials; SSE client. Acceptance: manual walk-through: login, create project, upload XML and PDF, preview both, ask the agent "what files do I have" and see the tool card and answer.
 - [x] M0.12 Approval spike. Add a temporary tool `demo_requires_approval` with `requires_approval=True`; verify the approval card appears, approve resumes and runs the tool, deny produces a denied result. If broken in the installed versions, implement the fallback in 7.3 and record it in `docs/DECISIONS.md`. Remove the demo tool. Acceptance: both outcomes observed in the browser and covered by an API test.
-- [x] M0.13 Quality gates and CI. (workflow written and `make check` + Playwright green locally; first CI run needs a GitHub remote) `make check` runs ruff, pyright, pytest, eslint, tsc, vitest; Playwright smoke: login with dev user, create project, upload sample XML, preview, send a chat message using provider `test`; `.github/workflows/ci.yml` with a Postgres service running `make check` and the web build. Acceptance: CI green on the default branch.
-- [ ] M0.14 Production compose. (files written: compose, Dockerfiles, Caddyfile, Garage bootstrap, self-hosting guide; build and login check pending Docker) `docker-compose.yml` with caddy, api, worker (placeholder task), sandbox-runner (stub returning 501 until M3), postgres, garage, keycloak; Dockerfiles; `Caddyfile` serving the web build and proxying `/api`, `/auth`, `/events`; `docs/self-hosting.md`. Acceptance: on a clean machine `cp .env.example .env && docker compose up` serves the app at `http://localhost` with working login. Tag `m0`.
+- [x] M0.13 Quality gates and CI. (first CI run needs a GitHub remote) `make check` runs ruff, pyright, pytest, eslint, tsc, vitest; Playwright smoke: login with dev user, create project, upload sample XML, preview, send a chat message using provider `test`; `.github/workflows/ci.yml` with a Postgres service running `make check` and the web build. Acceptance: CI green on the default branch.
+- [x] M0.14 Production compose. `docker-compose.yml` with caddy, api, worker (placeholder task), sandbox-runner (stub returning 501 until M3), postgres, garage, keycloak; Dockerfiles; `Caddyfile` serving the web build and proxying `/api`, `/auth`, `/events`; `docs/self-hosting.md`. Acceptance: on a clean machine `cp .env.example .env && docker compose up` serves the app at `http://localhost` with working login. Tag `m0`.
 
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)
 

@@ -11,7 +11,23 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
  * Creates a signed-in browser state without going through Keycloak: the devtools CLI writes a
  * user and a session straight into the database (the same tables the OIDC callback writes).
  */
-setup('create a session for the e2e user', async () => {
+setup('create a session for the e2e user', async ({ browser }) => {
+  mkdirSync(path.join(HERE, '.auth'), { recursive: true })
+  const statePath = path.join(HERE, '.auth/state.json')
+  if (process.env.E2E_LOGIN_VIA_KEYCLOAK) {
+    // Against a deployed stack (compose acceptance): sign in through the identity provider.
+    const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost'
+    const page = await browser.newPage()
+    await page.goto(`${baseURL}/`)
+    await page.waitForURL(/realms\/elexifier/)
+    await page.locator('#username').fill(process.env.E2E_USER ?? 'dev@example.com')
+    await page.locator('#password').fill(process.env.E2E_PASSWORD ?? 'dev')
+    await page.locator('#kc-login').click()
+    await page.waitForURL((url) => url.origin === new URL(baseURL).origin)
+    await page.context().storageState({ path: statePath })
+    await page.close()
+    return
+  }
   const repoRoot = path.resolve(HERE, '../../..')
   const output = execFileSync(
     'uv',

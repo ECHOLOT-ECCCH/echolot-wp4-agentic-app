@@ -103,6 +103,7 @@ logs:
 	$(COMPOSE_PROD) logs -f --tail=100
 
 garage-init:
-	$(COMPOSE_DEV) --profile s3 run --rm -e S3_BUCKET=elexifier -e S3_ACCESS_KEY=GK0000000000000000000000dev \
-	  -e S3_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000dev \
-	  -v $(PWD)/deploy/compose/garage/init.sh:/init.sh:ro --entrypoint /bin/sh garage /init.sh
+	GARAGE_ADMIN_URL=http://localhost:3903 GARAGE_ADMIN_TOKEN=dev-garage-admin-token S3_BUCKET=elexifier \
+	  S3_ACCESS_KEY=GK0000000000000000000000dev \
+	  S3_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000dev \
+	  uv run python -m elexifier_core.garage_bootstrap

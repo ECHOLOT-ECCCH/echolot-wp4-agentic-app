@@ -17,6 +17,14 @@
   "roles": {
     "realm": [
       {
+        "name": "uma_authorization",
+        "description": "${role_uma_authorization}"
+      },
+      {
+        "name": "offline_access",
+        "description": "${role_offline-access}"
+      },
+      {
         "name": "user",
         "description": "Regular Elexifier user"
       },
@@ -24,15 +32,28 @@
         "name": "admin",
         "description": "Elexifier administrator",
         "composite": true,
-        "composites": { "realm": ["user"] }
+        "composites": {
+          "realm": [
+            "user"
+          ]
+        }
       },
       {
         "name": "default-roles-elexifier",
         "description": "${role_default-roles}",
         "composite": true,
         "composites": {
-          "realm": ["offline_access", "uma_authorization", "user"],
-          "client": { "account": ["view-profile", "manage-account"] }
+          "realm": [
+            "offline_access",
+            "uma_authorization",
+            "user"
+          ],
+          "client": {
+            "account": [
+              "view-profile",
+              "manage-account"
+            ]
+          }
         }
       }
     ]
@@ -67,7 +88,9 @@
         "http://localhost/*",
         "https://localhost/*"
       ],
-      "webOrigins": ["+"],
+      "webOrigins": [
+        "+"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:8000/*##http://localhost/*##https://localhost/*",
@@ -99,8 +122,16 @@
       "enabled": true,
       "firstName": "Dev",
       "lastName": "Lexicographer",
-      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
-      "realmRoles": ["user"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user"
+      ]
     },
     {
       "username": "admin@example.com",
@@ -109,8 +140,17 @@
       "enabled": true,
       "firstName": "Dev",
       "lastName": "Admin",
-      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
-      "realmRoles": ["user", "admin"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user",
+        "admin"
+      ]
     }
   ]
 }

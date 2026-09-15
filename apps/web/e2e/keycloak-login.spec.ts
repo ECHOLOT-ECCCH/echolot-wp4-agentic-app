@@ -14,7 +14,8 @@ test.describe('keycloak login', () => {
     await page.locator('#username').fill('dev@example.com')
     await page.locator('#password').fill('dev')
     await page.locator('#kc-login').click()
-    await page.waitForURL(/localhost:5173\/?$/)
+    const origin = new URL(process.env.E2E_BASE_URL ?? 'http://localhost:5173').origin
+    await page.waitForURL((url) => url.origin === origin && url.pathname === '/')
     await expect(page.getByRole('heading', { name: 'Elexifier' })).toBeVisible()
     const me = await page.request.get('/api/me')
     expect(me.ok()).toBeTruthy()

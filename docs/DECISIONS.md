@@ -228,3 +228,29 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   (CLI reachability via `rpc_public_addr = garage:3901`, `layout`/`key import` flags), the uv-based
   Dockerfiles, Keycloak 26.4 `start --optimized` with a runtime DB config (drop `--optimized` if it
   complains), Caddy `flush_interval -1` for the chat stream.
+
+## 2026-09-15 Compose stack verified; M0 acceptance complete
+
+- Keycloak realm import needs `offline_access` and `uma_authorization` declared in the file when the
+  default-role composite references them; `start --optimized` cannot be used for a first start with a
+  runtime database configuration, so the stack uses `start --import-realm`.
+- The Garage image has no shell, so the bootstrap runs from the API image as
+  `python -m elexifier_core.garage_bootstrap` (admin API v2: UpdateClusterLayout / ApplyClusterLayout,
+  ImportKey, CreateBucket, AllowBucketKey). `make garage-init` does the same for the dev node.
+- Bug found only against real S3: aiobotocore's `StreamingBody` context manager unwraps to the raw
+  aiohttp response, whose `read()` takes no size. `S3Storage.open` now iterates `iter_chunks`. The
+  S3 tests run against the dev Garage (`S3_ENDPOINT=http://localhost:3900 ...`) and pass, including
+  multipart upload.
+- Worker health check: `procrastinate ... healthchecks` instead of the API's curl.
+- Verified: `docker compose -f deploy/compose/docker-compose.yml up -d --build` with the example env
+  serves http://localhost; the Playwright suite passed against it with a real Keycloak sign-in
+  (`E2E_LOGIN_VIA_KEYCLOAK=1 E2E_NO_SERVERS=1 E2E_BASE_URL=http://localhost`), covering upload to
+  Garage, previews, chat, approve and deny. Real deployments must set `ELX_ENABLE_TEST_MODEL=0`.
+
+## Verification (M0, 2026-09-15)
+
+- `make check`: green (72 pytest, 5 vitest, lint, types).
+- `pnpm -C apps/web e2e` with `E2E_KEYCLOAK=1` against the dev stack: 4 passed.
+- Same suite against the production compose stack: 4 passed.
+- Models exercised: built-in test model only. Live provider checks (OpenRouter, direct, self-hosted)
+  are still to be done with real keys, per PLAN section 14.

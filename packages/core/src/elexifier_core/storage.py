@@ -274,12 +274,13 @@ class S3Storage:
                 resp = await s3.get_object(**kwargs)
             except s3.exceptions.NoSuchKey as exc:
                 raise NotFoundError(key) from exc
-            async with resp["Body"] as body:
-                while True:
-                    chunk = await body.read(CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    yield chunk
+            body = resp["Body"]  # aiobotocore StreamingBody; its context manager unwraps to aiohttp
+            try:
+                async for chunk in body.iter_chunks(CHUNK_SIZE):
+                    if chunk:
+                        yield chunk
+            finally:
+                body.close()
 
     async def stat(self, key: str) -> StorageStat:
         validate_key(key)
