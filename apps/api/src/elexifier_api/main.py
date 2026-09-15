@@ -1,0 +1,94 @@
+"""FastAPI application factory."""
+
+from __future__ import annotations
+
+import contextlib
+from collections.abc import AsyncIterator
+
+import structlog
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+
+from elexifier_api import __version__
+from elexifier_api.auth.oidc import OidcClient
+from elexifier_api.auth.session import SessionStore
+from elexifier_api.routers import auth, me
+from elexifier_api.schemas import HealthOut
+from elexifier_api.state import AppState
+from elexifier_core.crypto import SecretBox
+from elexifier_core.db.session import Database
+from elexifier_core.events import EventBus
+from elexifier_core.logging import configure_logging
+from elexifier_core.settings import Settings, get_settings
+from elexifier_core.storage import StorageError, build_storage
+
+log = structlog.get_logger(__name__)
+
+
+def build_state(settings: Settings) -> AppState:
+    api_base = settings.public_url.rstrip("/")
+    return AppState(
+        settings=settings,
+        db=Database(settings),
+        storage=build_storage(settings),
+        secret_box=SecretBox(settings.secret_keys),
+        session_store=SessionStore(settings.elx_session_secret, settings.cookie_secure),
+        oidc=OidcClient(
+            issuer=settings.oidc_issuer,
+            client_id=settings.oidc_client_id,
+            client_secret=settings.oidc_client_secret,
+            redirect_uri=f"{api_base}/auth/callback",
+        ),
+        event_bus=EventBus(settings.database_dsn),
+    )
+
+
+def create_app(settings: Settings | None = None, state: AppState | None = None) -> FastAPI:
+    settings = settings or get_settings()
+    configure_logging(settings.log_level, json_output=settings.is_production)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        app_state = state or build_state(settings)
+        app.state.app = app_state
+        await app_state.event_bus.start()
+        log.info("api.started", version=__version__, environment=settings.environment)
+        try:
+            yield
+        finally:
+            await app_state.event_bus.stop()
+            await app_state.oidc.aclose()
+            await app_state.db.dispose()
+
+    app = FastAPI(
+        title="Elexifier API",
+        version=__version__,
+        lifespan=lifespan,
+        docs_url="/api/docs" if not settings.is_production else None,
+        openapi_url="/api/openapi.json" if not settings.is_production else None,
+    )
+
+    @app.exception_handler(StorageError)
+    async def _storage_error(_request: Request, exc: StorageError) -> JSONResponse:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+
+    @app.get("/healthz", response_model=HealthOut, tags=["ops"])
+    async def healthz(request: Request) -> HealthOut:
+        app_state: AppState = request.app.state.app
+        database = "ok"
+        try:
+            async with app_state.db.session() as session:
+                await session.execute(text("SELECT 1"))
+        except Exception as exc:
+            database = f"error: {type(exc).__name__}"
+        events = "ok" if app_state.event_bus.is_ready else "connecting"
+        status_value = "ok" if database == "ok" else "degraded"
+        return HealthOut(status=status_value, database=database, events=events)
+
+    app.include_router(auth.router)
+    app.include_router(me.router)
+    return app
+
+
+app = create_app()

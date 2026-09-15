@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises: 
-Create Date: 2026-09-15 09:45:27.267345+00:00
+Create Date: 2026-09-15 09:51:20.126867+00:00
 """
 
 from __future__ import annotations
@@ -83,6 +83,7 @@ def upgrade() -> None:
     sa.Column('last_seen_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('user_agent', sa.String(length=512), nullable=True),
     sa.Column('ip_address', sa.String(length=64), nullable=True),
+    sa.Column('id_token', sa.Text(), nullable=True),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], name=op.f('fk_sessions_user_id_users'), ondelete='CASCADE'),

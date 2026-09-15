@@ -91,6 +91,7 @@ class Session(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     last_seen_at: Mapped[datetime | None]
     user_agent: Mapped[str | None] = mapped_column(String(512))
     ip_address: Mapped[str | None] = mapped_column(String(64))
+    id_token: Mapped[str | None] = mapped_column(Text)  # for RP-initiated logout (id_token_hint)
 
     user: Mapped[User] = relationship(back_populates="sessions")
 

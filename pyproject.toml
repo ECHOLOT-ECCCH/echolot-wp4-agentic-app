@@ -3,7 +3,14 @@ name = "elexifier-workspace"
 version = "0.0.0"
 description = "Workspace root for the Elexifier Agentic App (not a package)"
 requires-python = ">=3.12"
-dependencies = []
+# The root depends on every member so a plain `uv sync` installs the whole workspace.
+dependencies = [
+    "elexifier-core",
+    "elexifier-agent",
+    "elexifier-pipeline",
+    "elexifier-api",
+    "elexifier-sandbox",
+]
 
 [tool.uv.workspace]
 members = ["apps/api", "packages/*"]
@@ -22,6 +29,7 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.6",
     "pyright>=1.1.380",
+    "asgi-lifespan>=2",
 ]
 
 [tool.ruff]

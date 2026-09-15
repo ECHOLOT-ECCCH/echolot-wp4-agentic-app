@@ -39,7 +39,7 @@ check-node:
 	fi
 
 setup: check-node
-	uv sync --all-packages
+	uv sync
 	corepack enable
 	pnpm install
 	pnpm -C $(WEB) exec playwright install chromium

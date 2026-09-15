@@ -20,6 +20,21 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+IGNORED_TABLE_PREFIXES = ("procrastinate_",)  # owned by Procrastinate's own schema management
+
+
+def include_object(
+    obj: object, name: str | None, type_: str, _reflected: bool, _compare_to: object
+) -> bool:
+    if type_ == "table" and name and name.startswith(IGNORED_TABLE_PREFIXES):
+        return False
+    if type_ in ("index", "unique_constraint", "foreign_key_constraint"):
+        table = getattr(obj, "table", None)
+        table_name = getattr(table, "name", "")
+        if table_name.startswith(IGNORED_TABLE_PREFIXES):
+            return False
+    return True
+
 
 def _database_url() -> str:
     override = context.get_x_argument(as_dictionary=True).get("url")
@@ -38,13 +53,19 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def _run_sync(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

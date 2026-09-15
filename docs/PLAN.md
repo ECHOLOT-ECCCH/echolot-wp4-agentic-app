@@ -26,9 +26,9 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M0 Foundation
-- Next task: M0.4 (compose acceptance pending Docker), then M0.6
+- Next task: M0.7 (M0.4 compose check and M0.6 browser login check pending Docker)
 - Blockers: Docker Desktop waits for a macOS admin password (privileged helper). Until then dev infra runs on a temporary local PostgreSQL 14 (port 5433, see .env).
-- Last update: 2026-09-15 (M0.5 done, M0.4 files written)
+- Last update: 2026-09-15 (M0.6 done except the Keycloak browser check)
 
 Update this block at the end of every task.
 
@@ -455,7 +455,7 @@ Goal: a user logs in through Keycloak, creates a project, uploads files, preview
 - [x] M0.3 Web bootstrap. `pnpm create vite apps/web --template react-ts`; add the section 5 web dependencies; Tailwind v4; shadcn init with `button, dialog, dropdown-menu, tabs, resizable, scroll-area, sonner, input, badge, tooltip`; TanStack Router file-based routing; ESLint flat config, Prettier, Vitest; Vite proxy for `/api`, `/auth`, `/events`. Acceptance: `pnpm -C apps/web build && pnpm -C apps/web test` pass.
 - [ ] M0.4 Dev infrastructure. `docker-compose.dev.yml` with postgres:16 and keycloak:26 (`start-dev --import-realm`) plus a `garage` service under profile `s3`; realm import per 7.11; `.env.example`; `make dev-infra`. Acceptance: `http://localhost:8080` shows the realm; login as `dev@example.com` works in the Keycloak account console.
 - [x] M0.5 Core package. `settings.py` (pydantic-settings); async engine and session factory; models for the M0 tables (section 8); Alembic with migration 0001; `storage.py` with LocalStorage and S3Storage; `crypto.py` (Fernet encrypt/decrypt, key rotation-ready); `events.py` (notify + listener). Tests: crypto round trip, LocalStorage put/open/stat/delete, S3Storage against garage when `S3_ENDPOINT` is set (skip otherwise), migration upgrade and downgrade on `elexifier_test`. Acceptance: `make test` green.
-- [ ] M0.6 API skeleton and auth. App factory, structured logging with key redaction, `/healthz`; OIDC BFF per 7.11; sessions; CSRF; `GET /api/me`; test helper that creates a user and session directly. Acceptance: browser login through Keycloak with the dev user returns the profile from `/api/me`; `make test` green.
+- [x] M0.6 API skeleton and auth. (browser login against Keycloak still to be verified once Docker runs) App factory, structured logging with key redaction, `/healthz`; OIDC BFF per 7.11; sessions; CSRF; `GET /api/me`; test helper that creates a user and session directly. Acceptance: browser login through Keycloak with the dev user returns the profile from `/api/me`; `make test` green.
 - [ ] M0.7 Projects and files. Routes per section 9 (projects, members, files); streaming upload with sha256; download proxy with range support; content endpoint for files up to 5 MB; audit log entries. Tests with httpx ASGI client. Acceptance: upload a 100 MB file through curl with constant API memory (check with `ps`), download matches sha256.
 - [ ] M0.8 Credentials and models. Routes per section 9; encryption; OpenRouter model list fetch with caching; `model_registry.json`; test endpoint sends a five-token completion with the selected model; usage recorded. Tests mock HTTP. Acceptance: add an OpenRouter key in the API, list models, test succeeds (ask the user for a key or use provider `test`).
 - [ ] M0.9 Agent package. `contracts.py` (7.1), `deps.py`, `models.py` (7.4), `prompts/system.md` and `prompts/dmlex_cheatsheet.md` (identity as conversion engineer for lexicographers; process: understand source, confirm semantics with the user, sample before full run, validate, export, keep the spec updated; never guess meaning of unknown elements; one step at a time; use ui-actions to show things), `tools/project.py` with `list_files` and `read_file_head(file_id, max_bytes<=8192)`, `agent.py` (`build_agent(source_type, model)` with `output_type=[str, DeferredToolRequests]`), `runtime.py` (`AgentRuntime` protocol and `PydanticAIRuntime`). Tests with `TestModel` and `FunctionModel`. Acceptance: `make test` green.

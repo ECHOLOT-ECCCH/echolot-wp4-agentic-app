@@ -73,3 +73,21 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   DB tests were verified against a temporary Homebrew PostgreSQL 14 on port 5433 (scratch data
   directory, not a system service). The compose stack targets PostgreSQL 16; re-run `make test`
   against it once Docker is available.
+
+## 2026-09-15 Authentication implementation at M0.6
+
+- The OIDC relying party is implemented directly (httpx + joserfc) instead of authlib's Starlette
+  integration: authlib's JOSE module is deprecated in favour of joserfc, and the manual flow keeps
+  PKCE, state, nonce and JWKS rotation handling explicit and testable with a fake identity provider.
+- Session cookie `elx_session` holds the session UUID (random, HttpOnly, SameSite=Lax, Secure when
+  PUBLIC_URL is https); `elx_csrf` is readable by the SPA and must be echoed in `X-CSRF-Token` on
+  every non-GET request. The transient OIDC state (state, nonce, PKCE verifier, next path) travels in
+  a signed, 10-minute `elx_oidc` cookie.
+- Sessions slide: expiry is extended to 7 days whenever a request arrives more than an hour after the
+  last one. The ID token is stored on the session so logout can pass `id_token_hint` to Keycloak.
+- Realm roles are read from `realm_access.roles` in the ID token (mapper in the realm import) with a
+  fallback to the access token; `admin` maps to the app role `admin`, everything else to `user`.
+- Test database helpers live in `elexifier_core.testing`; API tests truncate all tables per test and
+  run the app through `asgi-lifespan` so the real lifespan (event bus, engine) is exercised.
+- The workspace root lists all members as dependencies so `uv sync` and `uv add` never drop a member
+  from the environment.
