@@ -28,7 +28,6 @@ apps/web/dist/
 apps/web/coverage/
 apps/web/playwright-report/
 apps/web/test-results/
-apps/web/src/routeTree.gen.ts
 *.tsbuildinfo
 .pnpm-store/
 

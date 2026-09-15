@@ -1,0 +1,12 @@
+{
+  "name": "elexifier-agentic-app",
+  "private": true,
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "web": "pnpm -C apps/web dev",
+    "build": "pnpm -C apps/web build"
+  }
+}

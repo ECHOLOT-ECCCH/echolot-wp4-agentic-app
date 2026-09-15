@@ -26,9 +26,9 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M0 Foundation
-- Next task: M0.3
+- Next task: M0.4
 - Blockers: none
-- Last update: 2026-09-15 (M0.2 done)
+- Last update: 2026-09-15 (M0.3 done)
 
 Update this block at the end of every task.
 
@@ -452,7 +452,7 @@ Goal: a user logs in through Keycloak, creates a project, uploads files, preview
 
 - [x] M0.1 Repository bootstrap. `git init`; `.gitignore` (Python, Node, `.env`, `data/`); `README.md`; copy this plan to `docs/PLAN.md`; create `CLAUDE.md`, `docs/DECISIONS.md`, `docs/BACKLOG.md` per section 11; `Makefile` skeleton; ask the user for the license once (AskUserQuestion), continue without blocking. Acceptance: first commit exists, `cat docs/PLAN.md | head` shows this plan.
 - [x] M0.2 Python workspace. Root `pyproject.toml` with `[tool.uv.workspace] members = ["apps/api", "packages/*"]`; packages `elexifier_core`, `elexifier_agent`, `elexifier_pipeline`, `elexifier_api` with `src/` layout; ruff, pyright, pytest configured at the root; one trivial test per package. Acceptance: `uv sync && uv run pytest` passes; `uv run ruff check . && uv run pyright` clean.
-- [ ] M0.3 Web bootstrap. `pnpm create vite apps/web --template react-ts`; add the section 5 web dependencies; Tailwind v4; shadcn init with `button, dialog, dropdown-menu, tabs, resizable, scroll-area, sonner, input, badge, tooltip`; TanStack Router file-based routing; ESLint flat config, Prettier, Vitest; Vite proxy for `/api`, `/auth`, `/events`. Acceptance: `pnpm -C apps/web build && pnpm -C apps/web test` pass.
+- [x] M0.3 Web bootstrap. `pnpm create vite apps/web --template react-ts`; add the section 5 web dependencies; Tailwind v4; shadcn init with `button, dialog, dropdown-menu, tabs, resizable, scroll-area, sonner, input, badge, tooltip`; TanStack Router file-based routing; ESLint flat config, Prettier, Vitest; Vite proxy for `/api`, `/auth`, `/events`. Acceptance: `pnpm -C apps/web build && pnpm -C apps/web test` pass.
 - [ ] M0.4 Dev infrastructure. `docker-compose.dev.yml` with postgres:16 and keycloak:26 (`start-dev --import-realm`) plus a `garage` service under profile `s3`; realm import per 7.11; `.env.example`; `make dev-infra`. Acceptance: `http://localhost:8080` shows the realm; login as `dev@example.com` works in the Keycloak account console.
 - [ ] M0.5 Core package. `settings.py` (pydantic-settings); async engine and session factory; models for the M0 tables (section 8); Alembic with migration 0001; `storage.py` with LocalStorage and S3Storage; `crypto.py` (Fernet encrypt/decrypt, key rotation-ready); `events.py` (notify + listener). Tests: crypto round trip, LocalStorage put/open/stat/delete, S3Storage against garage when `S3_ENDPOINT` is set (skip otherwise), migration upgrade and downgrade on `elexifier_test`. Acceptance: `make test` green.
 - [ ] M0.6 API skeleton and auth. App factory, structured logging with key redaction, `/healthz`; OIDC BFF per 7.11; sessions; CSRF; `GET /api/me`; test helper that creates a user and session directly. Acceptance: browser login through Keycloak with the dev user returns the profile from `/api/me`; `make test` green.

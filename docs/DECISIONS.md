@@ -42,3 +42,16 @@ API named in PLAN section 7 (VercelAIAdapter parameters, DeferredToolRequests, O
 checked against the installed 2.x version in M0.9 and M0.10; contracts stay the same. ruff 0.16 formats
 Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff. pytest runs with
 `--import-mode=importlib` so test modules in different packages may share names.
+
+## 2026-09-15 Web toolchain deviations at M0.3
+
+- The Vite 8 `react-ts` template ships oxlint (not ESLint) and TypeScript 6. Kept oxlint with the
+  react, typescript, import and jsx-a11y plugins plus Prettier instead of adding ESLint: same rule
+  coverage for this codebase, no second linter to maintain. `pnpm lint` runs both.
+- TypeScript 6 deprecates `baseUrl`; the `@/*` alias uses `paths` relative to the tsconfig.
+- `src/routeTree.gen.ts` (TanStack Router) is committed because `tsc -b` runs before Vite regenerates
+  it; the plugin overwrites it on every dev/build.
+- shadcn/ui now generates Base UI based components (style `base-nova`) and a `cn` package; components
+  under `src/components/ui` are vendored and may be edited (excluded from lint and format).
+- Installed: ai 7.0, @ai-sdk/react 4.0, @assistant-ui/react 0.15, @assistant-ui/react-ai-sdk 1.4,
+  @tanstack/react-router 1.170, react-pdf 11, vitest 5, playwright 1.63.
