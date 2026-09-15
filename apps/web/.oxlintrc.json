@@ -22,12 +22,26 @@
       {
         "allow": ["**/*.css", "@testing-library/jest-dom/vitest"]
       }
-    ]
+    ],
+    "jsx-a11y/no-autofocus": "off"
   },
-  "ignorePatterns": ["dist", "coverage", "src/routeTree.gen.ts", "src/components/ui/**"],
+  "ignorePatterns": [
+    "dist",
+    "coverage",
+    "src/routeTree.gen.ts",
+    "src/components/ui/**",
+    "src/components/assistant-ui/**",
+    "src/hooks/**"
+  ],
   "overrides": [
     {
       "files": ["src/routes/**/*.tsx"],
+      "rules": {
+        "react/only-export-components": "off"
+      }
+    },
+    {
+      "files": ["src/features/chat/GenericToolCard.tsx", "src/features/chat/ChatPane.tsx"],
       "rules": {
         "react/only-export-components": "off"
       }

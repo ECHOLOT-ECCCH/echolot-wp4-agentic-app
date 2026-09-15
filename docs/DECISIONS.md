@@ -154,3 +154,27 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   heartbeat timeout; `asyncio.wait_for` on an async generator's `__anext__` would cancel and kill
   the generator. httpx's in-process ASGI transport buffers streaming responses, so the SSE generator
   is unit-tested directly and the endpoint test covers authorization only.
+
+## 2026-09-15 Web shell at M0.11
+
+- Chat: assistant-ui's registry `Thread` (Base UI variant) with `useChatRuntime` +
+  `AssistantChatTransport` from `@assistant-ui/react-ai-sdk`, `sendAutomaticallyWhen:
+  lastAssistantMessageIsCompleteWithApprovalResponses`, and `onData` applying `data-ui-action` parts
+  to the preview store. Every tool renders through `GenericToolCard`, which composes the registry
+  `ToolFallback` parts (trigger, args, approval) with a result body that understands the
+  `{summary, data, artifacts}` contract. Consecutive tool calls are grouped and collapsed by the
+  thread; the user expands them.
+- Conversation history is loaded from `GET .../messages` and passed as the runtime's initial
+  messages; the thread remounts per conversation.
+- Preview pane: CodeMirror (read-only) for text-like files up to 5 MB; react-pdf with lazily
+  mounted pages (IntersectionObserver), current page derived from scroll position, bbox overlay in
+  pdfplumber coordinates scaled by zoom. `pdfjs-dist` is pinned to react-pdf's version and the worker
+  is loaded with Vite's `?url` import (bare-specifier `new URL()` does not resolve in dev).
+- Uploads go through XHR raw-body POSTs for progress; the file list, model picker and settings page
+  use TanStack Query hooks in `lib/queries.ts`.
+- Vendored registry code (`src/components/ui`, `src/components/assistant-ui`, `src/hooks`) is
+  excluded from lint and format; `jsx-a11y/no-autofocus` is off (dialogs focus their first field).
+- Verified with a Playwright walk-through against the running API and Vite (session cookie injected
+  because Keycloak is not running yet): create project, upload XML and PDF, preview both, add a test
+  credential, select the model, chat "What files do I have?" (tool card + answer), reload restores
+  the conversation. The same script becomes the e2e smoke test in M0.13.

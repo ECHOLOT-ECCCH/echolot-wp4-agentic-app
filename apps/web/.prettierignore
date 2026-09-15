@@ -5,4 +5,5 @@ playwright-report
 test-results
 src/routeTree.gen.ts
 src/components/ui
+src/components/assistant-ui
 pnpm-lock.yaml
