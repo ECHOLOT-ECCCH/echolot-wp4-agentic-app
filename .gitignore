@@ -1,0 +1,43 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local data (uploads, storage, db dumps)
+data/
+*.dump
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+build/
+dist/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node
+node_modules/
+apps/web/dist/
+apps/web/coverage/
+apps/web/playwright-report/
+apps/web/test-results/
+apps/web/src/routeTree.gen.ts
+*.tsbuildinfo
+.pnpm-store/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Docker / misc
+*.log
