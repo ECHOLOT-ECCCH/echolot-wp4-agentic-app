@@ -178,3 +178,21 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   because Keycloak is not running yet): create project, upload XML and PDF, preview both, add a test
   credential, select the model, chat "What files do I have?" (tool card + answer), reload restores
   the conversation. The same script becomes the e2e smoke test in M0.13.
+
+## 2026-09-15 Approval flow verified at M0.12 (primary path works, no fallback)
+
+- Pydantic AI 2.43 + AI SDK 7: a tool with `requires_approval=True` ends the run with a
+  `tool-approval-request` chunk; the browser's next request carries the tool part in state
+  `approval-responded` with `approval: {id, approved, reason?}`; `VercelAIAdapter.from_request`
+  turns it into deferred tool results. Approve executes the tool (`tool-output-available`), deny
+  emits `tool-output-denied` and the model sees the reason. Non-boolean `approved` values fail the
+  adapter's strict validation; the API answers 422 and marks the run failed.
+- Deviation from the plan text: instead of deleting the demo tool, a dev-only toolset
+  (`elexifier_agent.tools.dev`, registered only when `ELX_ENABLE_TEST_MODEL=1`) keeps
+  `demo_requires_approval` so the API tests and the browser smoke test can exercise approvals
+  without a real conversion tool. Production deployments never load it.
+- UI: consecutive tool calls are collapsed into a group; `ApprovalAwareToolGroup` forces the group
+  open while any call inside is in `requires-action`, so an approval is never hidden. The registry
+  approval card labels the buttons "Allow" and "Deny".
+- The router's `on_cancel` wiring from M0.10 had not been applied (edit anchored on formatted text);
+  it is in place now. Lesson recorded: after `ruff format`, re-read before anchoring edits.

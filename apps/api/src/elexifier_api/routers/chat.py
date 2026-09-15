@@ -8,6 +8,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -234,9 +235,25 @@ async def chat(
             await append_messages(session, conversation.id, summary.new_ui_messages)
             await session.commit()
 
-    return await state.runtime.dispatch_chat(
-        request, deps=deps, model=model, on_complete=on_complete
-    )
+    async def on_cancel(reason: str) -> None:
+        async with state.db.session() as session:
+            stored = await session.get(AgentRun, run_id)
+            if stored is not None and stored.status == RunStatus.RUNNING.value:
+                failed = reason.startswith("error:")
+                stored.status = RunStatus.FAILED.value if failed else RunStatus.CANCELLED.value
+                stored.error = reason[:2000]
+                stored.finished_at = datetime.now(UTC)
+                await session.commit()
+
+    try:
+        return await state.runtime.dispatch_chat(
+            request, deps=deps, model=model, on_complete=on_complete, on_cancel=on_cancel
+        )
+    except ValidationError as exc:
+        await on_cancel("error: malformed chat request")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Malformed chat request (messages)"
+        ) from exc
 
 
 def _project_context(project: Project) -> ProjectContext:

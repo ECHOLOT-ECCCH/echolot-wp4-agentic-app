@@ -9,6 +9,7 @@ from pydantic_ai.models import Model
 from pydantic_ai.toolsets import AbstractToolset
 
 from elexifier_agent.deps import AgentDeps
+from elexifier_agent.tools.dev import dev_toolset
 from elexifier_agent.tools.project import project_toolset
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
@@ -41,19 +42,23 @@ def render_system_prompt(deps: AgentDeps) -> str:
     )
 
 
-def toolsets_for(source_type: str) -> list[AbstractToolset[AgentDeps]]:
+def toolsets_for(source_type: str, *, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]:
     """Toolsets are filtered by project type to keep the model's context small."""
     toolsets: list[AbstractToolset[AgentDeps]] = [project_toolset]
     # M1 adds the XML and DMLex toolsets, M2 the PDF toolset, M3 the sandbox toolset.
+    if dev_tools:
+        toolsets.append(dev_toolset)
     return toolsets
 
 
-def build_agent(source_type: str, model: Model, *, name: str = "elexifier") -> ConversionAgent:
+def build_agent(
+    source_type: str, model: Model, *, name: str = "elexifier", dev_tools: bool = False
+) -> ConversionAgent:
     agent: ConversionAgent = Agent(
         model,
         deps_type=AgentDeps,
         output_type=[str, DeferredToolRequests],
-        toolsets=toolsets_for(source_type),
+        toolsets=toolsets_for(source_type, dev_tools=dev_tools),
         name=name,
         retries=2,
     )

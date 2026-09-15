@@ -84,11 +84,11 @@ async def test_chat_streams_and_persists(
     chunks = _parse_stream(resp.text)
     types = [c["type"] for c in chunks]
     assert types[0] == "start"
-    assert "finish" in types
-    # the test model calls the tools it sees, so tool chunks appear before the final text
+    assert types[-1] == "finish"
+    # the test model calls every tool it sees: list_files runs, the dev demo tool asks for approval
     assert any(t.startswith("tool-input") for t in types)
     assert any(t == "tool-output-available" for t in types)
-    assert any(t == "text-delta" for t in types)
+    assert "tool-approval-request" in types
 
     # persistence happens in on_complete after the stream ends
     run: AgentRun | None = None

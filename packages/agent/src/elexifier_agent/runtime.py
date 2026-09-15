@@ -62,7 +62,9 @@ class PydanticAIRuntime:
         self._tasks: set[asyncio.Task[None]] = set()
 
     def build(self, deps: AgentDeps, model: Model) -> ConversionAgent:
-        return build_agent(deps.project.source_type, model)
+        return build_agent(
+            deps.project.source_type, model, dev_tools=deps.settings.elx_enable_test_model
+        )
 
     async def dispatch_chat(
         self,

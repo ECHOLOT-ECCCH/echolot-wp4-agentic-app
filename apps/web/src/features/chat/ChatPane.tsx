@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { Button } from '@/components/ui/button'
 import { makeGenericToolCard } from '@/features/chat/GenericToolCard'
+import { ApprovalAwareToolGroup } from '@/features/chat/ToolGroup'
 import { ModelPicker } from '@/features/project/ModelPicker'
 import { api, csrfToken } from '@/lib/api'
 import { keys, useConversations, useCreateConversation } from '@/lib/queries'
@@ -131,6 +132,7 @@ function LiveThread({
   const components = useMemo(
     () => ({
       ToolFallback: makeGenericToolCard(project.id),
+      ToolGroup: ApprovalAwareToolGroup,
       Welcome: makeWelcome(project, noModel),
     }),
     [project, noModel],
