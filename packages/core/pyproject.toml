@@ -3,6 +3,7 @@ name = "elexifier-core"
 version = "0.1.0"
 description = "Elexifier core: settings, database, storage, jobs, crypto, events"
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.5",

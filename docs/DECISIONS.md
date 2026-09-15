@@ -23,9 +23,9 @@ Verification results per milestone go under a "Verification" heading with the da
 
 ## 2026-09-15 License
 
-Open. The project owner chooses the license. Until then no LICENSE file is committed and package
-metadata carries no license classifier. Note for the choice: PyMuPDF is AGPL, so the default PDF
-stack is pdfplumber + pypdfium2 to keep the license options open.
+MIT, chosen by the project owner ("for now"). LICENSE file at the root; `license = "MIT"` in every
+pyproject and package.json. Note kept for future changes: PyMuPDF is AGPL, so the default PDF stack
+is pdfplumber + pypdfium2 to keep the license options open.
 
 ## 2026-09-15 Development machine notes (not architecture)
 

@@ -3,6 +3,7 @@ name = "elexifier-agent"
 version = "0.1.0"
 description = "Elexifier agent: Pydantic AI agent, toolsets, prompts, model registry"
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
     "elexifier-core",
     "elexifier-pipeline",

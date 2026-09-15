@@ -59,4 +59,4 @@ for domains, HTTPS, identity federation, storage and backups.
 
 ## License
 
-To be decided by the project owner (see docs/DECISIONS.md).
+[MIT](LICENSE).

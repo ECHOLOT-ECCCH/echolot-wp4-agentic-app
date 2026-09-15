@@ -3,6 +3,7 @@ name = "elexifier-workspace"
 version = "0.0.0"
 description = "Workspace root for the Elexifier Agentic App (not a package)"
 requires-python = ">=3.12"
+license = "MIT"
 # The root depends on every member so a plain `uv sync` installs the whole workspace.
 dependencies = [
     "elexifier-core",

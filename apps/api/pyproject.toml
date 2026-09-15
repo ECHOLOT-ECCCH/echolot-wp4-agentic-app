@@ -3,6 +3,7 @@ name = "elexifier-api"
 version = "0.1.0"
 description = "Elexifier API: FastAPI application"
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
     "elexifier-core",
     "elexifier-agent",
