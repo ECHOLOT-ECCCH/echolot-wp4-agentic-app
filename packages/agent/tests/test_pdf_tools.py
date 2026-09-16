@@ -263,3 +263,46 @@ async def test_pdf_review_summary_proposes_a_sample(pdf_fixture: Fixture) -> Non
         assert document is not None
         stored = document.stats["review"]
         assert stored["flagged_spans"] == 0 and stored["median_span_chars"] > 40
+
+
+async def test_pdf_train_segmenter_gives_a_second_opinion_and_applies(pdf_fixture: Fixture) -> None:
+    from sqlalchemy import update
+
+    early = await call_tool(pdf_fixture, "pdf_train_segmenter", {})
+    assert early["summary"].startswith("Error: no reviewed spans yet")
+
+    await call_tool(pdf_fixture, "pdf_segment", {})
+    async with pdf_fixture.db.session() as db:  # the lexicographer accepts pages 1 and 2
+        await db.execute(
+            update(Annotation).where(Annotation.page_no.in_([1, 2])).values(status="accepted")
+        )
+        await db.commit()
+    trained = await call_tool(pdf_fixture, "pdf_train_segmenter", {})
+    data = trained["data"]
+    assert trained["summary"].startswith("Trained on 2 reviewed pages (102 entry starts")
+    assert data["report"]["f1"] >= 0.95 and data["unreviewed_pages"] == 1
+    assert data["disagreements"] == 0 and data["pages_flagged"] == []
+    async with pdf_fixture.db.session() as db:
+        document = await db.get(Document, pdf_fixture.document_id)
+        assert document is not None
+        info = document.stats["learned_segmenter"]
+        assert info["reviewed_pages"] == [1, 2] and info["report"]["positives"] == 102
+        stored = b"".join([c async for c in pdf_fixture.storage.open(info["key"])])
+        assert b'"weights"' in stored
+
+    # applied: page 3 gets the learned spans, pages 1-2 keep their accepted rule spans
+    applied = await call_tool(pdf_fixture, "pdf_train_segmenter", {"apply": True})
+    assert applied["data"]["applied_pages"] == 1 and applied["data"]["applied_spans"] == 28
+    assert "28 learned spans replaced the proposals on 1 pages" in applied["summary"]
+    async with pdf_fixture.db.session() as db:
+        rows = (await db.execute(select(Annotation).order_by(Annotation.position))).scalars().all()
+        page3 = [r for r in rows if r.page_no == 3]
+        assert len(page3) == 28 and all(r.source == "ml" and r.status == "proposed" for r in page3)
+        assert all(r.payload["learned"] == {"kind": "applied"} for r in page3)
+        assert all(r.status == "accepted" and r.source == "rule" for r in rows if r.page_no < 3)
+        assert page3[0].payload["headword_guess"] == "abase102"
+
+    # the learned segmenter runs through pdf_segment too
+    again = await call_tool(pdf_fixture, "pdf_segment", {"segmenter": "learned"})
+    assert again["summary"].startswith("130 entry spans on 3 pages with the learned segmenter")
+    assert again["data"]["stats"]["mode"] == "learned"

@@ -19,6 +19,12 @@ not known yet: they are found by segmentation and confirmed by the lexicographer
   flagged spans with their reasons (very long, no headword, numeric headword, ...), and how
   many proposals are still undecided. The review panel walks the same sample and offers
   "Accept the remaining N" (flagged spans excluded by default).
+- pdf_train_segmenter: once the lexicographer has decided a few pages (the review sample is
+  enough), learn entry starts from those decisions and get a second opinion on the pages nobody
+  reviewed: proposals the model disagrees with are flagged learned_disagrees and their pages
+  join the sample. apply=True replaces the proposals on unreviewed pages with the learned
+  segmentation when the rule segmenter was wrong in a systematic way; pdf_segment with
+  segmenter="learned" runs it again later.
 - pdf_estimate_cost: tokens and cost of structuring every reviewed span with the current model.
 - pdf_structure: turn spans into DMLex entries with the model (kind="sample", up to 20 at a
   time) and validate them; needs a profile the first time (source language, target languages,

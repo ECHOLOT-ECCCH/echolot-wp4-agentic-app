@@ -10,12 +10,13 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 from typing import Any
 
+from elexifier_pipeline.pdf.learned import LearnedSegmenter
 from elexifier_pipeline.pdf.segmenters import RuleSegmenter
 
 GROUP = "elexifier.pipeline"
 
 _BUILTIN: dict[str, dict[str, Any]] = {
-    "segmenter": {"rule": RuleSegmenter},
+    "segmenter": {"rule": RuleSegmenter, "learned": LearnedSegmenter},
 }
 
 

@@ -20,6 +20,7 @@ export const TOOL_LABELS: Record<string, string> = {
   pdf_segment: 'Segmenting pages into entries',
   pdf_get_page: 'Reading a page',
   pdf_review_summary: 'Working out what to review',
+  pdf_train_segmenter: 'Learning from the reviewed pages',
   pdf_estimate_cost: 'Estimating the structuring cost',
   pdf_structure: 'Structuring entries',
   run_code: 'Running a snippet in the sandbox',

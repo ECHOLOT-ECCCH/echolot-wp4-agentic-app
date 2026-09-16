@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import tempfile
 import uuid
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from elexifier_core.storage import NotFoundError, Storage, make_key
 from elexifier_pipeline import registry
 from elexifier_pipeline.pdf.anomalies import score_review
 from elexifier_pipeline.pdf.layout import PdfplumberLayout
+from elexifier_pipeline.pdf.learned import LearnedSegmenter, TrainReport
 from elexifier_pipeline.pdf.models import BBox, EntrySpan, Line, PageLayout, SegmentationStats
 from elexifier_pipeline.pdf.segmenters import RuleSegmenter
 
@@ -136,12 +139,15 @@ async def run_segmentation(
     layouts: list[PageLayout] | None = None,
 ) -> tuple[list[EntrySpan], SegmentationStats, uuid.UUID]:
     """Segment a PDF document and replace its proposed rule annotations. Commits nothing."""
-    try:
-        segmenter = registry.get_segmenter(segmenter_name, params)
-    except KeyError as exc:  # str(KeyError) quotes the message
-        raise PdfServiceError(str(exc.args[0]) if exc.args else str(exc)) from exc
-    except ValueError as exc:
-        raise PdfServiceError(str(exc)) from exc
+    if segmenter_name == "learned":
+        segmenter: Any = await load_learned_segmenter(storage, document)
+    else:
+        try:
+            segmenter = registry.get_segmenter(segmenter_name, params)
+        except KeyError as exc:  # str(KeyError) quotes the message
+            raise PdfServiceError(str(exc.args[0]) if exc.args else str(exc)) from exc
+        except ValueError as exc:
+            raise PdfServiceError(str(exc)) from exc
     pages = await page_rows(db, document.id)
     if not pages:
         raise PdfServiceError("the document has no extracted pages yet")
@@ -216,6 +222,288 @@ async def run_segmentation(
     )
     await db.flush()
     return spans, stats, set_id
+
+
+# --- the learned segmenter: trained on decisions, a second opinion on the rest (M3.7) ----------
+
+LEARNED_MODEL_NAME = "learned-segmenter.json"
+LEARNED_FLAG = "learned_disagrees"
+DECIDED = (AnnotationStatus.ACCEPTED.value, AnnotationStatus.EDITED.value)
+
+
+@dataclass
+class LearnedOutcome:
+    report: TrainReport
+    model_key: str
+    unreviewed_pages: int
+    disagreements: list[dict[str, Any]]
+    pages_flagged: list[int]
+    applied: bool
+    applied_pages: int = 0
+    applied_spans: int = 0
+
+
+def learned_model_key(document: Document) -> str:
+    return make_key(str(document.project_id), "derived", str(document.id), LEARNED_MODEL_NAME)
+
+
+async def load_learned_segmenter(storage: Storage, document: Document) -> LearnedSegmenter:
+    info = (document.stats or {}).get("learned_segmenter") or {}
+    key = info.get("key")
+    if not key:
+        raise PdfServiceError(
+            "no learned segmenter for this document yet; train it first (pdf_train_segmenter)"
+        )
+    raw = b"".join([chunk async for chunk in storage.open(str(key))])
+    return LearnedSegmenter.from_dict(json.loads(raw.decode("utf-8")))
+
+
+async def gold_from_annotations(
+    db: AsyncSession, document_id: uuid.UUID
+) -> tuple[list[EntrySpan], set[str], set[int]]:
+    """The lexicographer's decisions as gold: accepted, edited and drawn spans on the pages
+    with at least one decision; the first lines of undecided proposals on those pages are
+    unknown (ignored); everything else on those pages is a negative."""
+    rows = (
+        (
+            await db.execute(
+                select(Annotation).where(
+                    Annotation.document_id == document_id, Annotation.label == "entry"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    decided_pages = {
+        r.page_no
+        for r in rows
+        if r.source == "user" or r.status in (*DECIDED, AnnotationStatus.REJECTED.value)
+    }
+    gold: list[EntrySpan] = []
+    unknown: set[str] = set()
+    for row in rows:
+        if row.page_no not in decided_pages:
+            continue
+        payload = row.payload or {}
+        line_ids = [str(i) for i in payload.get("line_ids") or []]
+        if row.status == AnnotationStatus.REJECTED.value:
+            continue  # its lines stay negatives
+        if row.status == AnnotationStatus.PROPOSED.value and row.source != "user":
+            if line_ids:
+                unknown.add(line_ids[0])
+            continue
+        if not line_ids:
+            continue
+        gold.append(
+            EntrySpan(
+                id=str(row.id),
+                page=row.page_no,
+                line_ids=line_ids,
+                bboxes=[tuple(b) for b in payload.get("bboxes") or [row.bbox]],  # type: ignore[misc]
+                headword_guess=payload.get("headword_guess"),
+                confidence=float(payload.get("confidence") or 1.0),
+                source=row.source,
+                continuation=bool(payload.get("continuation")),
+            )
+        )
+    return gold, unknown, decided_pages
+
+
+async def train_learned_segmenter(
+    db: AsyncSession,
+    storage: Storage,
+    document: Document,
+    *,
+    apply: bool = False,
+    created_by: uuid.UUID | None = None,
+) -> LearnedOutcome:
+    """Train on the reviewed pages, store the model, and compare it with the proposals on the
+    unreviewed pages: disagreements are flagged; with ``apply`` the proposals there are
+    replaced by the learned spans. Commits nothing."""
+    pages = await page_rows(db, document.id)
+    if not pages:
+        raise PdfServiceError("the document has no extracted pages yet")
+    gold, unknown, decided_pages = await gold_from_annotations(db, document.id)
+    if not gold:
+        raise PdfServiceError(
+            "no reviewed spans yet: accept, reject or draw entry boxes on a few pages first"
+        )
+    layouts = await load_layouts(storage, pages)
+    segmenter = LearnedSegmenter()
+    try:
+        report = await asyncio.to_thread(
+            segmenter.train,
+            [layout for layout in layouts if layout.page in decided_pages],
+            gold,
+            ignore=unknown,
+        )
+    except ValueError as exc:
+        raise PdfServiceError(str(exc)) from exc
+    key = learned_model_key(document)
+    await storage.put(
+        key, json.dumps(segmenter.to_dict(), ensure_ascii=False).encode("utf-8"), "application/json"
+    )
+    spans, _stats = await asyncio.to_thread(segmenter.segment, layouts)
+    learned_starts: dict[int, set[str]] = {}
+    for span in spans:
+        if span.line_ids and not span.continuation:
+            learned_starts.setdefault(span.page, set()).add(span.line_ids[0])
+
+    # the second opinion: proposals on the pages nobody reviewed
+    current = (
+        (
+            await db.execute(
+                select(Annotation).where(
+                    Annotation.document_id == document.id,
+                    Annotation.label == "entry",
+                    Annotation.status == AnnotationStatus.PROPOSED.value,
+                    Annotation.source != "user",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for row in current:  # a new opinion replaces the old flags
+        flags = [f for f in (row.payload or {}).get("flags") or [] if f != LEARNED_FLAG]
+        if flags != list((row.payload or {}).get("flags") or []):
+            row.payload = {**row.payload, "flags": flags}
+    by_page: dict[int, list[Annotation]] = {}
+    for row in current:
+        if row.page_no not in decided_pages:
+            by_page.setdefault(row.page_no, []).append(row)
+    disagreements: list[dict[str, Any]] = []
+
+    def flag(row: Annotation, kind: str, line_id: str | None = None) -> None:
+        payload = dict(row.payload or {})
+        flags = list(payload.get("flags") or [])
+        if LEARNED_FLAG not in flags:
+            flags.append(LEARNED_FLAG)
+        payload["flags"] = flags
+        payload["learned"] = {"kind": kind, **({"line_id": line_id} if line_id else {})}
+        row.payload = payload
+        disagreements.append(
+            {"page": row.page_no, "kind": kind, "annotation_id": str(row.id), "line_id": line_id}
+        )
+
+    for page_no, rows in by_page.items():
+        learned = learned_starts.get(page_no, set())
+        current_starts: dict[str, Annotation] = {}
+        owner: dict[str, Annotation] = {}
+        for row in rows:
+            payload = row.payload or {}
+            line_ids = [str(i) for i in payload.get("line_ids") or []]
+            for line_id in line_ids:
+                owner[line_id] = row
+            if line_ids and not payload.get("continuation"):
+                current_starts[line_ids[0]] = row
+        for start, row in current_starts.items():
+            if start not in learned:
+                flag(row, "not_a_start")
+        for start in sorted(learned - set(current_starts)):
+            row = owner.get(start)
+            if row is not None and start != (row.payload or {}).get("line_ids", [None])[0]:
+                flag(row, "missed_start", start)
+    pages_flagged = sorted({d["page"] for d in disagreements})
+
+    applied_pages = applied_spans = 0
+    if apply and by_page:
+        set_id = uuid.uuid4()
+        position = (
+            await db.execute(
+                select(func.max(Annotation.position)).where(Annotation.document_id == document.id)
+            )
+        ).scalar_one() or 0
+        for page_no, rows in by_page.items():
+            for row in rows:
+                await db.delete(row)
+            for span in [s for s in spans if s.page == page_no]:
+                position += 1
+                applied_spans += 1
+                db.add(
+                    Annotation(
+                        id=uuid.uuid4(),
+                        document_id=document.id,
+                        page_no=span.page,
+                        bbox=list(span.bbox),
+                        label="entry",
+                        entry_span_id=span.id,
+                        source="ml",
+                        status=AnnotationStatus.PROPOSED.value,
+                        payload={
+                            "bboxes": [list(b) for b in span.bboxes],
+                            "line_ids": span.line_ids,
+                            "headword_guess": span.headword_guess,
+                            "confidence": span.confidence,
+                            "continuation": span.continuation,
+                            "text": span.text,
+                            "flags": [],
+                            "learned": {"kind": "applied"},
+                        },
+                        set_id=set_id,
+                        position=position,
+                        created_by=created_by,
+                    )
+                )
+            applied_pages += 1
+        disagreements = []  # the proposals they concerned are gone
+        pages_flagged = []
+    await db.flush()
+
+    stats = dict(document.stats or {})
+    review = dict(stats.get("review") or {})
+    if review and pages_flagged:
+        sample = [int(p) for p in review.get("sample_pages") or []]
+        counts = Counter(d["page"] for d in disagreements)
+        for page_no, _n in counts.most_common():
+            if len(sample) >= 50:
+                break
+            if page_no not in sample:
+                sample.append(page_no)
+        review["sample_pages"] = sorted(sample)
+        review["reasons"] = {**(review.get("reasons") or {}), LEARNED_FLAG: len(disagreements)}
+        stats["review"] = review
+    stats["learned_segmenter"] = {
+        "key": key,
+        "report": report.model_dump(),
+        "at": datetime.now(UTC).isoformat(),
+        "reviewed_pages": sorted(decided_pages),
+        "unreviewed_pages": len(by_page),
+        "disagreements": len(disagreements),
+        "pages_flagged": pages_flagged[:60],
+        "applied": apply,
+        "applied_pages": applied_pages,
+    }
+    if apply and applied_pages:
+        stats["segmentation"] = {
+            **(stats.get("segmentation") or {}),
+            "segmenter": "learned",
+            "applied_pages": applied_pages,
+            "at": datetime.now(UTC).isoformat(),
+        }
+    document.stats = stats
+    counts_now = await annotation_counts(db, document.id)
+    document.entry_count = sum(
+        n for status, n in counts_now.items() if status != AnnotationStatus.REJECTED.value
+    )
+    await publish(
+        db,
+        document.project_id,
+        "annotations.changed",
+        {"document_id": str(document.id), "learned": True, "flagged": len(disagreements)},
+    )
+    await db.flush()
+    return LearnedOutcome(
+        report=report,
+        model_key=key,
+        unreviewed_pages=len(by_page),
+        disagreements=disagreements,
+        pages_flagged=pages_flagged,
+        applied=apply,
+        applied_pages=applied_pages,
+        applied_spans=applied_spans,
+    )
 
 
 def image_key(project_id: uuid.UUID, document_id: uuid.UUID, page_no: int, dpi: int) -> str:

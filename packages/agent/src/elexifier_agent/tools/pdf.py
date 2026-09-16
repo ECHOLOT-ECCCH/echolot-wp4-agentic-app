@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any, Literal
 
 from pydantic import ValidationError
@@ -22,6 +23,7 @@ from elexifier_agent.pdf_service import (
     page_rows,
     profile_layouts,
     run_segmentation,
+    train_learned_segmenter,
 )
 from elexifier_agent.structuring import (
     StructuringError,
@@ -551,6 +553,83 @@ async def pdf_structure(
             },
             cost={"tokens": stats["usage"]},
             ui_actions=[UiAction(type="open_run", run_id=run_id)],
+        )
+    )
+
+
+@pdf_toolset.tool
+async def pdf_train_segmenter(
+    ctx: RunContext[AgentDeps], document_id: str | None = None, apply: bool = False
+) -> ToolReturn:
+    """Learn entry starts from the lexicographer's decisions (accepted, edited and drawn spans
+    on the pages they reviewed; rejected proposals count against) and use the model as a
+    second opinion on the pages nobody reviewed: proposals it disagrees with get the flag
+    learned_disagrees and their pages join the review sample. With apply=True its spans replace
+    the proposals on the unreviewed pages (reviewed pages keep theirs); the "learned" segmenter
+    can also be run with pdf_segment afterwards. Needs decisions on a few pages first; the
+    report says how well the model reproduces held-out reviewed pages (F1).
+
+    Args:
+        document_id: The PDF document. Omit when the project has one.
+        apply: Replace the proposals on unreviewed pages with the learned segmentation.
+    """
+    deps = ctx.deps
+    async with deps.session() as db:
+        try:
+            document = await _pdf_document(deps, db, document_id)
+            outcome = await train_learned_segmenter(
+                db, deps.storage, document, apply=apply, created_by=deps.user.id
+            )
+            await db.commit()
+        except (ToolInputError, PdfServiceError) as exc:
+            return error_result(str(exc))
+        doc_id = str(document.id)
+    report = outcome.report
+    kinds = Counter(d["kind"] for d in outcome.disagreements)
+    summary = (
+        f"Trained on {report.pages} reviewed pages ({report.positives} entry starts, "
+        f"{report.lines} lines): "
+        + (
+            f"held-out F1 {report.f1:.2f} (precision {report.precision:.2f}, recall "
+            f"{report.recall:.2f}, {report.held_out_pages} pages held out)"
+            if report.held_out_pages
+            else f"F1 {report.f1:.2f} on the training pages (too few pages to hold any out)"
+        )
+        + f". Second opinion on {outcome.unreviewed_pages} unreviewed pages: "
+        + (
+            f"{outcome.applied_spans} learned spans replaced the proposals on "
+            f"{outcome.applied_pages} pages."
+            if outcome.applied
+            else (
+                f"{len(outcome.disagreements)} disagreements on {len(outcome.pages_flagged)} "
+                f"pages ({kinds.get('not_a_start', 0)} proposals the model would not start, "
+                f"{kinds.get('missed_start', 0)} starts inside a proposal), flagged "
+                "learned_disagrees and added to the review sample."
+                if outcome.disagreements
+                else "no disagreements with the current proposals."
+            )
+        )
+        + (" Warnings: " + "; ".join(report.warnings) + "." if report.warnings else "")
+    )
+    first_page = outcome.pages_flagged[0] if outcome.pages_flagged else None
+    return to_tool_return(
+        ToolResult(
+            summary=summary[:500],
+            data={
+                "document_id": doc_id,
+                "report": report.model_dump(),
+                "unreviewed_pages": outcome.unreviewed_pages,
+                "disagreements": len(outcome.disagreements),
+                "disagreement_kinds": dict(kinds),
+                "pages_flagged": outcome.pages_flagged[:60],
+                "applied": outcome.applied,
+                "applied_pages": outcome.applied_pages,
+                "applied_spans": outcome.applied_spans,
+                "model_key": outcome.model_key,
+            },
+            ui_actions=[UiAction(type="open_document", document_id=doc_id, page=first_page)]
+            if first_page
+            else [],
         )
     )
 

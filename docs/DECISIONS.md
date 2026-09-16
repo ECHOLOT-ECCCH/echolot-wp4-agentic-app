@@ -906,3 +906,38 @@ installation and daemon configuration for `SANDBOX_RUNTIME=runsc`, that Docker D
 `runsc`, and how to verify an installation with the integration tests. `runsc` itself could
 not be exercised here (no gVisor on Docker Desktop); the runner passes the runtime name
 through and the unit test covers the option.
+
+## 2026-09-16 M3.7 Trainable segmenter: a second opinion learned from decisions
+
+- `pipeline/pdf/learned.py`: `LearnedSegmenter` (registered as `learned`) classifies every
+  body line as an entry start or not with an averaged perceptron over string features (the
+  first word's font family, weight, italic, size and size relative to the body; indent bucket
+  and flush-left; first character class; the previous line's end punctuation, fill of its
+  column width and the gap above; position on the page; a few conjunctions such as
+  `font&flush`). Pure Python, no new dependency; 12 epochs over the reviewed pages take well
+  under a second for 1,800 lines. Spans are assembled like the rule segmenter's (text before the
+  first start on a page is a continuation); the headword guess is the run of words in the
+  first word's font. `train` holds every fourth reviewed page out when there are at least four
+  and reports precision, recall and F1 on them, then retrains on all; with fewer pages the
+  numbers are on the training pages and a warning says so. `save`/`load`/`to_dict` keep the
+  weights as JSON.
+- Gold comes from the lexicographer's decisions (`gold_from_annotations`): accepted, edited and
+  drawn spans on the pages with at least one decision are positives, every other line on those
+  pages is a negative, and the first lines of still-undecided proposals there are ignored.
+- `pdf_train_segmenter` (tool) trains, stores the model under `derived/<document>/`, segments
+  every page and compares the result with the proposals on the pages nobody reviewed: a
+  proposal the model would not start, or a learned start inside a proposal, gets the flag
+  `learned_disagrees` (with the kind under `payload.learned`), and the pages with most
+  disagreements join the review sample (up to 50 pages). `apply=True` replaces the proposals
+  on unreviewed pages with the learned spans (source `ml`); `pdf_segment(segmenter="learned")`
+  runs the stored model again.
+- Fixture: trained on two reviewed pages (102 starts), the model reproduces the third page
+  exactly (F1 1.0; the acceptance asked for 0.95); save/load and the registry path give the
+  same spans.
+- Owner's PDF, offline (no data changed): with the 40 sample pages' proposals taken as decided
+  (310 starts, 1,819 lines), held-out F1 is 1.0 and the model reproduces the rule segmentation
+  on all 1,227 other pages, 0 disagreements. The top weights are the Arial-BoldMT font, bold and
+  flush left, the gap above and the body-size features: it learned the headword-font rule. The
+  second opinion becomes informative only where the lexicographer's decisions deviate from the
+  proposals (corrections, drawn boxes); the plan's "flags the odd pages" needs such decisions,
+  which are the owner's to make during the user test.
