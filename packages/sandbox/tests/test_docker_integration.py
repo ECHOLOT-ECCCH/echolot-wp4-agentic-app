@@ -122,3 +122,67 @@ async def test_rootfs_is_read_only_and_tmp_is_writable(docker_client: Any, tmp_p
     assert response.exit_code == 0, response.stderr
     assert "rootfs: OSError" in response.stdout or "rootfs: PermissionError" in response.stdout
     assert "work: PermissionError" in response.stdout
+
+
+async def test_memory_hog_is_killed_by_the_limit(docker_client: Any, tmp_path: Path) -> None:
+    code = (
+        "chunks = []\n"
+        "for i in range(64):\n"
+        "    chunks.append(bytearray(32 * 1024 * 1024))\n"
+        "    print('allocated', (i + 1) * 32, 'MB', flush=True)\n"
+        "print('survived')\n"
+    )
+    response, _ = await _run(docker_client, tmp_path, code, timeout_s=120, memory_mb=256)
+    assert not response.killed  # not the timeout: the kernel's memory limit
+    assert response.exit_code == 137 and "survived" not in response.stdout
+    assert "allocated" in response.stdout and response.duration_s < 60
+
+
+async def test_process_limit_holds(docker_client: Any, tmp_path: Path) -> None:
+    code = (
+        "import subprocess, sys\n"
+        "children = []\n"
+        "try:\n"
+        "    for i in range(200):\n"
+        "        cmd = [sys.executable, '-c', 'import time; time.sleep(30)']\n"
+        "        children.append(subprocess.Popen(cmd))\n"
+        "except (BlockingIOError, OSError) as exc:\n"
+        "    print('stopped at', len(children), 'children:', type(exc).__name__)\n"
+        "else:\n"
+        "    print('started', len(children), 'children')\n"
+        "for child in children:\n"
+        "    child.kill()\n"
+    )
+    response, _ = await _run(docker_client, tmp_path, code, timeout_s=120, pids=32)
+    assert response.exit_code == 0, response.stderr
+    assert "stopped at" in response.stdout
+    started = int(response.stdout.split("stopped at ")[1].split()[0])
+    assert started < 32
+
+
+async def test_outputs_beyond_the_cap_are_refused_for_real(
+    docker_client: Any, tmp_path: Path
+) -> None:
+    code = (
+        "import pathlib\n"
+        "pathlib.Path('out/big.bin').write_bytes(b'0' * (3 * 1024 * 1024))\n"
+        "pathlib.Path('out/small.txt').write_text('kept?')\n"
+        "print('written')\n"
+    )
+    response, _ = await _run(docker_client, tmp_path, code, timeout_s=60, max_output_mb=1)
+    assert response.exit_code == 0 and "written" in response.stdout
+    assert response.outputs == [] and "outputs exceed 1 MB; nothing uploaded" in response.stderr
+
+
+async def test_tmp_is_size_capped(docker_client: Any, tmp_path: Path) -> None:
+    code = (
+        "import pathlib\n"
+        "try:\n"
+        "    pathlib.Path('/tmp/big').write_bytes(b'0' * (400 * 1024 * 1024))\n"
+        "    print('wrote 400 MB')\n"
+        "except OSError as exc:\n"
+        "    print('tmp full:', type(exc).__name__)\n"
+    )
+    response, _ = await _run(docker_client, tmp_path, code, timeout_s=120)
+    assert response.exit_code == 0, response.stderr
+    assert "tmp full: OSError" in response.stdout

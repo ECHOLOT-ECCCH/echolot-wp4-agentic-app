@@ -107,12 +107,28 @@ daemon's archive API), so it works as a sibling container.
   import: lxml, pdfplumber, pypdfium2, jsonschema, xmlschema, saxonche).
 - `GET http://sandbox-runner:8010/healthz` reports whether the daemon answers and the image is
   present.
-- For production, install gVisor and set `SANDBOX_RUNTIME=runsc` so snippets run under a
-  user-space kernel (the daemon must list `runsc` in its runtimes). With the default `runc`,
-  isolation rests on namespaces, seccomp and the limits above; the socket mount means the
-  runner container is as trusted as the daemon, keep it off public networks.
-- Disk: outputs are refused beyond the run's `max_output_mb`; the work volume is removed with
-  the container.
+- Limits per run (the API sets them; defaults in `elexifier_core.sandbox_contract`): 300 s
+  (600 s for conversion steps), 2 CPUs, 2 GB of memory with no swap, 256 processes, 256 MB of
+  `/tmp`, 200 MB of outputs. A snippet that exceeds the memory limit is killed by the kernel
+  (exit code 137), one that exceeds the timeout is killed by the runner (exit code 137 and a
+  `[runner] killed after N s` note), outputs beyond the cap are refused as a whole, `/tmp`
+  beyond its size fails with `OSError`, and a process bomb stops at the pid limit.
+- What is not limited: disk writes to `out/` up to the output cap, and CPU time within the
+  share. A snippet cannot see other runs, the host, or the network.
+- With the default `runc`, isolation rests on Linux namespaces, seccomp and the limits above;
+  the socket mount means the runner container is as trusted as the daemon, so keep it off
+  public networks and give the host no other tenants.
+- gVisor for production: install `runsc` from the gVisor apt repository
+  (https://gvisor.dev/docs/user_guide/install/), register it with the daemon
+  (`/etc/docker/daemon.json`: `{"runtimes": {"runsc": {"path": "/usr/bin/runsc"}}}`),
+  restart Docker, check `docker info --format '{{json .Runtimes}}'` lists `runsc` and that
+  `docker run --rm --runtime=runsc elexifier-sandbox:local python -c 'print(1)'` prints 1, then
+  set `SANDBOX_RUNTIME=runsc` in `.env` and restart the runner. Every run then gets a user-space
+  kernel between the snippet and the host. Docker Desktop (macOS, Windows) has no `runsc`;
+  development stays on `runc`.
+- Verify an installation: `uv run pytest packages/sandbox -m docker` runs real containers
+  (hello world with an input and an output, no network, timeout, read-only root, memory,
+  processes, output cap, `/tmp`); the tests skip when the daemon or the image is missing.
 
 ## Health
 

@@ -887,3 +887,22 @@ merged span and to name the headword where the next one starts.
   saves a step, sees it in a sample, in the full run's export and in a failing run's error,
   and an agent test where the scripted model runs a snippet, saves it as a step and the next
   sample shows it applied.
+
+## 2026-09-16 M3.6 Sandbox limits verified and documented
+
+Observed on Docker Desktop 27.5 (linux/arm64 VM, `runc`) through the `docker`-marked
+integration tests, eight real containers in about 6 s:
+- a socket connection to 1.1.1.1 fails at once (`OSError`, exit code 3 from the snippet);
+- `time.sleep(60)` with a 3 s timeout is killed by the runner: exit code 137, killed flag,
+  the note in stderr, duration under 30 s;
+- 64 × 32 MB allocations with a 256 MB limit: the kernel kills the process (exit code 137,
+  not the timeout) after a handful of allocations;
+- 200 sleeping subprocesses with a 32-pid limit: `BlockingIOError` before 32 children;
+- 3 MB of outputs with a 1 MB cap: nothing uploaded, `outputs exceed 1 MB` in stderr;
+- 400 MB into `/tmp` (256 MB tmpfs): `OSError`; writes to `/usr` and `/work` fail; `in/` is
+  read-only for the sandbox user.
+The self-hosting guide now states the per-run limits, what is not limited, the gVisor
+installation and daemon configuration for `SANDBOX_RUNTIME=runsc`, that Docker Desktop has no
+`runsc`, and how to verify an installation with the integration tests. `runsc` itself could
+not be exercised here (no gVisor on Docker Desktop); the runner passes the runtime name
+through and the unit test covers the option.

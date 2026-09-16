@@ -29,7 +29,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
   its live acceptance with a model (M2.7 cost check, M2.8 model part) is the owner's, planned
   together with the in-depth user test after M3. M1 is complete (M1.10 verified with
   claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M3.6
+- Next task: M3.7
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -38,7 +38,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M3.5 custom steps run inside samples and full runs)
+- Last update: 2026-09-16 (M3.6 sandbox limits verified on the local Docker, documented)
 
 Update this block at the end of every task.
 
@@ -753,7 +753,7 @@ from the lexicographer's decisions gives a second opinion on PDF pages. Design n
   in a temp dir, so the sample and job tests apply a real transformation. Acceptance (the
   plan's): a post-processing snippet approved once is saved as a step and runs inside the next
   full conversion; the export shows its effect.
-- [ ] M3.6 Sandbox limits verified and documented. Integration tests (marked `docker`): a
+- [x] M3.6 Sandbox limits verified and documented. Integration tests (marked `docker`): a
   network attempt fails, a runaway snippet is killed at the timeout, a memory hog is killed,
   outputs beyond the cap are refused. `docs/self-hosting.md`: the docker socket exposure, the
   sandbox image and `make sandbox-image`, `SANDBOX_RUNTIME=runsc` with gVisor install notes and
