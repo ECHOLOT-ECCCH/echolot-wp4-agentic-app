@@ -109,7 +109,10 @@ class CostEstimate(BaseModel):
 def draft_to_dmlex(
     draft: DmlexEntryDraft, *, entry_id: str, target_language: str | None = None
 ) -> dict[str, Any]:
-    """Normalized DMLex JSON (plural keys as the writers expect)."""
+    """Normalized DMLex JSON (plural keys as the writers expect). Translations always carry a
+    langCode: the XSD's assertion cannot see the resource's translationLanguage list (XSD 1.1
+    assertions are evaluated on the element subtree), so "und" stands in when none is known."""
+    target_language = target_language or "und"
     entry: dict[str, Any] = {"id": entry_id, "headword": draft.headword.strip()}
     if draft.homograph_number is not None:
         entry["homographNumber"] = draft.homograph_number
@@ -140,13 +143,13 @@ def draft_to_dmlex(
             out["definitions"] = [{"text": d.strip()} for d in sense.definitions if d.strip()]
         if sense.translations:
             out["headwordTranslations"] = [
-                {"text": t.strip(), **({"langCode": target_language} if target_language else {})}
+                {"text": t.strip(), "langCode": target_language}
                 for t in sense.translations
                 if t.strip()
             ]
         if sense.explanations:
             out["headwordExplanations"] = [
-                {"text": t.strip(), **({"langCode": target_language} if target_language else {})}
+                {"text": t.strip(), "langCode": target_language}
                 for t in sense.explanations
                 if t.strip()
             ]
@@ -374,6 +377,20 @@ def estimate_cost(
     )
 
 
+def renumber_entry(entry: dict[str, Any], entry_id: str) -> dict[str, Any]:
+    """Give an entry (and its senses) ids derived from ``entry_id``; batches and cached results
+    number from 1, so ids are assigned by position when a run is assembled."""
+    out = dict(entry)
+    out["id"] = entry_id
+    senses = []
+    for index, sense in enumerate(entry.get("senses") or [], start=1):
+        if isinstance(sense, dict):
+            senses.append({**sense, "id": f"{entry_id}.s{index}"})
+    if senses:
+        out["senses"] = senses
+    return out
+
+
 def extracted_from_span(span: EntrySpan, image: bytes | None = None) -> ExtractedEntry:
     return ExtractedEntry(
         span_id=span.id, page=span.page, bbox=span.bbox, text=span.text, page_image_png=image
@@ -393,4 +410,5 @@ __all__ = [
     "draft_to_dmlex",
     "estimate_cost",
     "extracted_from_span",
+    "renumber_entry",
 ]

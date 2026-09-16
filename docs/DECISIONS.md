@@ -633,3 +633,34 @@ Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, 
 - Not verified live: structuring 10 spans with the owner's model (credits); the scripted-model
   and rule paths are covered by tests. The curated registry has no prices for direct providers,
   so estimates there give tokens only; OpenRouter models come with prices.
+
+## 2026-09-16 Full structuring runs, corrections and export (M2.7)
+
+- `pdf_structure(kind="full")` needs approval, records the estimate in the run's scope and
+  queues `pdf.structure` (`elexifier_api.jobs.structuring`). The worker rebuilds the model from
+  the credential stored with the run's model spec (decrypted with the app's secret box), works
+  in batches of 16 with the structurer's own concurrency, publishes progress with token counts,
+  and writes `converted_entries` per span. Entry ids are assigned by position when the run is
+  assembled (`renumber_entry`), since batches and cached results number from 1.
+- Cache: `converted_entries.cache_key` = sha256(model, provider, structurer, profile, span text)
+  (migration 0008). A full run reuses the latest earlier result of this project for an unchanged
+  span (its correction if there is one) and notes "reused from an earlier run"; the run stats
+  count `cached`. Re-segmentation therefore only pays for spans whose text changed.
+- Cost accounting: `stats.cost_check` compares the estimate with the tokens actually used; the
+  run panel shows the ratio. The rule structurer's estimate is zero.
+- Corrections: `PATCH .../runs/{id}/entries/{cid}` stores the lexicographer's DMLex JSON as
+  `override` (or removes it), re-validates that entry and keeps the model's original;
+  `POST .../runs/{id}/rebuild` writes the XML and JSON again from the stored entries with
+  corrections applied (versioned file names) and refreshes per-entry schema issues.
+  `GET .../runs/{id}/entries?review=true` lists entries with issues or confidence below 0.6.
+- Writers: resource-level lists such as `translationLanguages` are now written (after the
+  entries, as the XSD sequence requires) and appear in the JSON header. Translations always get
+  a `langCode` ("und" when unknown): XSD 1.1 assertions are evaluated on the element subtree, so
+  the schema's "unless exactly one translationLanguage" escape can never hold under a conforming
+  validator; `check_mapping` and the XML workflow prompt now say so.
+- Web: the run panel shows tokens, the estimate ratio, cached and failed counts, a "needs
+  review" filter and "Rebuild export"; `SpanView` gets "Correct" (JSON editor, save or remove)
+  and a "corrected" badge; the rendered view shows the correction.
+- Verified with the rule structurer end to end (130 spans through the worker, cached sample
+  reuse, correction, rebuilt export valid). The model path is covered by the scripted-model tests;
+  the cost-estimate check within 25% (M2.7 acceptance) waits for credits and the owner's PDF.

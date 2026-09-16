@@ -23,7 +23,9 @@ from elexifier_agent.pdf_service import (
 )
 from elexifier_agent.structuring import (
     StructuringError,
+    estimate_for,
     pick_spans,
+    queue_full_structuring,
     structure_sample,
     usable_spans,
 )
@@ -499,9 +501,11 @@ async def structure_document(
     storage: CurrentStorage,
     box: CurrentSecretBox,
     settings: CurrentSettings,
+    state: State,
 ) -> RunDetailOut:
-    """Structure a sample of reviewed spans into DMLex (the UI's button; the agent uses the
-    pdf_structure tool). The model is the project's unless one is given."""
+    """Structure reviewed spans into DMLex: a sample now, or the whole document as a job (the
+    UI's buttons; the agent uses the pdf_structure tool). The model is the project's unless one
+    is given."""
     project, _role = await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
     document = await _pdf_document(db, project_id, document_id)
     spans = await usable_spans(db, document)
@@ -535,6 +539,42 @@ async def structure_document(
     with_images = (
         body.with_images if body.with_images is not None else bool(info and info.supports_vision)
     )
+    if body.kind == "full":
+
+        async def defer(name: str, kwargs: dict[str, Any]) -> int | None:
+            job_id = await state.jobs.configure_task(name, queue="heavy").defer_async(**kwargs)
+            return int(job_id) if job_id is not None else None
+
+        estimate = estimate_for(
+            spans,
+            with_images=with_images and body.structurer == "llm",
+            price_in_per_m=info.price_in_per_m if info else None,
+            price_out_per_m=info.price_out_per_m if info else None,
+        )
+        if body.structurer == "rule":
+            estimate = estimate.model_copy(
+                update={"input_tokens": 0, "output_tokens": 0, "usd_estimate": 0.0}
+            )
+        try:
+            queued = await queue_full_structuring(
+                db,
+                document=document,
+                profile=profile,
+                structurer_name=body.structurer,
+                with_images=with_images and body.structurer == "llm",
+                triggered_by=user.id,
+                model_spec=model_spec,
+                project_id=project_id,
+                estimate=estimate,
+                defer=defer,
+            )
+        except StructuringError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+        if body.profile:
+            project.settings = {**(project.settings or {}), "structure_profile": merged}
+        audit.record(db, user.id, "run.structure_full", queued.id, project=str(project_id))
+        await db.flush()
+        return RunDetailOut.model_validate(queued)
     try:
         outcome = await structure_sample(
             db,

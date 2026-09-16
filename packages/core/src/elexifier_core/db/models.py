@@ -404,6 +404,8 @@ class ConvertedEntry(UUIDPrimaryKeyMixin, Base):
     confidence: Mapped[float | None]
     notes: Mapped[list[Any]] = mapped_column(default=list)
     override: Mapped[dict[str, Any] | None]
+    # sha256 of model, profile and span text: re-runs reuse earlier results for unchanged spans
+    cache_key: Mapped[str | None] = mapped_column(String(64), index=True)
 
     run: Mapped[ConversionRun] = relationship(back_populates="converted_entries")
 

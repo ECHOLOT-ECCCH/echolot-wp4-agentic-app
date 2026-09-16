@@ -262,6 +262,12 @@ export interface RunRecord {
     warnings?: number
     resource_issues?: number
     homographs_numbered?: number
+    cached?: number
+    failed?: number
+    confidence_mean?: number
+    low_confidence?: number
+    usage?: { input_tokens: number; output_tokens: number; requests: number }
+    cost_check?: { estimated_tokens: number; actual_tokens: number; ratio: number | null }
     output_files?: { file_id: string; name: string; format: string; size: number }[]
     report_file_id?: string
     timings?: Record<string, number>
@@ -321,6 +327,7 @@ export interface ConvertedEntryDetail extends ConvertedEntryItem {
   xml: string
   mapping_version: number
   run_created_at: string
+  override: Record<string, unknown> | null
 }
 
 export interface MappingIssue {

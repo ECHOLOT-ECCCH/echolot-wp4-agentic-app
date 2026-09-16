@@ -106,10 +106,9 @@ def check_mapping(spec: MappingSpec) -> list[Issue]:
     """Structural checks beyond the JSON shape; errors mean the output cannot be valid DMLex."""
     issues: list[Issue] = []
     known_objects = schema.object_names()
-    # XSD: translations need @langCode unless the resource declares exactly one translationLanguage
-    translation_languages = sum(
-        1 for c in spec.children or [] if c.outElement == "translationLanguage"
-    )
+    # XSD: translations need @langCode. The schema's assertion allows omitting it when the
+    # resource declares exactly one translationLanguage, but XSD 1.1 assertions cannot see
+    # ancestors, so validators reject it anyway; always require the attribute.
 
     def check_xpath(
         expr: str | None, namespaces: dict[str, str] | None, path: str, label: str
@@ -250,17 +249,13 @@ def check_mapping(spec: MappingSpec) -> list[Issue]:
                         message="no 'entry' descriptor under the resource",
                     )
                 )
-        if (
-            desc.outElement in CROSSLINGUAL_WITH_LANG
-            and "langCode" not in produced
-            and translation_languages != 1
-        ):
+        if desc.outElement in CROSSLINGUAL_WITH_LANG and "langCode" not in produced:
             issues.append(
                 Issue(
                     severity="error",
                     path=path,
                     message=f"'{desc.outElement}' needs a 'langCode' text value (a constant is "
-                    "fine) unless the resource declares exactly one translationLanguage",
+                    "fine); the schema validator rejects translations without one",
                 )
             )
         if desc.outElement == "sense" and "id" not in produced:

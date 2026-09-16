@@ -3,6 +3,8 @@ run a structurer, validate, and store a run with converted entries and usage."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import statistics
 import uuid
 from collections.abc import Sequence
@@ -92,6 +94,49 @@ def pick_spans(spans: Sequence[Annotation], n: int, strategy: str = "spread") ->
 
 def span_text(annotation: Annotation) -> str:
     return str((annotation.payload or {}).get("text") or "").strip()
+
+
+def cache_key(
+    model_spec: dict[str, Any] | None, structurer_name: str, profile: StructureProfile, text: str
+) -> str:
+    """Same model, same profile, same text: the earlier result can be reused."""
+    material = json.dumps(
+        {
+            "model": (model_spec or {}).get("model_id"),
+            "provider": (model_spec or {}).get("provider"),
+            "structurer": structurer_name,
+            "profile": profile.model_dump(),
+            "text": text,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+async def cached_results(
+    db: AsyncSession, project_id: uuid.UUID, keys: Sequence[str]
+) -> dict[str, ConvertedEntry]:
+    """Earlier converted entries of this project by cache key (latest wins)."""
+    if not keys:
+        return {}
+    rows = (
+        await db.execute(
+            select(ConvertedEntry)
+            .join(ConversionRun, ConversionRun.id == ConvertedEntry.run_id)
+            .where(
+                ConversionRun.project_id == project_id,
+                ConvertedEntry.cache_key.in_(list(keys)),
+                ConvertedEntry.dmlex != {},
+            )
+            .order_by(ConversionRun.created_at)
+        )
+    ).scalars()
+    found: dict[str, ConvertedEntry] = {}
+    for row in rows:
+        if row.cache_key:
+            found[row.cache_key] = row
+    return found
 
 
 async def extract(
@@ -226,6 +271,7 @@ async def structure_sample(
             run_id=run.id,
             entry_id=None,
             annotation_id=annotation.id,
+            cache_key=cache_key(model_spec, structurer_name, profile, span_text(annotation)),
             position=position,
             ordinal=annotation.position,
             headword=(
@@ -292,12 +338,85 @@ async def structure_sample(
     )
 
 
+async def queue_full_structuring(
+    db: AsyncSession,
+    *,
+    document: Document,
+    profile: StructureProfile,
+    structurer_name: str,
+    with_images: bool,
+    triggered_by: uuid.UUID | None,
+    model_spec: dict[str, Any] | None,
+    project_id: uuid.UUID,
+    estimate: CostEstimate | None,
+    defer: Any,
+) -> ConversionRun:
+    """Create a queued full structuring run and hand it to the worker. Commits nothing."""
+    if defer is None:
+        raise StructuringError("background jobs are not available in this context")
+    if structurer_name == "llm" and not (model_spec or {}).get("model_id"):
+        raise StructuringError("no model selected for structuring")
+    spans = await usable_spans(db, document)
+    if not spans:
+        raise StructuringError("no entry spans to structure; segment and review the pages first")
+    running = (
+        (
+            await db.execute(
+                select(ConversionRun).where(
+                    ConversionRun.project_id == project_id,
+                    ConversionRun.kind == RunKind.FULL.value,
+                    ConversionRun.status.in_(
+                        [ConversionStatus.QUEUED.value, ConversionStatus.RUNNING.value]
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if running is not None:
+        raise StructuringError(
+            f"a full run is already {running.status} (run {running.id}); wait for it to finish"
+        )
+    run = ConversionRun(
+        project_id=project_id,
+        document_id=document.id,
+        kind=RunKind.FULL.value,
+        mapping_version=0,
+        scope={
+            "structurer": structurer_name,
+            "with_images": with_images,
+            "profile": profile.model_dump(),
+            "model": model_spec or {},
+            "estimate": estimate.model_dump() if estimate else None,
+            "spans": len(spans),
+        },
+        status=ConversionStatus.QUEUED.value,
+        stats={"phase": "queued", "done": 0, "total": len(spans)},
+        triggered_by=triggered_by,
+    )
+    db.add(run)
+    await db.flush()
+    run.job_id = await defer("pdf.structure", {"run_id": str(run.id)})
+    await publish(
+        db,
+        project_id,
+        "job.progress",
+        {"kind": "pdf.structure", "run_id": str(run.id), "phase": "queued", "done": 0},
+    )
+    await db.flush()
+    return run
+
+
 __all__ = [
     "MAX_SAMPLE_SPANS",
     "StructuringError",
     "StructuringOutcome",
+    "cache_key",
+    "cached_results",
     "estimate_for",
     "pick_spans",
+    "queue_full_structuring",
     "structure_sample",
     "usable_spans",
 ]

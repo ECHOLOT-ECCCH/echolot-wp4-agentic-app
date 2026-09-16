@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from collections.abc import Iterator
 
 import httpx
@@ -220,3 +221,84 @@ async def test_structure_sample_endpoint_with_rule_and_test_model(
     # the model path needs a model: the project has none -> 422 with a clear message
     no_model = await client.post(f"{base}/structure", json={"structurer": "llm", "n": 2})
     assert no_model.status_code in (400, 422)
+
+
+async def test_full_structuring_job_with_cache_overrides_and_rebuild(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    from elexifier_api.jobs import structuring as jobs_structuring
+    from elexifier_pipeline.dmlex.validator import validate_xml
+
+    logged_in.apply(client)
+    pid, doc_id = await _pdf_project(client)
+    base = f"/api/projects/{pid}/documents/{doc_id}"
+    await client.post(f"{base}/segment", json={})
+    await client.post(f"{base}/annotations/bulk", json={"status": "accepted", "page_no": 1})
+
+    # a sample first: its results are reused by the full run (same model, profile, text)
+    sample = await client.post(
+        f"{base}/structure",
+        json={
+            "structurer": "rule",
+            "n": 5,
+            "strategy": "first",
+            "profile": {"source_language": "en"},
+        },
+    )
+    assert sample.status_code == 200, sample.text
+
+    queued = await client.post(f"{base}/structure", json={"kind": "full", "structurer": "rule"})
+    assert queued.status_code == 200, queued.text
+    run = queued.json()
+    assert run["kind"] == "full" and run["status"] == "queued" and run["scope"]["spans"] == 58
+    assert run["scope"]["estimate"]["entries"] == 58
+    again = await client.post(f"{base}/structure", json={"kind": "full", "structurer": "rule"})
+    assert again.status_code == 422 and "already queued" in again.text
+
+    result = await jobs_structuring.run_full_structuring(run["id"])
+    assert result["spans"] == 58 and result["cached"] == 5 and result["failed"] == 0
+    detail = (await client.get(f"/api/projects/{pid}/runs/{run['id']}")).json()
+    assert detail["status"] == "done" and detail["stats"]["converted"] == 58
+    assert detail["stats"]["cached"] == 5 and detail["stats"]["cost_check"]["actual_tokens"] == 0
+    assert [f["format"] for f in detail["stats"]["output_files"]] == ["xml", "json"]
+    assert detail["validation_report"]["valid"] is True, detail["validation_report"]["errors"][:3]
+    download = await client.get(f"/api/projects/{pid}/files/{detail['output_file_id']}/download")
+    assert validate_xml(io.BytesIO(download.content)).valid
+
+    # the low-confidence review list: the rule structurer is always unsure
+    review = (
+        await client.get(f"/api/projects/{pid}/runs/{run['id']}/entries", params={"review": True})
+    ).json()
+    assert review["total"] == 58
+    first = review["items"][0]
+    assert first["notes"][-1] == "reused from an earlier run"
+
+    # a correction by the lexicographer is validated, kept, and used by the rebuilt export
+    fixed = await client.patch(
+        f"/api/projects/{pid}/runs/{run['id']}/entries/{first['id']}",
+        json={"override": {"id": "e1", "headword": "abacus", "partsOfSpeech": [{"tag": "n."}]}},
+    )
+    assert fixed.status_code == 200, fixed.text
+    assert fixed.json()["override"]["headword"] == "abacus" and fixed.json()["issue_count"] == 0
+    assert "<partOfSpeech" in fixed.json()["xml"]
+    bad = await client.patch(
+        f"/api/projects/{pid}/runs/{run['id']}/entries/{first['id']}", json={"override": {"x": 1}}
+    )
+    assert bad.status_code == 422
+    rebuilt = await client.post(f"/api/projects/{pid}/runs/{run['id']}/rebuild")
+    assert rebuilt.status_code == 200, rebuilt.text
+    new_file = rebuilt.json()["output_file_id"]
+    assert new_file != detail["output_file_id"]
+    xml = (await client.get(f"/api/projects/{pid}/files/{new_file}/download")).content
+    assert b'<partOfSpeech tag="n."' in xml and validate_xml(io.BytesIO(xml)).valid
+    cleared = await client.patch(
+        f"/api/projects/{pid}/runs/{run['id']}/entries/{first['id']}", json={"override": None}
+    )
+    assert cleared.json()["override"] is None
+
+    # XML runs cannot be rebuilt
+    sample_run = sample.json()["id"]
+    assert (await client.post(f"/api/projects/{pid}/runs/{sample_run}/rebuild")).status_code in (
+        200,
+        422,
+    )

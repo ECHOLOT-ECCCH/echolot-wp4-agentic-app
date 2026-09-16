@@ -1,12 +1,12 @@
+import { DownloadIcon, RefreshCwIcon } from 'lucide-react'
 import { useState } from 'react'
-
-import { DownloadIcon } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { IssueList } from '@/features/entries/IssueList'
 import { fileDownloadUrl } from '@/lib/api'
 import { formatBytes } from '@/lib/format'
-import { useRun, useRunEntries } from '@/lib/queries'
+import { useRebuildRun, useRun, useRunEntries } from '@/lib/queries'
 import { usePreview } from '@/lib/uiActions'
 
 const PAGE = 50
@@ -15,7 +15,14 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
   const run = useRun(projectId, runId)
   const [offset, setOffset] = useState(0)
   const [onlyIssues, setOnlyIssues] = useState(false)
-  const entries = useRunEntries(projectId, runId, { offset, limit: PAGE, issues: onlyIssues })
+  const [needsReview, setNeedsReview] = useState(false)
+  const entries = useRunEntries(projectId, runId, {
+    offset,
+    limit: PAGE,
+    issues: onlyIssues,
+    review: needsReview,
+  })
+  const rebuild = useRebuildRun(projectId)
   const openEntry = usePreview((s) => s.openEntry)
   const openSpan = usePreview((s) => s.openSpan)
 
@@ -27,6 +34,7 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
   const resourceIssues = report.resource_issues ?? []
   const total = entries.data?.total ?? 0
   const active = data.status === 'queued' || data.status === 'running'
+  const structuring = data.mapping_version === 0
   const outputs = stats.output_files ?? []
   const issueCodes = Object.entries(report.issue_codes ?? {})
   const firstErrors = report.errors ?? []
@@ -113,6 +121,47 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
               {stats.homographs_numbered} homograph number(s) assigned
             </span>
           ) : null}
+          {structuring && data.status === 'done' && (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="ml-auto"
+              disabled={rebuild.isPending}
+              title="Write the files again with the corrections made since"
+              onClick={() =>
+                rebuild.mutate(runId, {
+                  onSuccess: () => toast.success('Export rebuilt'),
+                  onError: (e) => toast.error(e.message),
+                })
+              }
+            >
+              <RefreshCwIcon /> Rebuild export
+            </Button>
+          )}
+        </div>
+      )}
+      {structuring && (stats.cost_check || stats.usage) && (
+        <div className="text-muted-foreground flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b px-3 py-1.5 text-xs">
+          {stats.usage && (
+            <span>
+              {stats.usage.input_tokens.toLocaleString()} in /{' '}
+              {stats.usage.output_tokens.toLocaleString()} out tokens
+            </span>
+          )}
+          {stats.cost_check?.ratio !== null && stats.cost_check?.ratio !== undefined && (
+            <span>
+              {Math.round(stats.cost_check.ratio * 100)}% of the estimate (
+              {stats.cost_check.estimated_tokens.toLocaleString()} tokens)
+            </span>
+          )}
+          {stats.cached ? <span>{stats.cached} reused from earlier runs</span> : null}
+          {stats.failed ? <span className="text-destructive">{stats.failed} failed</span> : null}
+          {stats.confidence_mean !== undefined && (
+            <span>
+              mean confidence {Math.round(stats.confidence_mean * 100)}%
+              {stats.low_confidence ? `, ${stats.low_confidence} below 60%` : ''}
+            </span>
+          )}
         </div>
       )}
       {(report.summary ||
@@ -179,6 +228,19 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
           />
           only entries with issues
         </label>
+        {structuring && (
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={needsReview}
+              onChange={(e) => {
+                setNeedsReview(e.target.checked)
+                setOffset(0)
+              }}
+            />
+            needs review
+          </label>
+        )}
         <span className="text-muted-foreground ml-auto">
           {total.toLocaleString()} entr{total === 1 ? 'y' : 'ies'}
         </span>

@@ -1,10 +1,19 @@
-import { ArrowLeftIcon } from 'lucide-react'
+import { ArrowLeftIcon, PencilIcon } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConvertedOutput, type OutputView } from '@/features/entries/EntryView'
-import { useAnnotation, useConvertedEntryById, usePages } from '@/lib/queries'
+import { CodeEditor } from '@/features/preview/CodeEditor'
+import { ApiError } from '@/lib/api'
+import {
+  useAnnotation,
+  useConvertedEntryById,
+  useOverrideEntry,
+  usePages,
+  useProject,
+} from '@/lib/queries'
 import { usePreview } from '@/lib/uiActions'
 
 const DPI = 110
@@ -27,7 +36,12 @@ export function SpanView({
   const pages = usePages(projectId, documentId)
   const openRun = usePreview((s) => s.openRun)
   const openDocument = usePreview((s) => s.openDocument)
+  const project = useProject(projectId)
+  const override = useOverrideEntry(projectId, runId)
   const [view, setView] = useState<OutputView>('rendered')
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const canEdit = project.data?.my_role !== 'viewer'
 
   if (converted.isPending) return <p className="text-muted-foreground p-3 text-sm">Loading…</p>
   if (converted.isError)
@@ -71,6 +85,23 @@ export function SpanView({
           >
             confidence {Math.round(output.confidence * 100)}%
           </span>
+        )}
+        {output.override && (
+          <span className="rounded bg-teal-100 px-1 text-[10px] text-teal-900 dark:bg-teal-900/40 dark:text-teal-200">
+            corrected
+          </span>
+        )}
+        {canEdit && !editing && (
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              setDraft(JSON.stringify(output.override ?? output.dmlex, null, 2))
+              setEditing(true)
+            }}
+          >
+            <PencilIcon /> Correct
+          </Button>
         )}
         <Tabs value={view} onValueChange={(v) => setView(v as OutputView)} className="ml-auto">
           <TabsList className="h-7">
@@ -134,14 +165,106 @@ export function SpanView({
                   ))}
                 </ul>
               )}
-              {Object.keys(output.dmlex).length === 0 ? (
+              {editing ? (
+                <CorrectionEditor
+                  draft={draft}
+                  onChange={setDraft}
+                  hasOverride={Boolean(output.override)}
+                  saving={override.isPending}
+                  onCancel={() => setEditing(false)}
+                  onRemove={() =>
+                    override.mutate(
+                      { id: output.id, override: null },
+                      {
+                        onSuccess: () => {
+                          setEditing(false)
+                          toast.success('Correction removed')
+                        },
+                        onError: (e) => toast.error(e instanceof ApiError ? e.detail : e.message),
+                      },
+                    )
+                  }
+                  onSave={(value) =>
+                    override.mutate(
+                      { id: output.id, override: value },
+                      {
+                        onSuccess: (saved) => {
+                          setEditing(false)
+                          toast.success(
+                            saved.issue_count
+                              ? `Saved with ${saved.issue_count} issue(s)`
+                              : 'Correction saved and valid',
+                          )
+                        },
+                        onError: (e) => toast.error(e instanceof ApiError ? e.detail : e.message),
+                      },
+                    )
+                  }
+                />
+              ) : Object.keys(output.override ?? output.dmlex).length === 0 ? (
                 <p className="text-muted-foreground p-3 text-sm">No entry was produced.</p>
               ) : (
-                <ConvertedOutput output={output} view={view} />
+                <ConvertedOutput
+                  output={output.override ? { ...output, dmlex: output.override } : output}
+                  view={view}
+                />
               )}
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function CorrectionEditor({
+  draft,
+  onChange,
+  hasOverride,
+  saving,
+  onCancel,
+  onRemove,
+  onSave,
+}: {
+  draft: string
+  onChange: (value: string) => void
+  hasOverride: boolean
+  saving: boolean
+  onCancel: () => void
+  onRemove: () => void
+  onSave: (value: Record<string, unknown>) => void
+}) {
+  let parsed: Record<string, unknown> | null = null
+  try {
+    const value: unknown = JSON.parse(draft)
+    parsed =
+      typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null
+  } catch {
+    parsed = null
+  }
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs">
+        <span className="text-muted-foreground">
+          {parsed ? 'Edit the DMLex JSON of this entry' : 'Invalid JSON'}
+        </span>
+        <span className="ml-auto" />
+        {hasOverride && (
+          <Button variant="ghost" size="xs" onClick={onRemove} disabled={saving}>
+            Remove correction
+          </Button>
+        )}
+        <Button variant="ghost" size="xs" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button size="xs" disabled={!parsed || saving} onClick={() => parsed && onSave(parsed)}>
+          Save correction
+        </Button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <CodeEditor value={draft} onChange={onChange} language="json" ariaLabel="Entry JSON" />
       </div>
     </div>
   )

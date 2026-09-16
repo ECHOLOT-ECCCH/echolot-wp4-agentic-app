@@ -19,3 +19,5 @@ Move an item into docs/PLAN.md when it is scheduled.
 - Converter option to insert a space at element boundaries in innerTextRec (the Oxford run-together "o otrokučebljanje" when an inline indicator is folded into the translation).
 - Show cache read/write tokens and an estimated cost per turn in the UI (usage_records already store tokens).
 - PDF viewer: a rotated-page fixture (/Rotate 90) to verify the overlay geometry, and text-layer highlighting of the selected span's words.
+- Prices for direct-provider models: let the owner enter prices per credential (declared_capabilities) so estimates give money, not only tokens.
+- PDF review panel: a "Structure sample" button (the API and tool exist; the UI relies on the agent for now).

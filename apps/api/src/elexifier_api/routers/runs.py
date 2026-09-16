@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -20,9 +21,11 @@ from elexifier_agent.tools._entries import pick_entries
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
 from elexifier_api.deps import CurrentStorage, CurrentUser, DbSession, State
+from elexifier_api.jobs.structuring import LOW_CONFIDENCE, rebuild_outputs
 from elexifier_api.schemas import (
     ConvertedEntryDetailOut,
     ConvertedEntryOut,
+    ConvertedEntryOverride,
     ConvertedEntryPage,
     RunCreate,
     RunDetailOut,
@@ -30,12 +33,15 @@ from elexifier_api.schemas import (
 )
 from elexifier_core.db.models import (
     ConversionRun,
+    ConversionStatus,
     ConvertedEntry,
     Document,
     DocumentStatus,
     Entry,
+    File,
     ProjectRole,
 )
+from elexifier_pipeline.dmlex.validator import validate_entries
 
 router = APIRouter(prefix="/api/projects/{project_id}", tags=["runs"])
 
@@ -61,9 +67,10 @@ def _detail(row: ConvertedEntry, run: ConversionRun) -> ConvertedEntryDetailOut:
         confidence=row.confidence,
         notes=row.notes or [],
         dmlex=row.dmlex,
-        xml=entry_xml(row.dmlex) if row.dmlex else "",
+        xml=entry_xml(row.override or row.dmlex) if (row.override or row.dmlex) else "",
         mapping_version=run.mapping_version,
         run_created_at=run.created_at,
+        override=row.override,
     )
 
 
@@ -203,12 +210,19 @@ async def list_converted_entries(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     issues: bool = Query(default=False, description="only entries with issues"),
+    review: bool = Query(
+        default=False, description="entries with issues or a model confidence below 0.6"
+    ),
 ) -> ConvertedEntryPage:
     await get_project_or_404(db, project_id, user)
     await _run(db, project_id, run_id)
     base = select(ConvertedEntry).where(ConvertedEntry.run_id == run_id)
     if issues:
         base = base.where(ConvertedEntry.issue_count > 0)
+    if review:
+        base = base.where(
+            (ConvertedEntry.issue_count > 0) | (ConvertedEntry.confidence < LOW_CONFIDENCE)
+        )
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
     rows = (
         (await db.execute(base.order_by(ConvertedEntry.position).offset(offset).limit(limit)))
@@ -246,6 +260,81 @@ async def get_converted_entry(
     if row is None or row.run_id != run.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Converted entry not found")
     return _detail(row, run)
+
+
+@router.patch("/runs/{run_id}/entries/{converted_id}", response_model=ConvertedEntryDetailOut)
+async def override_converted_entry(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    converted_id: uuid.UUID,
+    body: ConvertedEntryOverride,
+    db: DbSession,
+    user: CurrentUser,
+) -> ConvertedEntryDetailOut:
+    """Store the lexicographer's corrected DMLex for one entry (or remove the correction) and
+    re-validate it. The export uses the correction."""
+    await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
+    run = await _run(db, project_id, run_id)
+    row = await db.get(ConvertedEntry, converted_id)
+    if row is None or row.run_id != run.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Converted entry not found")
+    if body.override is not None and not str(body.override.get("headword") or "").strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "An entry needs a headword")
+    row.override = body.override
+    entry = row.override or row.dmlex
+    kept = [i for i in (row.issues or []) if i.get("source") == "structurer"]
+    if entry:
+        profile = (run.scope or {}).get("profile") or {}
+        lang = profile.get("source_language") or "und"
+        validation = validate_entries(
+            {
+                "uri": f"urn:elexifier:{run.document_id}",
+                "langCode": lang if lang != "unknown" else "und",
+            },
+            [entry],
+        )
+        kept += [i.as_dict() for i in validation.issues_for(0)]
+    row.issues = kept
+    row.issue_count = len(kept)
+    if entry:
+        row.headword = str(entry.get("headword") or row.headword or "")[:300] or None
+    audit.record(
+        db,
+        user.id,
+        "converted_entry.override",
+        row.id,
+        run=str(run.id),
+        removed=body.override is None,
+    )
+    await db.flush()
+    await db.refresh(row)
+    return _detail(row, run)
+
+
+@router.post("/runs/{run_id}/rebuild", response_model=RunDetailOut)
+async def rebuild_run_outputs(
+    project_id: uuid.UUID,
+    run_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    storage: CurrentStorage,
+) -> RunDetailOut:
+    """Write the output files again from the stored entries (after corrections)."""
+    await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
+    run = await _run(db, project_id, run_id)
+    if run.mapping_version != 0 or run.status != ConversionStatus.DONE.value:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Only finished structuring runs can be rebuilt; XML runs are re-run instead",
+        )
+    document = await db.get(Document, run.document_id) if run.document_id else None
+    source = await db.get(File, document.source_file_id) if document else None
+    stem = Path(source.name).stem if source else "dictionary"
+    await rebuild_outputs(db, storage, run, stem=stem)
+    audit.record(db, user.id, "run.rebuilt", run.id, project=str(project_id))
+    await db.flush()
+    await db.refresh(run)
+    return RunDetailOut.model_validate(run)
 
 
 @router.get("/entries/{entry_id}/converted", response_model=list[ConvertedEntryDetailOut])

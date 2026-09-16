@@ -280,8 +280,29 @@ def write_xml(
         etree.indent(element, space="  ", level=1)
         out.write(b"  " + etree.tostring(element, encoding="utf-8") + b"\n")
         report.entries += 1
+    # the XSD sequence puts translationLanguage and the tag definitions after the entries
+    for key, value in scalars.items():
+        if not isinstance(value, list) or key == plural_of("entry"):
+            continue
+        name = _singular_of(key)
+        if name is None:
+            report.warn(f"'{key}' is not a member of 'lexicographicResource' in DMLex; dropped")
+            continue
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            element = builder.build(name, item, "lexicographicResource")
+            etree.indent(element, space="  ", level=1)
+            out.write(b"  " + etree.tostring(element, encoding="utf-8") + b"\n")
     out.write(b"</lexicographicResource>\n")
     return report
+
+
+def _singular_of(plural: str) -> str | None:
+    for name in schema.object_names():
+        if plural_of(name) == plural:
+            return name
+    return None
 
 
 def write_json(out: IO[str], scalars: JsonDict, entries: Iterable[JsonDict]) -> int:
@@ -289,7 +310,7 @@ def write_json(out: IO[str], scalars: JsonDict, entries: Iterable[JsonDict]) -> 
     out.write("{\n")
     first = True
     for key, value in scalars.items():
-        if isinstance(value, list):
+        if key == plural_of("entry"):
             continue
         out.write(f"  {json.dumps(key)}: {json.dumps(value, ensure_ascii=False)},\n")
     out.write('  "entries": [\n')

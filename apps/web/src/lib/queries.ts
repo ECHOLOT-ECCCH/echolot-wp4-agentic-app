@@ -197,15 +197,19 @@ export function useRun(projectId: string, runId: string | null) {
 export function useRunEntries(
   projectId: string,
   runId: string | null,
-  params: { offset: number; limit: number; issues: boolean },
+  params: { offset: number; limit: number; issues: boolean; review?: boolean },
 ) {
   const search = new URLSearchParams({
     offset: String(params.offset),
     limit: String(params.limit),
     issues: String(params.issues),
+    review: String(params.review ?? false),
   })
   return useQuery({
-    queryKey: keys.runEntries(projectId, runId ?? '', params.offset, params.limit, params.issues),
+    queryKey: [
+      ...keys.runEntries(projectId, runId ?? '', params.offset, params.limit, params.issues),
+      params.review ?? false,
+    ] as const,
     queryFn: () =>
       api<ConvertedEntryPage>(`/api/projects/${projectId}/runs/${runId}/entries?${search}`),
     enabled: Boolean(runId),
@@ -223,6 +227,30 @@ export function useConvertedEntryById(
     queryFn: () =>
       api<ConvertedEntryDetail>(`/api/projects/${projectId}/runs/${runId}/entries/${convertedId}`),
     enabled: Boolean(runId && convertedId),
+  })
+}
+
+export function useOverrideEntry(projectId: string, runId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, override }: { id: string; override: Record<string, unknown> | null }) =>
+      api<ConvertedEntryDetail>(`/api/projects/${projectId}/runs/${runId}/entries/${id}`, {
+        method: 'PATCH',
+        json: { override },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.run(projectId, runId) }),
+  })
+}
+
+export function useRebuildRun(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (runId: string) =>
+      api<RunDetail>(`/api/projects/${projectId}/runs/${runId}/rebuild`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.runs(projectId) })
+      void queryClient.invalidateQueries({ queryKey: keys.files(projectId) })
+    },
   })
 }
 

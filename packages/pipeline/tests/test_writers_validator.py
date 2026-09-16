@@ -210,3 +210,24 @@ def test_validate_entries_attributes_findings(oxford_mapping: dict, samples: dic
     result = validator.validate_entries({}, entries[:2])
     assert [i.code for i in result.resource_issues] == ["missing-resource-value"] * 2
     assert result.report.valid and result.per_entry == {}
+
+
+def test_resource_level_lists_are_written_after_entries() -> None:
+    scalars = {"uri": "urn:t", "langCode": "en", "translationLanguages": [{"langCode": "sl"}]}
+    entries = [
+        {
+            "id": "e1",
+            "headword": "abacus",
+            "senses": [
+                {"id": "e1.s1", "headwordTranslations": [{"text": "računalo", "langCode": "sl"}]}
+            ],
+        }
+    ]
+    out = io.BytesIO()
+    report = writers.write_xml(out, scalars, entries, writers.WriterReport())
+    xml = out.getvalue().decode()
+    assert xml.index("<entry") < xml.index("<translationLanguage") and report.warnings == []
+    assert validator.validate_xml(io.BytesIO(out.getvalue())).valid
+    text = io.StringIO()
+    writers.write_json(text, scalars, entries)
+    assert json.loads(text.getvalue())["translationLanguages"] == [{"langCode": "sl"}]

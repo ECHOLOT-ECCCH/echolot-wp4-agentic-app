@@ -80,7 +80,6 @@ Rules that matter:
   skip empty elements with predicates such as `[normalize-space()]` or `[@value]`. Sense indicators
   must be distinct within an entry.
 - Bilingual sources: headwordTranslation, headwordExplanation and exampleTranslation each need a
-  `langCode` (a constant) unless the resource has exactly one `translationLanguage` child
-  (`translationLanguage` with `langCode`).
+  `langCode` text value (a constant such as "sl"); the validator rejects them without one.
 - Anything the source has that DMLex core cannot hold: say so, propose a `label` or leaving it
   out, and record the decision in the spec.

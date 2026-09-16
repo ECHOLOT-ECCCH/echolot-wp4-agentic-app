@@ -249,6 +249,11 @@ class ConvertedEntryDetailOut(ConvertedEntryOut):
     xml: str
     mapping_version: int
     run_created_at: datetime
+    override: dict[str, Any] | None = None
+
+
+class ConvertedEntryOverride(BaseModel):
+    override: dict[str, Any] | None  # None removes the correction
 
 
 class RunCreate(BaseModel):
@@ -384,7 +389,7 @@ class AnnotationMerge(BaseModel):
 
 
 class StructureRequest(BaseModel):
-    kind: Literal["sample"] = "sample"
+    kind: Literal["sample", "full"] = "sample"
     structurer: Literal["llm", "rule"] = "llm"
     n: int = Field(default=10, ge=1, le=20)
     span_ids: list[uuid.UUID] | None = None

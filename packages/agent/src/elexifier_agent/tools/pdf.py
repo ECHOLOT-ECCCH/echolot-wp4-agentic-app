@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import ValidationError
-from pydantic_ai import BinaryContent, RunContext, ToolReturn
+from pydantic_ai import ApprovalRequired, BinaryContent, RunContext, ToolReturn
 from pydantic_ai.toolsets import FunctionToolset
 
 from elexifier_agent.contracts import ToolResult, UiAction, error_result, to_tool_return
@@ -27,6 +27,7 @@ from elexifier_agent.structuring import (
     StructuringError,
     estimate_for,
     pick_spans,
+    queue_full_structuring,
     structure_sample,
     usable_spans,
 )
@@ -379,7 +380,7 @@ async def pdf_estimate_cost(
 @pdf_toolset.tool
 async def pdf_structure(
     ctx: RunContext[AgentDeps],
-    kind: Literal["sample"] = "sample",
+    kind: Literal["sample", "full"] = "sample",
     n: int = 10,
     span_ids: list[str] | None = None,
     strategy: Literal["first", "spread"] = "spread",
@@ -390,11 +391,14 @@ async def pdf_structure(
 ) -> ToolReturn:
     """Turn entry spans into DMLex entries with the model (or the rule baseline) and validate
     them. kind="sample" structures up to 20 spans right away, stores a run and opens the results
-    next to the page for review. Give the profile once (source language, target languages, what
-    an entry contains); it is remembered for the project.
+    next to the page for review. kind="full" structures every reviewed span in the background
+    after the lexicographer approves (show pdf_estimate_cost first): unchanged spans reuse
+    earlier results, progress shows in the run panel, and the DMLex XML and JSON files are
+    written and validated at the end; use run_stats when it has finished. Give the profile once
+    (source language, target languages, what an entry contains); it is remembered.
 
     Args:
-        kind: Only "sample" for now; full runs come later.
+        kind: "sample" or "full".
         n: Sample size (1-20) when span_ids are not given.
         span_ids: Structure exactly these annotation ids.
         strategy: "spread" across the reviewed spans or the "first" ones.
@@ -404,13 +408,65 @@ async def pdf_structure(
         document_id: The PDF document. Omit when the project has one.
     """
     deps = ctx.deps
-    if kind != "sample":
-        return error_result("only kind='sample' is available in this version")
+    if kind == "full" and not ctx.tool_call_approved:
+        raise ApprovalRequired(
+            metadata={"reason": "structures every reviewed span with the model and writes files"}
+        )
     async with deps.session() as db:
         try:
             document = await _pdf_document(deps, db, document_id)
             struct_profile, merged = await _profile_from(db, deps, profile)
             spans = await usable_spans(db, document)
+            info = deps.model_info
+            images = with_images if with_images is not None else bool(info and info.supports_vision)
+            if kind == "full":
+                estimate = estimate_for(
+                    spans,
+                    with_images=images and structurer == "llm",
+                    price_in_per_m=info.price_in_per_m if info else None,
+                    price_out_per_m=info.price_out_per_m if info else None,
+                )
+                if structurer == "rule":
+                    estimate = estimate.model_copy(
+                        update={"input_tokens": 0, "output_tokens": 0, "usd_estimate": 0.0}
+                    )
+                run = await queue_full_structuring(
+                    db,
+                    document=document,
+                    profile=struct_profile,
+                    structurer_name=structurer,
+                    with_images=images and structurer == "llm",
+                    triggered_by=deps.user.id,
+                    model_spec=deps.model_spec if structurer == "llm" else {},
+                    project_id=deps.project.id,
+                    estimate=estimate,
+                    defer=deps.defer_job,
+                )
+                if profile:
+                    await _store_profile(db, deps.project.id, merged)
+                await db.commit()
+                run_id = str(run.id)
+                return to_tool_return(
+                    ToolResult(
+                        summary=f"Full structuring of {len(spans)} spans queued with the "
+                        f"{structurer} structurer (about {estimate.input_tokens:,} input and "
+                        f"{estimate.output_tokens:,} output tokens"
+                        + (
+                            f", roughly ${estimate.usd_estimate:.2f}"
+                            if estimate.usd_estimate is not None
+                            else ""
+                        )
+                        + "). The run panel shows progress; use run_stats when it has finished.",
+                        data={
+                            "run_id": run_id,
+                            "spans": len(spans),
+                            "estimate": estimate.model_dump(),
+                            "structurer": structurer,
+                            "with_images": images and structurer == "llm",
+                        },
+                        ui_actions=[UiAction(type="open_run", run_id=run_id)],
+                    )
+                )
             if span_ids:
                 wanted = set(span_ids)
                 chosen = [s for s in spans if str(s.id) in wanted]
@@ -418,8 +474,6 @@ async def pdf_structure(
                     raise ToolInputError("none of the span_ids match a usable span")
             else:
                 chosen = pick_spans(spans, n, strategy)
-            info = deps.model_info
-            images = with_images if with_images is not None else bool(info and info.supports_vision)
             outcome = await structure_sample(
                 db,
                 deps.storage,

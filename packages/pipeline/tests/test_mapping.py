@@ -157,15 +157,9 @@ def test_translations_need_lang_code_without_translation_language() -> None:
     errors = _errors(mp.check_mapping(mp.load_mapping_spec(spec)))
     assert any("headwordExplanation" in e and "langCode" in e for e in errors)
 
-    with_language = copy.deepcopy(spec)
-    with_language["children"].append(
-        {
-            "inSelector": ".",
-            "outElement": "translationLanguage",
-            "textVals": [
-                {"attribute": f"{{{NS}}}constant", "constant": "sl", "outElement": "langCode"}
-            ],
-        }
+    with_lang = copy.deepcopy(spec)
+    with_lang["children"][0]["children"][0]["children"][0]["textVals"].append(
+        {"attribute": f"{{{NS}}}constant", "constant": "sl", "outElement": "langCode"}
     )
-    errors = _errors(mp.check_mapping(mp.load_mapping_spec(with_language)))
+    errors = _errors(mp.check_mapping(mp.load_mapping_spec(with_lang)))
     assert not any("headwordExplanation" in e for e in errors)
