@@ -268,3 +268,20 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   must auto-generate sense ids. Two code bugs: an `eventlet` import from an old web service and a
   lowercase `inselector` attribute in the marker code (line 139).
 - The `legacy/` folder stays in the repository as reference input; the package vendors what it needs.
+
+## 2026-09-16 Converter vendored (M1.1); KKS inputs
+
+- `elexifier_pipeline.xml.dmlexifier` is the owner's converter with: no web-service imports, typed
+  public functions, the marker `inSelector` fix, hierarchical generated ids (`entry.id.3.sense.id.2`,
+  as in the owner's KKS output), safe parsing (no DTD/network/entities), and two mapping extensions
+  (`excludeSelector`, `normalizeWhitespace`, see PLAN 7.8b) needed because definitions in the Oxford
+  sample contain nested label elements. The original script's keep-alive hash was essential: lxml
+  recreates element proxies, so marker positions keyed by `id()` need the proxies kept alive.
+- `elexifier_pipeline.xml.streaming` converts entry by entry with an ancestor-chain replica so XPath
+  evaluates as in the whole document; equality with the whole-document run is tested on both samples
+  and a namespaced TEI-like case. On the real 149 MB KKS export: 20k entries in 1.2 s, 23 MB peak RSS.
+- KKS inputs (`legacy/kks/`, 400 MB, CC BY 4.0) stay untracked except the mapping and a README; a
+  300-entry excerpt is the test fixture. The owner's mapping relies on default plurals (`entrys`,
+  `partOfSpeechs`); the writer must map plurals back to DMLex element names.
+- Open question for the owner: `kks_out.xml` was produced by a newer converter than the script given
+  (namespace, schema order, `homographNumber`); if that version exists it should be compared.

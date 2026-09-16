@@ -26,13 +26,13 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M1 XML end to end (checklist in section 12b).
-- Next task: M1.1
+- Next task: M1.2
 - Blockers: none. `make dev-infra` provides Postgres, Keycloak and Garage; the owner's Anthropic key is
   stored in the app (Settings). CI runs on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-15 (M1 checklist written)
+- Last update: 2026-09-16 (M1.1 done)
 
 Update this block at the end of every task.
 
@@ -353,9 +353,16 @@ A mapping is a JSON tree of element descriptors, starting at the lexicographic r
   `outElement`, optional `jsonPlural`, `namespaces`, `children`, `textVals`, `copyToOutElt`.
 - Text descriptors: optional `inSelector`, `attribute`, `constant`, `regex` + `regexGroup`, `xlat`
   value map, `markers` (span markers: `inSelector`, `outElement`, `regex`, `regexGroup`).
+- Platform extensions on text descriptors (ignored by the original script): `excludeSelector`
+  (XPath, relative to the text element; matched sub-elements contribute no text, their tails do) and
+  `normalizeWhitespace` (collapse runs, trim; not applied when markers are present). Generated ids
+  are hierarchical: `entry.id.3`, `entry.id.3.sense.id.2`.
 - Rules the platform adds: a JSON Schema for the format (rejecting unknown keys), a check that every
   `outElement` is a DMLex element or member, and required auto-generated ids where the XSD demands
   them (sense). `mapping_write` validates against these before storing a version.
+- Streaming: `elexifier_pipeline.xml.streaming` applies the mapping entry by entry when the entry
+  descriptor's selector ends in a plain element name (`DictionaryEntry`, `.//se`,
+  `tei:text/tei:body/tei:entry`); otherwise the whole document is parsed (size-guarded).
 
 ### 7.9 DMLex entry model
 
@@ -520,7 +527,7 @@ Goal: `legacy/oxford.xml` (and any other legacy export) becomes schema-valid DML
 the chat, using the owner's mapping format and converter; full runs are background jobs with progress,
 validation report and export; every decision is recorded in the conversion spec.
 
-- [ ] M1.1 Vendor the converter. Copy `legacy/dmlexifier.py` to
+- [x] M1.1 Vendor the converter. Copy `legacy/dmlexifier.py` to
   `packages/pipeline/src/elexifier_pipeline/xml/dmlexifier.py` with: LF endings, no `eventlet`/wsgi
   imports, the `inselector` typo fixed (line 139), `encoding="UTF-8"`, type hints on the public
   functions, and no module-level logging config. Keep the public functions (`TransformEx`,

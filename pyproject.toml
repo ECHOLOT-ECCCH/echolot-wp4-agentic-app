@@ -31,13 +31,14 @@ dev = [
     "ruff>=0.6",
     "pyright>=1.1.380",
     "asgi-lifespan>=2",
+    "lxml-stubs>=0.5",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
 src = ["apps/api/src", "packages/core/src", "packages/agent/src", "packages/pipeline/src", "packages/sandbox/src"]
-extend-exclude = ["packages/core/src/elexifier_core/migrations/versions", "docs", "*.md"]
+extend-exclude = ["packages/core/src/elexifier_core/migrations/versions", "docs", "*.md", "legacy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ASYNC"]
@@ -55,7 +56,7 @@ venvPath = "."
 venv = ".venv"
 typeCheckingMode = "standard"
 include = ["apps/api", "packages"]
-exclude = ["**/node_modules", "**/__pycache__", "**/.venv", "packages/core/src/elexifier_core/migrations/versions"]
+exclude = ["**/node_modules", "**/__pycache__", "**/.venv", "packages/core/src/elexifier_core/migrations/versions", "legacy"]
 reportMissingImports = true
 reportMissingTypeStubs = false
 
