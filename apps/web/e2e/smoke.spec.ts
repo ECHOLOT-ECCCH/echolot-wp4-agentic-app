@@ -8,6 +8,17 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SAMPLES = path.resolve(HERE, '../../../packages/pipeline/src/elexifier_pipeline/sample')
 const stamp = () => new Date().toISOString().replace(/\D/g, '').slice(0, 14)
 
+/** Answer every pending approval card the same way: the test model calls each gated tool it
+ *  sees (the demo tool and run_code), and the turn resumes once all of them are answered. */
+async function answerApprovals(page: Page, answer: 'Allow' | 'Deny') {
+  const buttons = page.getByRole('button', { name: answer, exact: true })
+  await expect(buttons.first()).toBeVisible({ timeout: 30_000 })
+  for (let i = 0; i < 6 && (await buttons.count()) > 0; i++) {
+    await buttons.first().click()
+    await page.waitForTimeout(250)
+  }
+}
+
 async function createProject(page: Page, name: string, sourceType: 'xml' | 'pdf' = 'xml') {
   await page.goto('/')
   await page.getByRole('heading', { name: 'Elexifier' }).waitFor()
@@ -95,7 +106,7 @@ test.describe('workspace smoke', () => {
     await page.getByText('Listing project files').click()
     await expect(page.getByText(/2 file\(s\) in project/).first()).toBeVisible()
 
-    await page.getByRole('button', { name: 'Allow', exact: true }).click()
+    await answerApprovals(page, 'Allow')
     await expect(page.getByText(/Approved and performed/).first()).toBeVisible({ timeout: 30_000 })
 
     // the conversation survives a reload
@@ -315,7 +326,7 @@ test.describe('workspace smoke', () => {
     const composer = page.getByPlaceholder(/send a message/i)
     await composer.fill('Please run the demo action')
     await composer.press('Enter')
-    await page.getByRole('button', { name: 'Deny', exact: true }).click({ timeout: 30_000 })
+    await answerApprovals(page, 'Deny')
     await expect(page.getByText(/denied/i).first()).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText(/Approved and performed/)).toHaveCount(0)
   })

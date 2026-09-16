@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from elexifier_core.sandbox_contract import RunLimits
 from elexifier_core.storage import LocalStorage
 from elexifier_sandbox.runner.execute import (
     LOG_LIMIT,
     ExecutionError,
     ExecutionSettings,
     RunInput,
-    RunLimits,
     RunRequest,
     build_tar,
     container_options,

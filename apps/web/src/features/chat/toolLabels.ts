@@ -22,4 +22,5 @@ export const TOOL_LABELS: Record<string, string> = {
   pdf_review_summary: 'Working out what to review',
   pdf_estimate_cost: 'Estimating the structuring cost',
   pdf_structure: 'Structuring entries',
+  run_code: 'Running a snippet in the sandbox',
 }

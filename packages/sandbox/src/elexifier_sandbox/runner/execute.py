@@ -26,52 +26,14 @@ from typing import Any, Protocol
 
 import requests.exceptions
 from docker.types import Mount
-from pydantic import BaseModel, Field
 
+from elexifier_core.sandbox_contract import RunInput, RunOutput, RunRequest, RunResponse
 from elexifier_core.storage import Storage
 
 LOG_LIMIT = 64 * 1024  # bytes per stream
 SANDBOX_UID = 1000
 KILLED_EXIT_CODE = 137
 WORK = "/work"
-
-
-class RunInput(BaseModel):
-    s3_key: str
-    mount_path: str = Field(pattern=r"^in/[A-Za-z0-9._\-/ ]+$")
-
-
-class RunLimits(BaseModel):
-    timeout_s: int = Field(default=300, ge=1, le=3600)
-    cpus: float = Field(default=2, gt=0, le=8)
-    memory_mb: int = Field(default=2048, ge=128, le=16384)
-    pids: int = Field(default=256, ge=16, le=4096)
-    max_output_mb: int = Field(default=200, ge=1, le=4096)
-
-
-class RunRequest(BaseModel):
-    run_id: str = Field(pattern=r"^[A-Za-z0-9._\-]{1,80}$")
-    project_id: str = Field(pattern=r"^[A-Za-z0-9._\-]{1,80}$")
-    language: str = "python"
-    code: str = Field(max_length=512 * 1024)
-    inputs: list[RunInput] = Field(default_factory=list)
-    limits: RunLimits = Field(default_factory=RunLimits)
-
-
-class RunOutput(BaseModel):
-    s3_key: str
-    name: str
-    size: int
-
-
-class RunResponse(BaseModel):
-    exit_code: int
-    stdout: str
-    stderr: str
-    truncated: bool
-    duration_s: float
-    outputs: list[RunOutput]
-    killed: bool = False  # stopped at the timeout
 
 
 @dataclass
@@ -335,7 +297,7 @@ async def upload_outputs(
         key = f"projects/{project_id}/artifacts/{run_id}/{relative}"
         content_type = mimetypes.guess_type(relative)[0] or "application/octet-stream"
         stat = await storage.put(key, _file_chunks(path), content_type)
-        outputs.append(RunOutput(s3_key=key, name=relative, size=stat.size))
+        outputs.append(RunOutput(s3_key=key, name=relative, size=stat.size, sha256=stat.sha256))
     return outputs
 
 
@@ -381,7 +343,6 @@ __all__ = [
     "ExecutionError",
     "ExecutionSettings",
     "RunInput",
-    "RunLimits",
     "RunOutput",
     "RunRequest",
     "RunResponse",

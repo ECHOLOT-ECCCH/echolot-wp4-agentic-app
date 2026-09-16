@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from elexifier_agent.models import ModelInfo
+from elexifier_agent.sandbox import RunnerClient
 from elexifier_core.settings import Settings
 from elexifier_core.storage import Storage
 
@@ -45,6 +46,8 @@ class AgentDeps:
     # The turn's model, for tools that run their own model calls (PDF structuring).
     model: Any | None = None
     model_spec: dict[str, Any] = field(default_factory=dict)  # provider, model_id, credential_id
+    # The sandbox runner for run_code and custom steps; None when not configured.
+    runner: RunnerClient | None = None
 
     def session(self) -> AsyncSession:
         """A fresh database session; tools commit their own work."""

@@ -784,3 +784,35 @@ merged span and to name the headword where the next one starts.
   input and an output round trip, a network attempt fails, a runaway snippet is killed at the
   timeout, the rootfs and `/work` are not writable. Verified on Docker Desktop 27.5 (arm64,
   runc): a hello-world run takes 0.12 s wall time inside the container, about 0.5 s end to end.
+
+## 2026-09-16 M3.2 `run_code`: the agent runs snippets after approval
+
+- Contract models moved to `elexifier_core.sandbox_contract`, shared by the runner and its
+  clients; `RunOutput` carries the sha256 the runner computes while uploading, so the API
+  registers outputs as `files` rows without reading them back.
+- `RunnerClient` (httpx, token header, the run's timeout plus a minute) lives in the agent
+  package, on `AgentDeps.runner` (built in the chat router) and as `job_runner()` for jobs.
+  Errors become tool results the model can act on: unreachable runner, refused run with the
+  runner's detail (missing image, bad request).
+- `run_code(code, purpose, inputs, timeout_s)` is approval-gated. Inputs are file ids or the
+  words `source` and `latest_export`, mounted as `in/<file name>` (duplicates get a suffix).
+  The snippet is stored as an artifact before the run (`code-<id>.py`, so a failed run still
+  leaves it to read); afterwards the outputs (already uploaded by the runner), a log
+  (`log-<id>.txt`, stdout and stderr) and `step-<id>.json` (purpose, inputs, outputs, exit
+  code, who and when: what `save_as_step` will read in M3.4) become artifacts with
+  `meta.code_run`, and an audit row `sandbox.run` records purpose, exit code and duration. The
+  first previewable output opens in the middle pane (`open_artifact`).
+- The prompt section `sandbox_workflow.md` (both project types) says when a snippet is worth
+  an approval, what is mounted where, the libraries, and the `entries.jsonl` contract for
+  snippets that should become steps.
+- The dev/CI test model calls every tool it sees with schema-generated arguments, so the sandbox
+  toolset is filtered out for it (`isinstance(ctx.model, TestModel)`): otherwise every e2e turn
+  would send junk to the sandbox and the approval flows would need two answers. The e2e still
+  answers every pending approval card in a loop, which is the right shape for a real model.
+- PDF and XML projects both get the tool. Tests: three scripted-model tests with a fake runner
+  (httpx `MockTransport`): approval then execution with artifacts, audit and step file; input
+  resolution and runner failures; a killed run. Browser: the approval card, the tool card and
+  the artifact preview are checked by the owner with a real model (the canned model never
+  calls the tool); the API and agent tests cover the same path.
+- Incidental: the model picker dialog and its credential chips now scroll; with many credentials
+  (each e2e run adds one) the model list was pushed off-screen.

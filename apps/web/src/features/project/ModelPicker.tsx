@@ -70,7 +70,7 @@ export function ModelPicker({ project }: { project: Project }) {
         <span className="max-w-48 truncate">{current ? current.model_id : 'Choose a model'}</span>
         <ChevronDownIcon />
       </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Model for this project</DialogTitle>
           <DialogDescription>
@@ -88,7 +88,7 @@ export function ModelPicker({ project }: { project: Project }) {
           </p>
         ) : (
           <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap gap-1">
+            <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto">
               {credentials.data?.map((c) => (
                 <Button
                   key={c.id}

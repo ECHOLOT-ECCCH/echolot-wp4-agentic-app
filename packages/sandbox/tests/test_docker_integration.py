@@ -8,11 +8,11 @@ from typing import Any
 
 import pytest
 
+from elexifier_core.sandbox_contract import RunLimits
 from elexifier_core.storage import LocalStorage
 from elexifier_sandbox.runner.execute import (
     ExecutionSettings,
     RunInput,
-    RunLimits,
     RunRequest,
     execute,
 )

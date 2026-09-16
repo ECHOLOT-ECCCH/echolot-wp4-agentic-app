@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pydantic_ai import Agent, DeferredToolRequests, RunContext
 from pydantic_ai.models import Model
+from pydantic_ai.models.test import TestModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
@@ -15,6 +16,7 @@ from elexifier_agent.tools.conversion import conversion_toolset
 from elexifier_agent.tools.dev import dev_toolset
 from elexifier_agent.tools.pdf import pdf_toolset
 from elexifier_agent.tools.project import project_toolset
+from elexifier_agent.tools.sandbox import sandbox_toolset
 from elexifier_agent.tools.xml import xml_toolset
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
@@ -53,10 +55,17 @@ def render_system_prompt(deps: AgentDeps) -> str:
         prompt += "\n\n" + load_prompt("xml_workflow.md")
     elif project.source_type == "pdf":
         prompt += "\n\n" + load_prompt("pdf_workflow.md")
+    prompt += "\n\n" + load_prompt("sandbox_workflow.md")
     return prompt
 
 
 RUN_TOOLS = frozenset({"run_stats", "export", "validate_dmlex"})
+
+
+def _not_for_canned_model(ctx: RunContext[AgentDeps], tool: ToolDefinition) -> bool:
+    """The dev/CI test model calls every tool it sees with schema-generated arguments; sending
+    such a snippet to the sandbox on every turn is noise, so it never sees run_code."""
+    return not isinstance(ctx.model, TestModel)
 
 
 def _is_run_tool(ctx: RunContext[AgentDeps], tool: ToolDefinition) -> bool:
@@ -72,7 +81,7 @@ def toolsets_for(source_type: str, *, dev_tools: bool = False) -> list[AbstractT
         # structuring runs are checked and exported with the run tools; the mapping-driven
         # ones (run_conversion, diff_runs) stay with XML projects
         toolsets.extend([pdf_toolset, conversion_toolset.filtered(_is_run_tool)])
-    # M3 adds the sandbox toolset.
+    toolsets.append(sandbox_toolset.filtered(_not_for_canned_model))  # run_code (M3)
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets
