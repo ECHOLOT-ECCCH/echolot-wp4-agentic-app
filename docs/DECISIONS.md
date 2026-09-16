@@ -697,3 +697,38 @@ English examples in italics with Slovene translations. Findings and fixes, all w
   and median 189 characters (the longest, "price", 16,005), 836 joined with continuations;
   estimate text-only about 6.8 M input and 2.8 M output tokens, with page crops about 16 M
   input. The model runs (profile, sample, full) are the owner's to trigger.
+
+## 2026-09-16 M2.9 Review at scale: anomaly scoring, a review sample, "accept the rest"
+
+Reviewing 1,267 pages one by one is not an option, and a learned second opinion (M3) needs
+corrections first. The app now scores a segmentation against the document's own statistics,
+without a model (`pipeline/pdf/anomalies.py`, run inside every segmentation):
+
+- Spans: `very_long` (above the 99th percentile and three times the median length),
+  `many_lines`, `very_short` (under 8 characters), `no_headword`, `numeric_headword`,
+  `long_headword` (more than 4 words), `low_confidence` (under 0.7), `continuation_mid_page`.
+  Stored as `payload.flags`; the span list takes `?flagged=true`.
+- Pages: `no_entries`, `few_entries` (under 40% of the median with at least half the median
+  line count), `many_entries` (over 2.5 times the median), `flagged_spans`.
+- The sample: the first and last two pages, a third of the budget for letter changes (a new
+  first letter counts only when the next entries agree, so "f.c" among the a-words does not open
+  a letter), then every kind of oddity, each spread evenly through the book; 40 pages by
+  default. Stored as `document.stats.review` (`ReviewSummary`). The first version took flagged
+  pages by reason count and page number, which gave 36 pages of the same phenomenon from the
+  start of the book; the spread replaced it (unit test with a synthetic 300-page book).
+- API: `GET .../documents/{id}/review` (summary, counts, remaining proposals and how many of
+  them are flagged), `POST .../annotations/accept-rest` (`skip_flagged`, default true). Tool
+  `pdf_review_summary`. Web: the review panel shows a "Sample" strip (page n of m,
+  previous/next sample page, the page's reasons), a "Flagged" filter, amber boxes and a warning
+  icon with the reasons on flagged spans, and "Accept the remaining N" with "except flagged"
+  behind a confirmation.
+- On the owner's PDF (rule segmenter, no model): 8,322 entries and 955 continuations, median 6
+  entries per page and 179 characters per entry; 82 flagged spans (79 `many_lines`, the
+  whole-page entries such as *accounting*, *company*, *cost*; `numeric_headword` "©";
+  `long_headword` "c.i.f. (and) c. (and) i") and 333 flagged pages (129 without entries, which
+  are the continuation pages of the giant entries *account*, *balance*, *insurance*; 115 with
+  few, 50 with many). The sample has 40 pages from 1 to 1,267 with 12 letter pages. Scoring adds
+  under a second to the 8 s segmentation job.
+- Not done (backlog): the per-span check "first word not in the headword font" and the page
+  check "a line that should have started an entry" from the plan text; both need the segmenter
+  to hand its evidence to the scorer.

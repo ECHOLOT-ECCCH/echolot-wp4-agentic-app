@@ -11,6 +11,7 @@ const COLORS: Record<AnnotationStatus, { stroke: string; fill: string }> = {
   edited: { stroke: '#7c3aed', fill: 'rgba(124, 58, 237, 0.10)' },
 }
 const USER_COLOR = { stroke: '#0d9488', fill: 'rgba(13, 148, 136, 0.10)' }
+const FLAGGED_COLOR = { stroke: '#d97706', fill: 'rgba(217, 119, 6, 0.10)' } // odd proposals
 const HANDLE = 8
 const MIN_DRAW = 6
 
@@ -175,7 +176,13 @@ export function OverlayLayer({
             : annotation.payload.bboxes?.length
               ? annotation.payload.bboxes
               : [annotation.bbox]
-        const color = annotation.source === 'user' ? USER_COLOR : COLORS[annotation.status]
+        const flags = annotation.payload.flags ?? []
+        const color =
+          annotation.source === 'user'
+            ? USER_COLOR
+            : annotation.status === 'proposed' && flags.length > 0
+              ? FLAGGED_COLOR
+              : COLORS[annotation.status]
         const selected = annotation.id === selectedId
         const union = boxToViewport(
           dragging && preview ? preview : annotation.bbox,
@@ -184,7 +191,12 @@ export function OverlayLayer({
           viewport,
         )
         return (
-          <g key={annotation.id} data-status={annotation.status} data-annotation={annotation.id}>
+          <g
+            key={annotation.id}
+            data-status={annotation.status}
+            data-annotation={annotation.id}
+            data-flagged={flags.length > 0 ? 'true' : undefined}
+          >
             {boxes.map((box, i) => {
               const r = boxToViewport(box, pageHeight, scale, viewport)
               return (
@@ -226,6 +238,7 @@ export function OverlayLayer({
                     {annotation.payload.confidence !== undefined
                       ? ` · ${Math.round(annotation.payload.confidence * 100)}%`
                       : ''}
+                    {flags.length > 0 ? ` · flagged: ${flags.join(', ').replaceAll('_', ' ')}` : ''}
                   </title>
                 </rect>
               )

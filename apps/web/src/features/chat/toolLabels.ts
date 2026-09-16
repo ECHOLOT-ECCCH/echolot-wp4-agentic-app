@@ -18,4 +18,8 @@ export const TOOL_LABELS: Record<string, string> = {
   validate_dmlex: 'Validating DMLex',
   pdf_analyze: 'Analysing the PDF layout',
   pdf_segment: 'Segmenting pages into entries',
+  pdf_get_page: 'Reading a page',
+  pdf_review_summary: 'Working out what to review',
+  pdf_estimate_cost: 'Estimating the structuring cost',
+  pdf_structure: 'Structuring entries',
 }

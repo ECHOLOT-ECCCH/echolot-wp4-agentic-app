@@ -397,3 +397,15 @@ class StructureRequest(BaseModel):
     profile: dict[str, Any] | None = None
     with_images: bool | None = None
     model: dict[str, Any] | None = None  # optional model override like the chat request
+
+
+class AcceptRest(BaseModel):
+    skip_flagged: bool = True  # leave flagged proposals for the lexicographer
+
+
+class ReviewOut(BaseModel):
+    document_id: uuid.UUID
+    summary: dict[str, Any] | None  # ReviewSummary as stored with the segmentation
+    counts: dict[str, int]
+    remaining_proposed: int
+    remaining_flagged_proposed: int

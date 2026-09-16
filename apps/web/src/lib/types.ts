@@ -155,7 +155,38 @@ export interface DocumentDetail extends DocumentRecord {
       }
       at: string
     }
+    review?: ReviewSummary
   }
+}
+
+export interface ReviewPageFlag {
+  page: number
+  reasons: string[]
+  entries: number
+  lines: number
+}
+
+/** What a rule segmentation looks like against its own statistics (PLAN M2.9). */
+export interface ReviewSummary {
+  pages_total: number
+  text_pages: number
+  entries: number
+  continuations: number
+  median_entries_per_page: number
+  median_span_chars: number
+  flagged_spans: number
+  flagged_pages: ReviewPageFlag[]
+  sample_pages: number[]
+  reasons: Record<string, number>
+  letter_pages: number[]
+}
+
+export interface ReviewOut {
+  document_id: string
+  summary: ReviewSummary | null
+  counts: Record<string, number>
+  remaining_proposed: number
+  remaining_flagged_proposed: number
 }
 
 export type AnnotationStatus = 'proposed' | 'accepted' | 'rejected' | 'edited'
@@ -177,6 +208,9 @@ export interface AnnotationRecord {
     continuation?: boolean
     text?: string
     original_bbox?: [number, number, number, number]
+    flags?: string[]
+    continues?: string
+    continued_by?: string
   }
   set_id: string | null
   position: number

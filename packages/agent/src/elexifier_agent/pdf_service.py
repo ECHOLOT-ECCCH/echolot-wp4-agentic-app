@@ -20,6 +20,7 @@ from elexifier_core.db.models import Annotation, AnnotationStatus, Document, Fil
 from elexifier_core.events import publish
 from elexifier_core.storage import NotFoundError, Storage, make_key
 from elexifier_pipeline import registry
+from elexifier_pipeline.pdf.anomalies import score_review
 from elexifier_pipeline.pdf.layout import PdfplumberLayout
 from elexifier_pipeline.pdf.models import BBox, EntrySpan, Line, PageLayout, SegmentationStats
 from elexifier_pipeline.pdf.segmenters import RuleSegmenter
@@ -147,6 +148,7 @@ async def run_segmentation(
     if layouts is None:
         layouts = await load_layouts(storage, pages)
     spans, stats = await asyncio.to_thread(segmenter.segment, layouts)
+    flags, review = await asyncio.to_thread(score_review, spans, layouts, stats)
     set_id = uuid.uuid4()
     # proposed spans of earlier runs are replaced; decisions (accepted, rejected, edited) and
     # the lexicographer's own boxes stay
@@ -168,6 +170,7 @@ async def run_segmentation(
             "confidence": span.confidence,
             "continuation": span.continuation,
             "text": span.text,
+            "flags": flags.get(span.id, []),
         }
         row = Annotation(
             id=uuid.uuid4(),
@@ -200,6 +203,7 @@ async def run_segmentation(
             "stats": stats.model_dump(),
             "at": datetime.now(UTC).isoformat(),
         },
+        "review": review.model_dump(),
     }
     document.entry_count = sum(
         n for status, n in counts.items() if status != AnnotationStatus.REJECTED.value

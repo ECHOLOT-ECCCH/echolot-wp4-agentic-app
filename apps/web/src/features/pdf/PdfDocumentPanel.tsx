@@ -170,6 +170,20 @@ export function PdfDocumentPanel({
     [externalKey],
   )
 
+  // the review sample walks page by page: scroll the viewer to the top of a page
+  const goToPage = useCallback(
+    (pageNo: number) => {
+      setSelected(null)
+      setCurrentPage(pageNo)
+      setFocusRequest((prev) => ({
+        page: pageNo,
+        revision: 1000 + (prev?.revision ?? 0) + 1,
+        externalKey,
+      }))
+    },
+    [externalKey],
+  )
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs">
@@ -400,6 +414,7 @@ export function PdfDocumentPanel({
             canEdit={canEdit}
             selectedId={selected?.id ?? null}
             onSelect={select}
+            onGoToPage={goToPage}
             currentPage={currentPage}
             hasSegmentation={Boolean(segmentation)}
           />

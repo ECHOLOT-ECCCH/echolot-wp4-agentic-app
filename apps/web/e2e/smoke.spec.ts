@@ -286,6 +286,18 @@ test.describe('workspace smoke', () => {
     await expect(chips).toContainText(/abacus/)
     await chips.getByRole('button', { name: /Remove selection/ }).click()
     await expect(chips).toHaveCount(0)
+
+    // review at scale: the sample strip walks the text pages; one click accepts the rest
+    const sample = page.getByTestId('review-sample')
+    await expect(sample).toContainText('page 1 (1 of 3)')
+    await sample.getByRole('button', { name: 'Next sample page' }).click()
+    await expect(page.getByText('2 / 4')).toBeVisible()
+    await expect(sample).toContainText('page 2 (2 of 3)')
+    await page.getByRole('button', { name: /^Accept the remaining 127$/ }).click()
+    await page.getByRole('button', { name: 'Yes, accept' }).click()
+    await expect(page.getByText(/127 proposals accepted/)).toBeVisible()
+    await page.getByRole('button', { name: 'To review' }).click()
+    await expect(page.getByText('0 spans')).toBeVisible()
   })
 
   test('deny keeps the gated tool from running', async ({ page }) => {

@@ -27,7 +27,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 - Current milestone: M2 PDF end to end (checklist in section 12c). M1 is complete (M1.10 verified
   with claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M2.8 model part (owner-run), then M3.1
+- Next task: M2.10
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -36,7 +36,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M2.8 prepared on the owner's PDF; model runs are the owner's)
+- Last update: 2026-09-16 (M2.9 review at scale done and checked on the owner's PDF)
 
 Update this block at the end of every task.
 
@@ -661,6 +661,27 @@ Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
   project "Šega poslovni slovar"; layout and segmentation are verified without a model (see
   DECISIONS). The model part (profile, sample, full structuring) is run by the owner, not by
   Claude (no paid model calls during development).
+- [x] M2.9 Review at scale. Reviewing every page is not feasible for large dictionaries (decided
+  2026-09-16 after the 1,267-page book). The app scores oddities itself, without a model:
+  `pipeline/pdf/anomalies.py` runs inside every segmentation and scores spans (length or line
+  count above the 99th percentile, very short, no, numeric or very long headword guess, low
+  confidence, continuation not at a page top) and pages (no entries, far fewer or far more than
+  the document median, flagged spans), each with a reason. Stored per document (`stats.review`)
+  and on the spans (`payload.flags`). The sample: first and last pages, a share for letter
+  changes, then every kind of oddity spread through the book, 40 pages by default. API:
+  `GET .../documents/{id}/review` and `POST .../annotations/accept-rest` (accept every remaining
+  proposal, flagged ones excluded by default), `?flagged=true` on the span list. Web: the
+  "Sample" strip in the review panel (page n of m, previous/next sample page, the page's
+  reasons), a "Flagged" filter, amber boxes with reasons, "Accept the remaining N" with "except
+  flagged". Tool `pdf_review_summary` for the agent. Acceptance (checked 2026-09-16 on the
+  owner's PDF, see DECISIONS): the sample is 40 pages, the flagged spans are the odd ones, and one
+  click accepts the rest.
+- [ ] M2.10 Segmentation feedback from structuring. The draft schema gets `segmentation` with
+  values ok | merged | fragment | not_an_entry (plus a short reason); the structurer's
+  instructions ask for it; sample and full runs count it, store it on converted entries and on
+  the spans (`payload.flags`), show it in the run panel's "needs review" list and in the review
+  panel, and `run_stats` reports it. Acceptance: with the scripted model a merged span is
+  flagged and appears in both lists.
 
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)
 

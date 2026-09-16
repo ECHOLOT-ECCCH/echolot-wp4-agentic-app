@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from elexifier_agent.catalog import curated_info
@@ -41,6 +41,7 @@ from elexifier_api.deps import (
 )
 from elexifier_api.models_resolver import resolve_model
 from elexifier_api.schemas import (
+    AcceptRest,
     AnnotationBulk,
     AnnotationCreate,
     AnnotationMerge,
@@ -48,6 +49,7 @@ from elexifier_api.schemas import (
     AnnotationPage,
     AnnotationSplit,
     AnnotationUpdate,
+    ReviewOut,
     RunDetailOut,
     SegmentOut,
     SegmentRequest,
@@ -85,6 +87,7 @@ async def list_annotations(
     user: CurrentUser,
     page_no: int | None = Query(default=None, ge=1),
     status_filter: str | None = Query(default=None, alias="status"),
+    flagged: bool = Query(default=False, description="only spans with review flags"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=2000),
 ) -> AnnotationPage:
@@ -95,6 +98,8 @@ async def list_annotations(
         base = base.where(Annotation.page_no == page_no)
     if status_filter:
         base = base.where(Annotation.status.in_(status_filter.split(",")))
+    if flagged:
+        base = base.where(_flagged_condition())
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
     rows = (
         (
@@ -603,3 +608,61 @@ async def structure_document(
     )
     await db.flush()
     return RunDetailOut.model_validate(outcome.run)
+
+
+def _flagged_condition() -> Any:
+    return (
+        func.jsonb_array_length(func.coalesce(Annotation.payload["flags"], text("'[]'::jsonb"))) > 0
+    )
+
+
+@router.get("/documents/{document_id}/review", response_model=ReviewOut)
+async def review_summary(
+    project_id: uuid.UUID, document_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> ReviewOut:
+    """What to look at instead of every page: the sample and the flagged pages and spans."""
+    await get_project_or_404(db, project_id, user)
+    document = await _pdf_document(db, project_id, document_id)
+    counts = await annotation_counts(db, document.id)
+    proposed = select(func.count()).where(
+        Annotation.document_id == document.id,
+        Annotation.status == AnnotationStatus.PROPOSED.value,
+    )
+    remaining = (await db.execute(proposed)).scalar_one()
+    flagged = (await db.execute(proposed.where(_flagged_condition()))).scalar_one()
+    return ReviewOut(
+        document_id=document.id,
+        summary=(document.stats or {}).get("review"),
+        counts=counts,
+        remaining_proposed=remaining,
+        remaining_flagged_proposed=flagged,
+    )
+
+
+@router.post("/documents/{document_id}/annotations/accept-rest", response_model=dict[str, int])
+async def accept_rest(
+    project_id: uuid.UUID,
+    document_id: uuid.UUID,
+    body: AcceptRest,
+    db: DbSession,
+    user: CurrentUser,
+) -> dict[str, int]:
+    """Accept every remaining proposal (optionally all but the flagged ones)."""
+    await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
+    document = await _pdf_document(db, project_id, document_id)
+    statement = (
+        update(Annotation)
+        .where(
+            Annotation.document_id == document.id,
+            Annotation.status == AnnotationStatus.PROPOSED.value,
+        )
+        .values(status=AnnotationStatus.ACCEPTED.value, updated_at=datetime.now(UTC))
+        .returning(Annotation.id)
+    )
+    if body.skip_flagged:
+        statement = statement.where(~_flagged_condition())
+    updated = len((await db.execute(statement)).scalars().all())
+    await _refresh_entry_count(db, document)
+    audit.record(db, user.id, "annotation.accept_rest", document.id, count=updated)
+    await db.flush()
+    return {"updated": updated, **(await annotation_counts(db, document.id))}

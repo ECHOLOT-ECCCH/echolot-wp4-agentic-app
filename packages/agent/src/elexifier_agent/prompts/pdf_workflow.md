@@ -14,6 +14,11 @@ not known yet: they are found by segmentation and confirmed by the lexicographer
   indent). Every proposal replaces the previous one; the lexicographer's accept/reject
   decisions and their own boxes stay.
 
+- pdf_review_summary: after a segmentation, what to look at instead of every page: the
+  review sample (first and last pages, one page per letter, every page with an oddity), the
+  flagged spans with their reasons (very long, no headword, numeric headword, ...), and how
+  many proposals are still undecided. The review panel walks the same sample and offers
+  "Accept the remaining N" (flagged spans excluded by default).
 - pdf_estimate_cost: tokens and cost of structuring every reviewed span with the current model.
 - pdf_structure: turn spans into DMLex entries with the model (kind="sample", up to 20 at a
   time) and validate them; needs a profile the first time (source language, target languages,
@@ -22,6 +27,7 @@ not known yet: they are found by segmentation and confirmed by the lexicographer
 
 Recommended order: analyse, tell the lexicographer what the pages look like and which cue marks
 an entry start, segment, look at the counts (entries per page, continuations, warnings), adjust
-the parameters when the counts are implausible, and ask the lexicographer to review a page.
-Then agree the profile, structure a sample of ten spans, look at the confidences, notes and
+the parameters when the counts are implausible, and propose the review sample: a large
+dictionary is never reviewed page by page; the lexicographer checks the sample and the flagged
+spans, then accepts the rest. Then agree the profile, structure a sample of ten spans, look at the confidences, notes and
 issues together, refine the profile, and only then talk about cost and the full run.

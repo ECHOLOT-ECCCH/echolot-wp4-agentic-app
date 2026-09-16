@@ -26,6 +26,7 @@ import type {
   Provider,
   RunDetail,
   RunRecord,
+  ReviewOut,
   SegmentResult,
   SourceType,
   SpecRecord,
@@ -48,6 +49,8 @@ export const keys = {
     ['projects', projectId, 'documents', documentId, 'pages'] as const,
   annotations: (projectId: string, documentId: string) =>
     ['projects', projectId, 'documents', documentId, 'annotations'] as const,
+  review: (projectId: string, documentId: string) =>
+    ['projects', projectId, 'documents', documentId, 'annotations', 'review'] as const,
   annotationsQuery: (
     projectId: string,
     documentId: string,
@@ -394,11 +397,18 @@ export function usePages(projectId: string, documentId: string | null) {
 export function useAnnotations(
   projectId: string,
   documentId: string | null,
-  params: { page_no?: number; status?: string; offset?: number; limit?: number },
+  params: {
+    page_no?: number
+    status?: string
+    flagged?: boolean
+    offset?: number
+    limit?: number
+  },
 ) {
   const search = new URLSearchParams()
   if (params.page_no !== undefined) search.set('page_no', String(params.page_no))
   if (params.status) search.set('status', params.status)
+  if (params.flagged) search.set('flagged', 'true')
   search.set('offset', String(params.offset ?? 0))
   search.set('limit', String(params.limit ?? 500))
   return useQuery({
@@ -409,6 +419,31 @@ export function useAnnotations(
       ),
     enabled: Boolean(documentId),
     placeholderData: (previous) => previous,
+  })
+}
+
+/** The review summary stored with the segmentation plus how many proposals are undecided. */
+export function useReview(projectId: string, documentId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: keys.review(projectId, documentId ?? ''),
+    queryFn: () => api<ReviewOut>(`/api/projects/${projectId}/documents/${documentId}/review`),
+    enabled: Boolean(documentId) && enabled,
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useAcceptRest(projectId: string, documentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { skip_flagged: boolean }) =>
+      api<Record<string, number>>(
+        `/api/projects/${projectId}/documents/${documentId}/annotations/accept-rest`,
+        { method: 'POST', json: body },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
+      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+    },
   })
 }
 

@@ -546,3 +546,59 @@ async def pdf_structure(
             ui_actions=[UiAction(type="open_run", run_id=run_id)],
         )
     )
+
+
+@pdf_toolset.tool
+async def pdf_review_summary(
+    ctx: RunContext[AgentDeps], document_id: str | None = None
+) -> ToolReturn:
+    """What the lexicographer should look at instead of every page: the review sample (first and
+    last pages, one page per letter, every page with an oddity), the flagged spans with their
+    reasons, and how many proposals are still undecided. Use it after pdf_segment to propose a
+    review of manageable size, and to explain what "accept the rest" would accept.
+
+    Args:
+        document_id: The PDF document. Omit when the project has one.
+    """
+    deps = ctx.deps
+    async with deps.session() as db:
+        try:
+            document = await _pdf_document(deps, db, document_id)
+        except ToolInputError as exc:
+            return error_result(str(exc))
+        review = (document.stats or {}).get("review")
+        counts = await annotation_counts(db, document.id)
+        doc_id = str(document.id)
+    if not review:
+        return error_result("no segmentation yet; run pdf_segment first")
+    flagged_pages = review.get("flagged_pages", [])
+    summary = (
+        f"{review['entries']:,} entries on {review['text_pages']:,} pages (median "
+        f"{review['median_entries_per_page']:g} per page). {review['flagged_spans']:,} flagged "
+        f"spans on {len(flagged_pages)} pages; review sample: {len(review['sample_pages'])} "
+        f"pages. Proposals still undecided: {counts.get('proposed', 0):,}; accepted: "
+        f"{counts.get('accepted', 0):,}; rejected: {counts.get('rejected', 0):,}."
+    )
+    return to_tool_return(
+        ToolResult(
+            summary=summary[:500],
+            data={
+                "document_id": doc_id,
+                "sample_pages": review["sample_pages"],
+                "letter_pages": review.get("letter_pages", []),
+                "flagged_pages": flagged_pages[:60],
+                "reasons": review.get("reasons", {}),
+                "counts": counts,
+                "note": "reasons: few_entries/many_entries/no_entries per page; very_long, "
+                "many_lines, very_short, no_headword, numeric_headword, long_headword, "
+                "low_confidence, continuation_mid_page per span",
+            },
+            ui_actions=[
+                UiAction(
+                    type="open_document",
+                    document_id=doc_id,
+                    page=(review["sample_pages"] or [1])[0],
+                )
+            ],
+        )
+    )

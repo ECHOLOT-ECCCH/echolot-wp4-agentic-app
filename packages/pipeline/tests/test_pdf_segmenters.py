@@ -77,3 +77,120 @@ def test_registry_lists_and_builds_segmenters() -> None:
     assert isinstance(segmenter, RuleSegmenter) and segmenter.params.mode == "bold"
     with pytest.raises(KeyError):
         registry.get_segmenter("nope")
+
+
+def test_review_scoring_flags_oddities_and_builds_a_sample(column_pages) -> None:
+    from elexifier_pipeline.pdf.anomalies import score_review
+    from elexifier_pipeline.pdf.models import EntrySpan
+
+    spans, stats = RuleSegmenter().segment(column_pages)
+    flags, summary = score_review(spans, column_pages, stats)
+    assert summary.entries == 130 and summary.text_pages == 3
+    assert summary.median_entries_per_page > 0 and summary.sample_pages == [1, 2, 3]
+    assert summary.flagged_spans == 0 and summary.flagged_pages == []
+    # a synthetic giant span with a numeric headword and a mid-page continuation get flagged
+    giant = EntrySpan(
+        id="p1-x1",
+        page=1,
+        line_ids=[f"p1-l{i}" for i in range(1, 40)],
+        bboxes=[(0, 0, 10, 10)],
+        headword_guess="12345",
+        confidence=0.5,
+        text="x" * 5000,
+    )
+    stray = EntrySpan(
+        id="p2-x1",
+        page=2,
+        line_ids=["p2-l9"],
+        bboxes=[(0, 0, 10, 10)],
+        headword_guess=None,
+        confidence=0.4,
+        continuation=True,
+        text="tail",
+    )
+    flags, summary = score_review([*spans, giant, stray], column_pages, stats)
+    assert set(flags["p1-x1"]) >= {"very_long", "many_lines", "numeric_headword", "low_confidence"}
+    assert flags["p2-x1"] == ["continuation_mid_page"]
+    assert summary.flagged_spans == 2 and [f.page for f in summary.flagged_pages] == [1, 2]
+    assert summary.reasons["very_long"] == 1
+
+
+def test_letter_pages_only_step_forward() -> None:
+    from elexifier_pipeline.pdf.anomalies import score_review
+    from elexifier_pipeline.pdf.models import EntrySpan, Line, PageLayout, Word
+
+    def page(n: int) -> PageLayout:
+        word = Word(text="x", x0=0, top=0, x1=5, bottom=5, font="F", size=9)
+        line = Line(id=f"p{n}-l1", words=[word], x0=0, top=0, x1=5, bottom=5)
+        return PageLayout(page=n, width=100, height=100, lines=[line], text_chars=50)
+
+    pages = [page(1), page(2), page(3)]
+    heads = [
+        ("abacus", 1),
+        ("f.c", 1),
+        ("academy", 1),
+        ("acid", 1),
+        ("bank", 2),
+        ("bench", 2),
+        ("bill", 2),
+        ("Čas", 3),
+        ("čip", 3),
+        ("čist", 3),
+    ]
+    spans = [
+        EntrySpan(
+            id=f"s{i}", page=p, line_ids=[], bboxes=[(0, 0, 1, 1)], headword_guess=h, text="t" * 20
+        )
+        for i, (h, p) in enumerate(heads)
+    ]
+    _flags, summary = score_review(spans, pages)
+    assert summary.letter_pages == [1, 2, 3]  # a, b, č: "f.c" among the a-words is ignored
+
+
+def test_review_sample_spreads_over_reasons_letters_and_the_book() -> None:
+    from elexifier_pipeline.pdf.anomalies import score_review
+    from elexifier_pipeline.pdf.models import EntrySpan, Line, PageLayout, Word
+
+    def page(n: int) -> PageLayout:
+        word = Word(text="x", x0=0, top=0, x1=5, bottom=5, font="F", size=9)
+        lines = [
+            Line(id=f"p{n}-l{i}", words=[word], x0=0, top=i, x1=5, bottom=i + 5) for i in range(40)
+        ]
+        return PageLayout(page=n, width=100, height=100, lines=lines, text_chars=500)
+
+    # 300 pages, normally 6 entries each; a letter every 12 pages; three kinds of odd pages
+    pages = [page(n) for n in range(1, 301)]
+    spans: list[EntrySpan] = []
+    for n in range(1, 301):
+        count = 6
+        if n % 7 == 0:
+            count = 1  # few entries
+        elif n % 11 == 0:
+            count = 0  # no entries (a continuation page)
+        elif n % 13 == 0:
+            count = 20  # many entries
+        letter = chr(ord("a") + (n - 1) // 12)
+        for i in range(count):
+            spans.append(
+                EntrySpan(
+                    id=f"s{n}-{i}",
+                    page=n,
+                    line_ids=[],
+                    bboxes=[(0, 0, 1, 1)],
+                    headword_guess=f"{letter}word{i}",
+                    text="t" * 120,
+                )
+            )
+    _flags, summary = score_review(spans, pages, max_sample=40)
+    sample = summary.sample_pages
+    assert len(sample) == 40 and {1, 2, 299, 300} <= set(sample)
+    assert len(set(sample) & set(summary.letter_pages)) >= 10  # a share for the letter changes
+    kinds = {
+        reason
+        for flag in summary.flagged_pages
+        if flag.page in sample
+        for reason in flag.reasons
+        if reason != "flagged_spans"
+    }
+    assert kinds == {"few_entries", "no_entries", "many_entries"}  # every kind of oddity
+    assert sum(1 for p in sample if p > 200) >= 8  # the end of the book too, not just the start

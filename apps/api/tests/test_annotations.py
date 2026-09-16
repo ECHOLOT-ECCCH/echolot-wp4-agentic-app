@@ -302,3 +302,42 @@ async def test_full_structuring_job_with_cache_overrides_and_rebuild(
         200,
         422,
     )
+
+
+async def test_review_summary_flags_and_accept_rest(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    logged_in.apply(client)
+    pid, doc_id = await _pdf_project(client)
+    base = f"/api/projects/{pid}/documents/{doc_id}"
+    await client.post(f"{base}/segment", json={})
+    review = (await client.get(f"{base}/review")).json()
+    summary = review["summary"]
+    assert summary["entries"] == 130 and summary["sample_pages"] == [1, 2, 3]
+    assert review["remaining_proposed"] == 130 and review["remaining_flagged_proposed"] == 0
+
+    # flag one span by hand (as the scorer would), then accept the rest except flagged ones
+    page1 = (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["items"]
+    odd = page1[3]
+    async with app_state.db.session() as db:
+        from sqlalchemy import select as sa_select
+
+        from elexifier_core.db.models import Annotation
+
+        row = (
+            await db.execute(sa_select(Annotation).where(Annotation.id == odd["id"]))
+        ).scalar_one()
+        row.payload = {**row.payload, "flags": ["very_long"]}
+        await db.commit()
+    flagged = (await client.get(f"{base}/annotations", params={"flagged": True})).json()
+    assert flagged["total"] == 1 and flagged["items"][0]["id"] == odd["id"]
+    await client.patch(
+        f"/api/projects/{pid}/annotations/{page1[0]['id']}", json={"status": "rejected"}
+    )
+
+    result = await client.post(f"{base}/annotations/accept-rest", json={"skip_flagged": True})
+    assert result.json()["updated"] == 128 and result.json()["proposed"] == 1
+    review = (await client.get(f"{base}/review")).json()
+    assert review["remaining_proposed"] == 1 and review["remaining_flagged_proposed"] == 1
+    result = await client.post(f"{base}/annotations/accept-rest", json={"skip_flagged": False})
+    assert result.json()["updated"] == 1 and result.json()["accepted"] == 129

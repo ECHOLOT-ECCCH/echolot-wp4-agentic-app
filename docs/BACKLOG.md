@@ -21,3 +21,5 @@ Move an item into docs/PLAN.md when it is scheduled.
 - PDF viewer: a rotated-page fixture (/Rotate 90) to verify the overlay geometry, and text-layer highlighting of the selected span's words.
 - Prices for direct-provider models: let the owner enter prices per credential (declared_capabilities) so estimates give money, not only tokens.
 - PDF review panel: a "Structure sample" button (the API and tool exist; the UI relies on the agent for now).
+- Review scoring: per-span "first word not in the headword font" and per-page "a flush-left line in the headword font that did not start an entry" (the segmenter must hand its evidence to the scorer); the learned segmenter (M3) as a second opinion producing disagreement flags.
+- Review sample: let the lexicographer choose the sample size, redraw it, and mark sample pages as seen.

@@ -213,3 +213,21 @@ async def test_page_continuations_are_joined_to_their_entry(pdf_fixture: Fixture
         await db.commit()
         texts = await full_texts(db, spans)
         assert not texts[last_p1.id].endswith("tail of the entry")
+
+
+async def test_pdf_review_summary_proposes_a_sample(pdf_fixture: Fixture) -> None:
+    early = await call_tool(pdf_fixture, "pdf_review_summary", {})
+    assert early["summary"].startswith("Error: no segmentation yet")
+
+    await call_tool(pdf_fixture, "pdf_segment", {})
+    review = await call_tool(pdf_fixture, "pdf_review_summary", {})
+    assert review["summary"].startswith("130 entries on 3 pages (median 50 per page)")
+    assert "Proposals still undecided: 130" in review["summary"]
+    data = review["data"]
+    assert data["sample_pages"] == [1, 2, 3] and data["counts"] == {"proposed": 130}
+    assert data["letter_pages"] == [1] and data["reasons"] == {}
+    async with pdf_fixture.db.session() as db:
+        document = await db.get(Document, pdf_fixture.document_id)
+        assert document is not None
+        stored = document.stats["review"]
+        assert stored["flagged_spans"] == 0 and stored["median_span_chars"] > 40
