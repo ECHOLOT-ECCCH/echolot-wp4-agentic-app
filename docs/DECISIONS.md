@@ -941,3 +941,25 @@ through and the unit test covers the option.
   second opinion becomes informative only where the lexicographer's decisions deviate from the
   proposals (corrections, drawn boxes); the plan's "flags the odd pages" needs such decisions,
   which are the owner's to make during the user test.
+
+## 2026-09-16 Verification (M3) on the dev stack, real containers, no paid model
+
+Run with a scripted model driving the real tools against the dev database, the local runner
+(Docker Desktop 27.5, `runc`, `elexifier-sandbox:local`) and the worker; project "M3 acceptance
+19:30", Oxford sample with the owner's mapping:
+- `run_code` with a snippet that opens a socket: exit code 3, `blocked: OSError`, 0.2 s end to
+  end. A `time.sleep(60)` with a 3 s limit: killed at the timeout after 3.1 s, the note in
+  stderr. Both kept their `code-*.py`, `log-*.txt` and `step-*.json` artifacts.
+- The post-processing snippet (reads `in/entries.jsonl`, upper-cases headwords, writes
+  `out/entries.jsonl`; on a dry run with the source mounted it counts the 102 entries) was
+  approved and run, then `save_as_step` registered it as step 1.
+- `run_conversion(kind="sample")`: 3 entries in 0.4 s with the step applied (AZYME, B, BA).
+  The full run queued through the API with the step in its snapshot finished in 1 s: the step
+  ran once on 102 entries (0.116 s), the export is schema-valid and upper-cased throughout.
+- Browser (Playwright against the dev web app): the left pane's Steps section lists the step
+  with its checkbox, clicking it opens the snippet in the middle pane with Python
+  highlighting, the run panel shows "Steps 1. Upper-case headwords (0.1 s)", and the artifacts
+  are listed with their sizes.
+- Not covered here, by design: the agent writing the snippet itself and the approval card in
+  the chat, which need a paid model; the owner's in-depth user test covers them. The
+  scripted-model tests exercise the same tool path, and the vitest renders the cards.

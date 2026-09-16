@@ -25,11 +25,11 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M3 Sandbox and custom steps (checklist in section 12d). M2 is built (12c);
-  its live acceptance with a model (M2.7 cost check, M2.8 model part) is the owner's, planned
-  together with the in-depth user test after M3. M1 is complete (M1.10 verified with
-  claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M3.8
+- Current milestone: M3 is built and verified on the dev stack (12d); the owner's in-depth
+  user test with a real model comes next, then M4 Hardening (expand section 13 into a
+  checklist when starting). M2's live acceptance with a model (M2.7 cost check, M2.8 model
+  part) is part of that user test. M1 is complete.
+- Next task: owner's user test, then M4.1
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -38,7 +38,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M3.7 learned segmenter as a second opinion)
+- Last update: 2026-09-16 (M3 verified on the dev stack, tag m3)
 
 Update this block at the end of every task.
 
@@ -772,7 +772,7 @@ from the lexicographer's decisions gives a second opinion on PDF pages. Design n
   learned segmentation. Acceptance: on the fixture, training on two reviewed pages reproduces
   the third page's spans (F1 >= 0.95); on the owner's PDF, training on the reviewed sample
   pages flags the odd pages (recorded in DECISIONS).
-- [ ] M3.8 Milestone acceptance. The M3 acceptance flow run in the dev stack without a paid
+- [x] M3.8 Milestone acceptance. The M3 acceptance flow run in the dev stack without a paid
   model (a hand-written snippet through the tools with the scripted model and through the
   browser); Verification entry in DECISIONS; README and self-hosting updated; tag `m3`. The
   owner's in-depth user testing follows this task.

@@ -12,14 +12,18 @@ self-hostable with Docker Compose.
 
 ## Status
 
-Early development. See [docs/PLAN.md](docs/PLAN.md) for the architecture, contracts,
-milestones and current status, and [docs/DECISIONS.md](docs/DECISIONS.md) for the decision log.
+Milestones 0 to 3 are built: login and projects, XML conversion through a mapping the agent
+writes with the lexicographer, PDF segmentation with review at scale and model structuring,
+and a sandbox in which the agent runs approved snippets that can become steps of every
+conversion. See [docs/PLAN.md](docs/PLAN.md) for the architecture, contracts, milestones and
+current status, and [docs/DECISIONS.md](docs/DECISIONS.md) for the decision log.
 
 ## Requirements
 
 - Python 3.12 (managed by [uv](https://docs.astral.sh/uv/))
 - Node.js 22+ and pnpm (via `corepack enable`)
-- Docker with Compose (PostgreSQL, Keycloak, Garage)
+- Docker with Compose (PostgreSQL, Keycloak, Garage), also the sandbox in which agent-written
+  snippets run: build its image once with `make sandbox-image` and start `make runner`
 - GNU Make
 
 ## Quick start (development)
