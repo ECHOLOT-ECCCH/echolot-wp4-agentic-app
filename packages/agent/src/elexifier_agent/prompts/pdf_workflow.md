@@ -23,7 +23,13 @@ not known yet: they are found by segmentation and confirmed by the lexicographer
 - pdf_structure: turn spans into DMLex entries with the model (kind="sample", up to 20 at a
   time) and validate them; needs a profile the first time (source language, target languages,
   what an entry contains and how it is printed), which is remembered. The rule structurer is a
-  free baseline (headword plus one definition).
+  free baseline (headword plus one definition). Every result also says whether its span was
+  exactly one entry (segmentation ok | merged | fragment | not_an_entry, with a reason): doubts
+  become flags on the spans and issues on the entries. For merged or fragment spans the
+  lexicographer splits or merges the boxes (Edit boxes), or the segmentation is redone with
+  other parameters; those spans are structured again afterwards. The full run is a job:
+  run_stats reports its progress, counts, segmentation doubts and output files; export points
+  the lexicographer to the download; validate_dmlex checks a file.
 
 Recommended order: analyse, tell the lexicographer what the pages look like and which cue marks
 an entry start, segment, look at the counts (entries per page, continuations, warnings), adjust

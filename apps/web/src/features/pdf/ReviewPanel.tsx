@@ -56,6 +56,15 @@ function pageReasonText(flag: ReviewPageFlag, summary: ReviewSummary): string {
     .join(' · ')
 }
 
+/** The tooltip of a flagged row: the reasons, and the structurer's own words when it doubted
+ *  the span. */
+function flagTitle(annotation: AnnotationRecord): string | undefined {
+  const flags = annotation.payload.flags ?? []
+  if (flags.length === 0) return undefined
+  const reason = annotation.payload.structurer?.reason
+  return `Flagged: ${flags.map(humanize).join(', ')}${reason ? ` — ${reason}` : ''}`
+}
+
 export interface ReviewPanelProps {
   projectId: string
   documentId: string
@@ -305,7 +314,7 @@ export function ReviewPanel({
                 .join('\n') || 'No oddities found'
             }
           >
-            {summary.flagged_spans.toLocaleString()} flagged
+            {(review.data?.flagged_total ?? summary.flagged_spans).toLocaleString()} flagged
           </span>
           {pageFlag && (
             <span className="flex basis-full items-center gap-1 text-amber-700 dark:text-amber-400">
@@ -397,7 +406,7 @@ export function ReviewPanel({
                 type="button"
                 onClick={() => onSelect(annotation)}
                 className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1 text-left"
-                title={flags.length > 0 ? `Flagged: ${flags.map(humanize).join(', ')}` : undefined}
+                title={flagTitle(annotation)}
               >
                 <span className="text-muted-foreground w-8 shrink-0 text-xs">
                   p{annotation.page_no}

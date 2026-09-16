@@ -187,6 +187,7 @@ export interface ReviewOut {
   counts: Record<string, number>
   remaining_proposed: number
   remaining_flagged_proposed: number
+  flagged_total: number
 }
 
 export type AnnotationStatus = 'proposed' | 'accepted' | 'rejected' | 'edited'
@@ -211,6 +212,7 @@ export interface AnnotationRecord {
     flags?: string[]
     continues?: string
     continued_by?: string
+    structurer?: { segmentation: string; reason: string | null; run_id: string }
   }
   set_id: string | null
   position: number
@@ -298,6 +300,7 @@ export interface RunRecord {
     homographs_numbered?: number
     cached?: number
     failed?: number
+    segmentation?: Record<string, number> // structurer doubts by verdict
     confidence_mean?: number
     low_confidence?: number
     usage?: { input_tokens: number; output_tokens: number; requests: number }
@@ -318,6 +321,8 @@ export interface EntryIssue {
   code: string
   path: string
   message: string
+  verdict?: string // code "segmentation": ok | merged | fragment | not_an_entry
+  reason?: string
 }
 
 export interface RunDetail extends RunRecord {

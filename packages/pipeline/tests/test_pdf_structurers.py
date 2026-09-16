@@ -106,3 +106,38 @@ async def test_llm_structurer_with_scripted_model() -> None:
     assert out[0].confidence == 0.8 and out[0].usage["requests"] >= 1
     assert all(s.error is None for s in out)
     _ = TextPart, io  # keep imports referenced
+
+
+def test_segmentation_verdict_becomes_an_issue() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from elexifier_pipeline.pdf.structurers import (
+        DmlexEntryDraft,
+        StructuredEntry,
+        segmentation_issue,
+    )
+
+    assert DmlexEntryDraft(headword="x").segmentation == "ok"
+    with pytest.raises(ValidationError):
+        DmlexEntryDraft.model_validate({"headword": "x", "segmentation": "split"})
+    assert segmentation_issue(StructuredEntry(span_id="s", entry={}, confidence=1.0)) is None
+    doubt = StructuredEntry(
+        span_id="s",
+        entry={},
+        confidence=1.0,
+        segmentation="not_an_entry",
+        segmentation_reason="a running head",
+    )
+    assert segmentation_issue(doubt) == {
+        "severity": "warning",
+        "source": "structurer",
+        "code": "segmentation",
+        "path": "entry",
+        "verdict": "not_an_entry",
+        "reason": "a running head",
+        "message": "not an entry: a running head",
+    }
+    bare = StructuredEntry(span_id="s", entry={}, confidence=1.0, segmentation="fragment")
+    issue = segmentation_issue(bare)
+    assert issue is not None and issue["message"] == "fragment: the structurer doubts the span"

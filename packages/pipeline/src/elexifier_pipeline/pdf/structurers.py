@@ -11,11 +11,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from elexifier_pipeline.pdf.models import BBox, EntrySpan
+
+SegmentationVerdict = Literal["ok", "merged", "fragment", "not_an_entry"]
 
 # --- what the model fills in ------------------------------------------------------------------
 
@@ -64,6 +66,16 @@ class DmlexEntryDraft(BaseModel):
     notes: list[str] = Field(
         default_factory=list, description="Doubts, unreadable parts, things that did not fit"
     )
+    segmentation: SegmentationVerdict = Field(
+        default="ok",
+        description="Whether the text is exactly one entry: ok; merged when another entry "
+        "starts inside it; fragment when it is only part of an entry (no headword, starts in "
+        "the middle of a sense); not_an_entry for running heads, notes, letter dividers",
+    )
+    segmentation_reason: str | None = Field(
+        default=None,
+        description="For anything but ok: where the other entry starts, or what the text is",
+    )
 
 
 class StructureProfile(BaseModel):
@@ -90,6 +102,8 @@ class StructuredEntry(BaseModel):
     notes: list[str] = Field(default_factory=list)
     usage: dict[str, int] = Field(default_factory=dict)
     error: str | None = None
+    segmentation: str = "ok"  # SegmentationVerdict; the structurer's view of the span
+    segmentation_reason: str | None = None
 
 
 class CostEstimate(BaseModel):
@@ -234,8 +248,13 @@ structure faithfully. Rules:
   belongs to the sense it follows; example sentences go to the sense they illustrate.
 - In bilingual dictionaries, equivalents in the target language are translations, not definitions.
 - Lower the confidence when the text is garbled, truncated or ambiguous, and say why in notes.
-- If the text is not a dictionary entry at all (a running head, a note), return an empty
-  headword and explain in notes.
+- Segmentation: the text should be exactly one entry. Set segmentation to "merged" when
+  another entry starts inside it (describe the first entry only and name the headword where
+  the next one begins), "fragment" when it is only part of an entry (no headword, starts in
+  the middle of a sense), "not_an_entry" for running heads, notes and letter dividers; say why
+  in segmentation_reason. Otherwise "ok".
+- If the text is not a dictionary entry at all, return an empty headword, segmentation
+  "not_an_entry", and explain in notes.
 """
 
 
@@ -311,6 +330,8 @@ class LlmStructurer:
                 ),
                 confidence=draft.confidence,
                 notes=draft.notes,
+                segmentation=draft.segmentation,
+                segmentation_reason=draft.segmentation_reason,
                 usage={
                     "input_tokens": usage.input_tokens,
                     "output_tokens": usage.output_tokens,
@@ -377,6 +398,23 @@ def estimate_cost(
     )
 
 
+def segmentation_issue(result: StructuredEntry) -> dict[str, Any] | None:
+    """The structurer's doubt about the span boundaries as an entry issue (kept through
+    rebuilds like every ``structurer`` issue), or None when the span was one entry."""
+    if result.segmentation == "ok":
+        return None
+    reason = (result.segmentation_reason or "").strip() or "the structurer doubts the span"
+    return {
+        "severity": "warning",
+        "source": "structurer",
+        "code": "segmentation",
+        "path": "entry",
+        "verdict": result.segmentation,
+        "reason": reason,
+        "message": f"{result.segmentation.replace('_', ' ')}: {reason}",
+    }
+
+
 def renumber_entry(entry: dict[str, Any], entry_id: str) -> dict[str, Any]:
     """Give an entry (and its senses) ids derived from ``entry_id``; batches and cached results
     number from 1, so ids are assigned by position when a run is assembled."""
@@ -411,4 +449,5 @@ __all__ = [
     "estimate_cost",
     "extracted_from_span",
     "renumber_entry",
+    "segmentation_issue",
 ]

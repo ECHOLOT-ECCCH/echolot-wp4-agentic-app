@@ -515,7 +515,10 @@ async def pdf_structure(
                 "confidence": row.confidence,
                 "notes": row.notes,
                 "issues": row.issues,
+                "segmentation": result.segmentation,
             }
+            if result.segmentation != "ok":
+                item["segmentation_reason"] = result.segmentation_reason
             if len(rows) < 3:
                 item["dmlex"] = row.dmlex
             if result.error:
@@ -528,6 +531,7 @@ async def pdf_structure(
         f"{stats['warnings']} warnings), mean confidence {stats['confidence_mean']:.2f}, "
         f"{stats['low_confidence']} below 0.6"
         + (f", {stats['failed']} model failures" if stats.get("failed") else "")
+        + _segmentation_clause(stats)
         + f"; {stats['usage']['input_tokens']:,} input / {stats['usage']['output_tokens']:,} "
         "output tokens. Open the entries next to the page and ask the lexicographer to check them."
     )
@@ -540,12 +544,23 @@ async def pdf_structure(
                 "stats": stats,
                 "profile": struct_profile.model_dump(),
                 "entries": rows,
-                "note": "entries after the first 3 only list issues; the run panel shows all",
+                "note": "entries after the first 3 only list issues; the run panel shows all. "
+                "Spans judged merged or fragment carry that flag in the review panel: the "
+                "lexicographer splits or merges the boxes (Edit boxes), or the segmentation is "
+                "redone, and they are structured again.",
             },
             cost={"tokens": stats["usage"]},
             ui_actions=[UiAction(type="open_run", run_id=run_id)],
         )
     )
+
+
+def _segmentation_clause(stats: dict[str, Any]) -> str:
+    doubts = stats.get("segmentation") or {}
+    if not doubts:
+        return ""
+    parts = ", ".join(f"{n} {verdict.replace('_', ' ')}" for verdict, n in doubts.items())
+    return f"; segmentation doubts: {parts}"
 
 
 @pdf_toolset.tool

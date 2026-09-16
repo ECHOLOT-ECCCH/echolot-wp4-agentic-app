@@ -130,6 +130,10 @@ async def test_structure_sample_with_rule_and_scripted_llm(pdf_fixture: Fixture)
                         "senses": [{"definitions": ["something"], "translations": ["nekaj"]}],
                         "confidence": 0.55 if headword == "abandon" else 0.9,
                         "notes": ["low confidence"] if headword == "abandon" else [],
+                        "segmentation": "merged" if headword == "abase" else "ok",
+                        "segmentation_reason": "the entry 'abbey' starts inside this span"
+                        if headword == "abase"
+                        else None,
                     },
                 )
             ]
@@ -155,6 +159,16 @@ async def test_structure_sample_with_rule_and_scripted_llm(pdf_fixture: Fixture)
         "sl"
     ]
     assert data["stats"]["usage"]["requests"] == 3
+    # the structurer's doubt about the third span: in the summary, the stats, the entry and
+    # the span's flags (M2.10)
+    assert "segmentation doubts: 1 merged" in llm["summary"]
+    assert data["stats"]["segmentation"] == {"merged": 1}
+    assert data["entries"][2]["segmentation"] == "merged"
+    assert "abbey" in data["entries"][2]["segmentation_reason"]
+    assert (
+        data["entries"][0]["segmentation"] == "ok"
+        and "segmentation_reason" not in data["entries"][0]
+    )
     async with pdf_fixture.db.session() as db:
         runs = (
             (await db.execute(sa_select(ConversionRun).order_by(ConversionRun.created_at)))
@@ -163,14 +177,32 @@ async def test_structure_sample_with_rule_and_scripted_llm(pdf_fixture: Fixture)
         )
         assert [r.scope["structurer"] for r in runs] == ["rule", "llm"]
         rows = (
-            (await db.execute(sa_select(ConvertedEntry).where(ConvertedEntry.run_id == runs[1].id)))
+            (
+                await db.execute(
+                    sa_select(ConvertedEntry)
+                    .where(ConvertedEntry.run_id == runs[1].id)
+                    .order_by(ConvertedEntry.position)
+                )
+            )
             .scalars()
             .all()
         )
         assert all(r.annotation_id is not None and r.entry_id is None for r in rows)
         assert rows[1].confidence == 0.55 and rows[1].notes == ["low confidence"]
+        doubt = [i for i in rows[2].issues if i["code"] == "segmentation"]
+        assert doubt[0]["verdict"] == "merged" and rows[2].issue_count == 1
+        assert doubt[0]["message"].startswith("merged: the entry 'abbey'")
+        flagged = await db.get(Annotation, rows[2].annotation_id)
+        assert flagged is not None and flagged.payload["flags"] == ["merged"]
+        assert flagged.payload["structurer"]["run_id"] == str(runs[1].id)
+        clean = await db.get(Annotation, rows[0].annotation_id)
+        assert clean is not None and "flags" not in clean.payload
         usage = (await db.execute(sa_select(UsageRecord))).scalars().all()
         assert [u.purpose for u in usage] == ["structure"] and usage[0].model == "scripted"
+        run_id = str(runs[1].id)
+    stats = await call_tool(pdf_fixture, "run_stats", {"run_id": run_id})
+    assert "segmentation doubts: 1 merged" in stats["summary"]
+    assert stats["data"]["stats"]["segmentation"] == {"merged": 1}
 
 
 async def test_page_continuations_are_joined_to_their_entry(pdf_fixture: Fixture) -> None:

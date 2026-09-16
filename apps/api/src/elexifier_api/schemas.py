@@ -409,3 +409,4 @@ class ReviewOut(BaseModel):
     counts: dict[str, int]
     remaining_proposed: int
     remaining_flagged_proposed: int
+    flagged_total: int = 0  # flagged spans of any status, live (segmentation and structurer)

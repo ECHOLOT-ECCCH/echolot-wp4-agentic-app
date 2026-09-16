@@ -7,6 +7,7 @@ from pathlib import Path
 from pydantic_ai import Agent, DeferredToolRequests, RunContext
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
 
 from elexifier_agent.deps import AgentDeps
@@ -55,14 +56,23 @@ def render_system_prompt(deps: AgentDeps) -> str:
     return prompt
 
 
+RUN_TOOLS = frozenset({"run_stats", "export", "validate_dmlex"})
+
+
+def _is_run_tool(ctx: RunContext[AgentDeps], tool: ToolDefinition) -> bool:
+    return tool.name in RUN_TOOLS
+
+
 def toolsets_for(source_type: str, *, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]:
     """Toolsets are filtered by project type to keep the model's context small."""
     toolsets: list[AbstractToolset[AgentDeps]] = [project_toolset]
     if source_type == "xml":
         toolsets.extend([xml_toolset, conversion_toolset])
     elif source_type == "pdf":
-        toolsets.append(pdf_toolset)
-    # M2.6 adds structuring for PDFs, M3 the sandbox toolset.
+        # structuring runs are checked and exported with the run tools; the mapping-driven
+        # ones (run_conversion, diff_runs) stay with XML projects
+        toolsets.extend([pdf_toolset, conversion_toolset.filtered(_is_run_tool)])
+    # M3 adds the sandbox toolset.
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets

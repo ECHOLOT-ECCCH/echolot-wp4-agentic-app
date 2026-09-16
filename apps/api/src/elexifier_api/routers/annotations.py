@@ -630,12 +630,18 @@ async def review_summary(
     )
     remaining = (await db.execute(proposed)).scalar_one()
     flagged = (await db.execute(proposed.where(_flagged_condition()))).scalar_one()
+    flagged_total = (
+        await db.execute(
+            select(func.count()).where(Annotation.document_id == document.id, _flagged_condition())
+        )
+    ).scalar_one()
     return ReviewOut(
         document_id=document.id,
         summary=(document.stats or {}).get("review"),
         counts=counts,
         remaining_proposed=remaining,
         remaining_flagged_proposed=flagged,
+        flagged_total=flagged_total,
     )
 
 

@@ -254,25 +254,40 @@ async def run_stats(ctx: RunContext[AgentDeps], run_id: str) -> ToolReturn:
         report = dict(run.validation_report or {})
         status_, kind, version, error = run.status, run.kind, run.mapping_version, run.error
         artifacts = _output_artifacts(run)
+    # PDF structuring runs have no mapping (version 0)
+    label = (
+        f"{kind.capitalize()} run with mapping v{version}"
+        if version
+        else f"{kind.capitalize()} structuring run"
+    )
     if status_ in (ConversionStatus.QUEUED.value, ConversionStatus.RUNNING.value):
         done, total = stats.get("done", 0), stats.get("total")
         summary = (
-            f"{kind.capitalize()} run with mapping v{version} is {status_}: "
+            f"{label} is {status_}: "
             f"{stats.get('phase', status_)}, {done:,}"
             + (f" of {total:,}" if total else "")
             + " entries."
         )
     elif status_ == ConversionStatus.FAILED.value:
-        summary = f"{kind.capitalize()} run with mapping v{version} failed: {error}"
+        summary = f"{label} failed: {error}"
     else:
         summary = (
-            f"{kind.capitalize()} run with mapping v{version} done: "
+            f"{label} done: "
             f"{stats.get('converted', 0):,} entries, {stats.get('with_issues', 0):,} with issues "
             f"({stats.get('errors', 0):,} errors, {stats.get('warnings', 0):,} warnings); "
             f"{report.get('summary', '')}"
             + (
                 f"; {stats['homographs_numbered']} homograph number(s) assigned"
                 if stats.get("homographs_numbered")
+                else ""
+            )
+            + (
+                "; segmentation doubts: "
+                + ", ".join(
+                    f"{n} {verdict.replace('_', ' ')}"
+                    for verdict, n in stats["segmentation"].items()
+                )
+                if stats.get("segmentation")
                 else ""
             )
             + "."

@@ -9,6 +9,7 @@ import shutil
 import statistics
 import tempfile
 import uuid
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from elexifier_agent.models import build_model
 from elexifier_agent.structuring import (
+    apply_segmentation_feedback,
     cache_key,
     cached_results,
     extract,
@@ -50,6 +52,7 @@ from elexifier_pipeline.pdf.structurers import (
     StructuredEntry,
     StructureProfile,
     renumber_entry,
+    segmentation_issue,
 )
 
 log = structlog.get_logger(__name__)
@@ -292,11 +295,13 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
     usage_total = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "requests": 0}
     done = cached = failed = 0
     confidences: list[float] = []
+    segmentation: Counter[str] = Counter()
     try:
         for start in range(0, len(spans), BATCH):
             batch = spans[start : start + BATCH]
             async with db.session() as session:
                 texts = await full_texts(session, batch)
+                verdicts: dict[uuid.UUID, tuple[str, str | None]] = {}
                 keys = [
                     cache_key(model_spec, structurer_name, profile, texts.get(a.id, ""))
                     for a in batch
@@ -321,6 +326,11 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
                     hit = reuse.get(key)
                     if hit is not None:
                         cached += 1
+                        kept = [i for i in (hit.issues or []) if i.get("code") == "segmentation"]
+                        verdicts[annotation.id] = (
+                            str(kept[0].get("verdict") or "ok") if kept else "ok",
+                            str(kept[0].get("reason") or "") if kept else None,
+                        )
                         row = ConvertedEntry(
                             run_id=rid,
                             annotation_id=annotation.id,
@@ -332,8 +342,8 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
                                 hit.override or hit.dmlex,
                                 f"{profile.entry_id_prefix}{position + 1}",
                             ),
-                            issues=[],
-                            issue_count=0,
+                            issues=kept,
+                            issue_count=len(kept),
                             confidence=hit.confidence,
                             notes=[*(hit.notes or []), "reused from an earlier run"],
                         )
@@ -352,6 +362,21 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
                             usage_total[k] += int(result.usage.get(k, 0))
                         if result.error:
                             failed += 1
+                        issues: list[dict[str, Any]] = []
+                        if result.error:
+                            issues.append(
+                                {
+                                    "severity": "error",
+                                    "source": "structurer",
+                                    "code": "model-error",
+                                    "path": "entry",
+                                    "message": result.error,
+                                }
+                            )
+                        seg = segmentation_issue(result)
+                        if seg is not None:
+                            issues.append(seg)
+                        verdicts[annotation.id] = (result.segmentation, result.segmentation_reason)
                         row = ConvertedEntry(
                             run_id=rid,
                             annotation_id=annotation.id,
@@ -371,18 +396,8 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
                             )
                             if result.entry
                             else {},
-                            issues=[
-                                {
-                                    "severity": "error",
-                                    "source": "structurer",
-                                    "code": "model-error",
-                                    "path": "entry",
-                                    "message": result.error,
-                                }
-                            ]
-                            if result.error
-                            else [],
-                            issue_count=1 if result.error else 0,
+                            issues=issues,
+                            issue_count=len(issues),
                             confidence=result.confidence,
                             notes=list(result.notes),
                         )
@@ -390,6 +405,8 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
                         confidences.append(row.confidence)
                     session.add(row)
                     done += 1
+                await apply_segmentation_feedback(session, verdicts, run_id=rid)
+                segmentation.update(v for v, _reason in verdicts.values() if v != "ok")
                 await session.commit()
             await _progress(
                 db,
@@ -428,6 +445,7 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
                 "usage": dict(usage_total),
                 "confidence_mean": round(statistics.fmean(confidences), 3) if confidences else 0.0,
                 "low_confidence": sum(1 for c in confidences if c < LOW_CONFIDENCE),
+                "segmentation": dict(segmentation),
                 "cost_check": {
                     "estimated_tokens": estimated,
                     "actual_tokens": actual,

@@ -732,3 +732,28 @@ without a model (`pipeline/pdf/anomalies.py`, run inside every segmentation):
 - Not done (backlog): the per-span check "first word not in the headword font" and the page
   check "a line that should have started an entry" from the plan text; both need the segmenter
   to hand its evidence to the scorer.
+
+## 2026-09-16 M2.10 Segmentation feedback from structuring
+
+The structurer reads every span's text, so it is the cheapest judge of the segmentation. The
+draft schema gained `segmentation` (ok | merged | fragment | not_an_entry) and
+`segmentation_reason`; the instructions ask the model to describe only the first entry of a
+merged span and to name the headword where the next one starts.
+
+- A verdict other than ok becomes a `segmentation` issue on the converted entry (source
+  `structurer`, warning; kept through rebuilds and copied with cached results, so a second full
+  run keeps the doubts without new model calls) and a flag on the span (`payload.flags`:
+  merged | fragment | not_an_entry, the reason and run id under `payload.structurer`); an ok
+  verdict clears an earlier one. `stats.segmentation` counts the verdicts per run.
+- Where they show: the review panel's "Flagged" filter and amber boxes (the structurer's words
+  in the tooltip), the run panel's stats line and its "with issues" / "needs review" lists, a
+  badge in the span view; `pdf_structure` and `run_stats` say "segmentation doubts: 2 merged,
+  1 fragment". The review endpoint reports the live `flagged_total`.
+- PDF projects now also get `run_stats`, `export` and `validate_dmlex` (the conversion toolset
+  filtered to the run tools): without them the agent could not report on a full structuring
+  job or point to the download. `run_stats` labels mapping-less runs as structuring runs.
+- The rule structurer never doubts (it does not read the text); verdicts come from the model.
+  Tests: a scripted model in the agent test, a doubting structurer in the API job test (store,
+  keep through a rebuild, reuse from the cache), a pipeline unit test for the issue.
+- Not done: acting on a verdict automatically (splitting a merged span at the named headword);
+  in the backlog.

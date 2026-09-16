@@ -25,9 +25,10 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M2 PDF end to end (checklist in section 12c). M1 is complete (M1.10 verified
-  with claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M2.10
+- Current milestone: M2 PDF end to end is built (checklist in section 12c); what remains is the
+  owner's live acceptance with a model (M2.7 cost check, M2.8 model part). M1 is complete (M1.10
+  verified with claude-opus-5 on 2026-09-16, see DECISIONS "Verification"). Next: M3.
+- Next task: M3.1 (expand the M3 scope from section 13 into a checklist 12d first)
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -36,7 +37,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M2.9 review at scale done and checked on the owner's PDF)
+- Last update: 2026-09-16 (M2.10 segmentation feedback from structuring done)
 
 Update this block at the end of every task.
 
@@ -676,12 +677,16 @@ Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
   flagged". Tool `pdf_review_summary` for the agent. Acceptance (checked 2026-09-16 on the
   owner's PDF, see DECISIONS): the sample is 40 pages, the flagged spans are the odd ones, and one
   click accepts the rest.
-- [ ] M2.10 Segmentation feedback from structuring. The draft schema gets `segmentation` with
-  values ok | merged | fragment | not_an_entry (plus a short reason); the structurer's
-  instructions ask for it; sample and full runs count it, store it on converted entries and on
-  the spans (`payload.flags`), show it in the run panel's "needs review" list and in the review
-  panel, and `run_stats` reports it. Acceptance: with the scripted model a merged span is
-  flagged and appears in both lists.
+- [x] M2.10 Segmentation feedback from structuring. The draft schema has `segmentation`
+  (ok | merged | fragment | not_an_entry) and `segmentation_reason`; the structurer's
+  instructions ask for them. Sample and full runs count the verdicts (`stats.segmentation`),
+  store them as `segmentation` issues on the converted entries (kept through rebuilds, copied
+  with cached results) and as flags on the spans (`payload.flags` merged | fragment |
+  not_an_entry, the reason under `payload.structurer`); the review panel's "Flagged" filter,
+  the run panel's stats line and "needs review" list, and the span view show them;
+  `pdf_structure` and `run_stats` report them (PDF projects now also get `run_stats`, `export`
+  and `validate_dmlex`). Acceptance (2026-09-16): with the scripted model a merged span is
+  flagged and appears in both lists (agent and API tests).
 
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)
 

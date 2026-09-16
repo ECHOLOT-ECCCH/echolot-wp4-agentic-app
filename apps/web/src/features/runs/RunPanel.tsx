@@ -162,6 +162,17 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
               {stats.low_confidence ? `, ${stats.low_confidence} below 60%` : ''}
             </span>
           )}
+          {stats.segmentation && Object.keys(stats.segmentation).length > 0 && (
+            <span
+              className="text-amber-700 dark:text-amber-400"
+              title="The structurer doubted these span boundaries: split or merge the boxes on the page and structure them again"
+            >
+              segmentation doubts:{' '}
+              {Object.entries(stats.segmentation)
+                .map(([verdict, n]) => `${n} ${verdict.replaceAll('_', ' ')}`)
+                .join(', ')}
+            </span>
+          )}
         </div>
       )}
       {(report.summary ||

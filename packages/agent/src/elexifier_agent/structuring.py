@@ -7,7 +7,8 @@ import hashlib
 import json
 import statistics
 import uuid
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -39,6 +40,7 @@ from elexifier_pipeline.pdf.structurers import (
     StructuredEntry,
     StructureProfile,
     estimate_cost,
+    segmentation_issue,
 )
 
 MAX_SAMPLE_SPANS = 20
@@ -229,6 +231,43 @@ def estimate_for(
     )
 
 
+STRUCTURER_FLAGS = ("merged", "fragment", "not_an_entry")
+
+
+def segmentation_counts(results: Iterable[StructuredEntry]) -> dict[str, int]:
+    """How many results doubt their span boundaries, by verdict (empty when none do)."""
+    counts: Counter[str] = Counter(r.segmentation for r in results if r.segmentation != "ok")
+    return dict(counts)
+
+
+async def apply_segmentation_feedback(
+    db: AsyncSession, verdicts: dict[uuid.UUID, tuple[str, str | None]], *, run_id: uuid.UUID
+) -> None:
+    """Write the structurer's verdicts onto the spans: a review flag (merged, fragment,
+    not_an_entry) and the reason under ``payload.structurer``; ``ok`` clears both."""
+    if not verdicts:
+        return
+    rows = (await db.execute(select(Annotation).where(Annotation.id.in_(list(verdicts))))).scalars()
+    for row in rows:
+        verdict, reason = verdicts[row.id]
+        payload = dict(row.payload or {})
+        flags = [f for f in payload.get("flags") or [] if f not in STRUCTURER_FLAGS]
+        if verdict != "ok":
+            flags.append(verdict)
+            payload["structurer"] = {
+                "segmentation": verdict,
+                "reason": reason,
+                "run_id": str(run_id),
+            }
+        else:
+            payload.pop("structurer", None)
+        if flags:
+            payload["flags"] = flags
+        else:
+            payload.pop("flags", None)
+        row.payload = payload
+
+
 async def structure_sample(
     db: AsyncSession,
     storage: Storage,
@@ -308,6 +347,9 @@ async def structure_sample(
                     "message": result.error,
                 }
             )
+        seg = segmentation_issue(result)
+        if seg is not None:
+            issues.append(seg)
         errors += sum(1 for i in issues if i["severity"] == "error")
         warnings += sum(1 for i in issues if i["severity"] != "error")
         row = ConvertedEntry(
@@ -333,6 +375,14 @@ async def structure_sample(
         )
         db.add(row)
         converted.append(row)
+    await apply_segmentation_feedback(
+        db,
+        {
+            a.id: (r.segmentation, r.segmentation_reason)
+            for a, r in zip(spans, results, strict=True)
+        },
+        run_id=run.id,
+    )
     run.stats = {
         "requested": len(spans),
         "converted": sum(1 for r in results if r.entry),
@@ -347,6 +397,7 @@ async def structure_sample(
         "low_confidence": sum(1 for r in results if r.entry and r.confidence < 0.6),
         "usage": usage_total,
         "structurer": structurer_name,
+        "segmentation": segmentation_counts(results),
     }
     run.validation_report = {
         "summary": validation.report.summary(),
@@ -455,11 +506,13 @@ __all__ = [
     "MAX_SAMPLE_SPANS",
     "StructuringError",
     "StructuringOutcome",
+    "apply_segmentation_feedback",
     "cache_key",
     "cached_results",
     "estimate_for",
     "pick_spans",
     "queue_full_structuring",
+    "segmentation_counts",
     "structure_sample",
     "usable_spans",
 ]

@@ -91,6 +91,14 @@ export function SpanView({
             corrected
           </span>
         )}
+        {span?.payload.structurer && (
+          <span
+            className="rounded bg-amber-100 px-1 text-[10px] text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+            title={span.payload.structurer.reason ?? undefined}
+          >
+            {span.payload.structurer.segmentation.replaceAll('_', ' ')}
+          </span>
+        )}
         {canEdit && !editing && (
           <Button
             variant="outline"

@@ -341,3 +341,73 @@ async def test_review_summary_flags_and_accept_rest(
     assert review["remaining_proposed"] == 1 and review["remaining_flagged_proposed"] == 1
     result = await client.post(f"{base}/annotations/accept-rest", json={"skip_flagged": False})
     assert result.json()["updated"] == 1 and result.json()["accepted"] == 129
+
+
+async def test_full_structuring_flags_merged_spans_from_the_structurer(
+    client: httpx.AsyncClient,
+    logged_in: LoggedIn,
+    app_state: AppState,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from collections.abc import AsyncIterator, Sequence
+    from typing import Any
+
+    from elexifier_api.jobs import structuring as jobs_structuring
+    from elexifier_pipeline.pdf.structurers import ExtractedEntry, RuleStructurer, StructuredEntry
+
+    class DoubtingStructurer(RuleStructurer):
+        async def structure(
+            self, entries: Sequence[ExtractedEntry], **kw: Any
+        ) -> AsyncIterator[StructuredEntry]:
+            async for result in super().structure(entries, **kw):
+                if result.entry.get("headword") == "abase":
+                    result.segmentation = "merged"
+                    result.segmentation_reason = "abbey starts inside this span"
+                yield result
+
+    monkeypatch.setattr(jobs_structuring, "RuleStructurer", DoubtingStructurer)
+    logged_in.apply(client)
+    pid, doc_id = await _pdf_project(client)
+    base = f"/api/projects/{pid}/documents/{doc_id}"
+    await client.post(f"{base}/segment", json={})
+    await client.post(f"{base}/annotations/bulk", json={"status": "accepted", "page_no": 1})
+    run = (
+        await client.post(f"{base}/structure", json={"kind": "full", "structurer": "rule"})
+    ).json()
+    await jobs_structuring.run_full_structuring(run["id"])
+    detail = (await client.get(f"/api/projects/{pid}/runs/{run['id']}")).json()
+    assert detail["stats"]["segmentation"] == {"merged": 1}
+
+    # the entry is in the issues list with the structurer's words; the span is flagged
+    listed = (
+        await client.get(f"/api/projects/{pid}/runs/{run['id']}/entries", params={"issues": True})
+    ).json()
+    assert listed["total"] == 1 and listed["items"][0]["headword"] == "abase"
+    issue = listed["items"][0]["issues"][0]
+    assert issue["code"] == "segmentation" and issue["verdict"] == "merged"
+    assert issue["message"] == "merged: abbey starts inside this span"
+    flagged = (await client.get(f"{base}/annotations", params={"flagged": True})).json()
+    assert flagged["total"] == 1 and flagged["items"][0]["payload"]["flags"] == ["merged"]
+    assert flagged["items"][0]["payload"]["structurer"]["run_id"] == run["id"]
+    summary = (await client.get(f"{base}/review")).json()
+    assert summary["flagged_total"] == 1 and summary["remaining_flagged_proposed"] == 0
+
+    # a rebuild keeps the doubt; a second run reuses the cached results with their verdicts
+    assert (await client.post(f"/api/projects/{pid}/runs/{run['id']}/rebuild")).status_code == 200
+    listed = (
+        await client.get(f"/api/projects/{pid}/runs/{run['id']}/entries", params={"issues": True})
+    ).json()
+    assert listed["total"] == 1
+    monkeypatch.setattr(jobs_structuring, "RuleStructurer", RuleStructurer)
+    second = (
+        await client.post(f"{base}/structure", json={"kind": "full", "structurer": "rule"})
+    ).json()
+    result = await jobs_structuring.run_full_structuring(second["id"])
+    assert result["cached"] == 52
+    detail = (await client.get(f"/api/projects/{pid}/runs/{second['id']}")).json()
+    assert detail["stats"]["segmentation"] == {"merged": 1}
+    flagged = (await client.get(f"{base}/annotations", params={"flagged": True})).json()
+    assert (
+        flagged["total"] == 1
+        and flagged["items"][0]["payload"]["structurer"]["run_id"] == second["id"]
+    )
