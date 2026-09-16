@@ -29,6 +29,14 @@ def curated_registry() -> dict[str, list[ModelInfo]]:
     }
 
 
+def curated_info(provider: str, model_id: str) -> ModelInfo | None:
+    """What the curated registry knows about a model (capabilities, prices), else None."""
+    for info in curated_registry().get(provider, []):
+        if info.id == model_id:
+            return info
+    return None
+
+
 class ModelCatalog:
     """Lists models for a credential. Results are cached per provider + endpoint for an hour."""
 
@@ -57,6 +65,14 @@ class ModelCatalog:
         models = await self._fetch(provider, api_key, base_url, declared_capabilities or {})
         self._cache[cache_key] = (time.monotonic(), models)
         return models
+
+    def cached_info(self, provider: str, model_id: str) -> ModelInfo | None:
+        """A model from any cached listing (OpenRouter prices and capabilities), else None."""
+        for _stamp, models in self._cache.values():
+            for info in models:
+                if info.provider == provider and info.id == model_id:
+                    return info
+        return None
 
     async def _fetch(
         self, provider: str, api_key: str | None, base_url: str | None, declared: dict[str, Any]

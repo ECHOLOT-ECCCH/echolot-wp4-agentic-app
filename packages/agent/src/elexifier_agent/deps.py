@@ -42,6 +42,9 @@ class AgentDeps:
     conversation_id: uuid.UUID | None = None
     # Hands a background job to the queue: (task name, kwargs) -> job id. None when no queue.
     defer_job: Callable[[str, dict[str, Any]], Awaitable[int | None]] | None = None
+    # The turn's model, for tools that run their own model calls (PDF structuring).
+    model: Any | None = None
+    model_spec: dict[str, Any] = field(default_factory=dict)  # provider, model_id, credential_id
 
     def session(self) -> AsyncSession:
         """A fresh database session; tools commit their own work."""

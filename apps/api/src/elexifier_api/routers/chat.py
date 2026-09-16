@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from elexifier_agent.catalog import curated_info
 from elexifier_agent.deps import AgentDeps, ProjectContext, UserContext
 from elexifier_agent.runtime import RunSummary
 from elexifier_agent.ui_messages import (
@@ -229,8 +230,12 @@ async def chat(
         session_factory=state.db.session_factory,
         storage=state.storage,
         settings=settings,
+        model_info=state.catalog.cached_info(spec.provider, spec.model_id)
+        or curated_info(spec.provider, spec.model_id),
         conversation_id=conversation.id,
         defer_job=_deferrer(state),
+        model=model,
+        model_spec=spec.model_dump(),
     )
 
     async def on_complete(summary: RunSummary) -> None:

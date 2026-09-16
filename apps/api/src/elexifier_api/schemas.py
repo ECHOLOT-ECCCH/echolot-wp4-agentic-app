@@ -227,11 +227,14 @@ class ConvertedEntryOut(ApiModel):
     id: uuid.UUID
     run_id: uuid.UUID
     entry_id: uuid.UUID | None
+    annotation_id: uuid.UUID | None = None
     position: int
     ordinal: int | None
     headword: str | None
     issue_count: int
     issues: list[Any]
+    confidence: float | None = None
+    notes: list[Any] = Field(default_factory=list)
 
 
 class ConvertedEntryPage(BaseModel):
@@ -378,3 +381,14 @@ class AnnotationSplit(BaseModel):
 
 class AnnotationMerge(BaseModel):
     with_id: uuid.UUID
+
+
+class StructureRequest(BaseModel):
+    kind: Literal["sample"] = "sample"
+    structurer: Literal["llm", "rule"] = "llm"
+    n: int = Field(default=10, ge=1, le=20)
+    span_ids: list[uuid.UUID] | None = None
+    strategy: Literal["first", "spread"] = "spread"
+    profile: dict[str, Any] | None = None
+    with_images: bool | None = None
+    model: dict[str, Any] | None = None  # optional model override like the chat request

@@ -17,6 +17,7 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
   const [onlyIssues, setOnlyIssues] = useState(false)
   const entries = useRunEntries(projectId, runId, { offset, limit: PAGE, issues: onlyIssues })
   const openEntry = usePreview((s) => s.openEntry)
+  const openSpan = usePreview((s) => s.openSpan)
 
   if (run.isPending) return <p className="text-muted-foreground p-3 text-sm">Loading run…</p>
   if (run.isError) return <p className="text-destructive p-3 text-sm">{run.error.message}</p>
@@ -33,7 +34,11 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs">
         <span className="font-medium capitalize">{data.kind} run</span>
-        <span className="text-muted-foreground">mapping v{data.mapping_version}</span>
+        <span className="text-muted-foreground">
+          {data.mapping_version > 0
+            ? `mapping v${data.mapping_version}`
+            : `${data.scope.structurer ?? 'structuring'} structurer`}
+        </span>
         <span className="text-muted-foreground">{new Date(data.created_at).toLocaleString()}</span>
         <span
           className={`ml-auto rounded px-1.5 py-0.5 ${
@@ -203,9 +208,11 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
           <li key={item.id}>
             <button
               type="button"
-              disabled={!item.entry_id}
+              disabled={!item.entry_id && !item.annotation_id}
               onClick={() =>
-                item.entry_id && openEntry(item.entry_id, data.document_id ?? undefined, runId)
+                item.entry_id
+                  ? openEntry(item.entry_id, data.document_id ?? undefined, runId)
+                  : openSpan(runId, item.id, data.document_id)
               }
               className="hover:bg-accent/60 flex w-full flex-col gap-0.5 border-b px-3 py-1.5 text-left text-sm"
             >
@@ -214,6 +221,14 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
                   {item.ordinal !== null ? item.ordinal + 1 : '–'}
                 </span>
                 <span className="truncate font-medium">{item.headword ?? '(no headword)'}</span>
+                {item.confidence !== null && item.confidence !== undefined && (
+                  <span
+                    className={`shrink-0 text-xs ${item.confidence < 0.6 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}
+                    title="model confidence"
+                  >
+                    {Math.round(item.confidence * 100)}%
+                  </span>
+                )}
                 {item.issue_count > 0 ? (
                   <span className="ml-auto shrink-0 rounded bg-amber-100 px-1.5 text-xs text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
                     {item.issue_count} issue{item.issue_count === 1 ? '' : 's'}

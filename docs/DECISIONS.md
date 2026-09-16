@@ -598,3 +598,38 @@ Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, 
   cropped to the region, sent as `BinaryContent` next to the tool result (`ToolReturn.content`).
   Page images are rendered once per resolution and kept in storage (`page_image`, shared with
   the API route); `open_page` opens the document view at that page and box.
+
+## 2026-09-16 Structuring a sample of spans (M2.6)
+
+- `elexifier_pipeline.pdf.structurers`: `DmlexEntryDraft` is what the model fills in (headword,
+  homograph number, parts of speech, labels, transcriptions, inflected forms, senses with
+  indicator, labels, definitions, translations, explanations and examples, plus confidence and
+  notes); `draft_to_dmlex` turns it into the normalized DMLex JSON the writers and validator
+  already use, with generated ids `e1`, `e1.s1` and the profile's first target language as
+  `langCode` on translations. `LlmStructurer` is a Pydantic AI agent with structured output per
+  entry (instructions: copy the source wording, one sense per meaning, translations are not
+  definitions, lower the confidence when unsure), the page crop as `BinaryContent` when the model
+  sees images, a semaphore of 4, retries, per-entry usage; a failing entry is recorded, the batch
+  goes on. `RuleStructurer` (headword + one definition, confidence 0.3) is the free baseline and
+  what the tests and the e2e use.
+- The pipeline package now depends on `pydantic-ai-slim` (the structurer lives there per PLAN
+  7.7); the model object comes from the caller, so the pipeline stays provider-agnostic.
+- `StructureProfile` (source language, target languages, contents, id prefix) is given once to
+  `pdf_structure` and kept in `projects.settings.structure_profile`; later calls merge over it.
+- Tools: `pdf_estimate_cost` (token and price estimate from the curated or cached model info:
+  700 prompt tokens plus text/4 and 1,100 per page crop per entry, 260 plus text/6 output) and
+  `pdf_structure(kind="sample", n | span_ids, profile, structurer, with_images)`: usable spans
+  are accepted and edited ones, or all proposals when nothing was reviewed. Results are stored as
+  a `sample` run with `mapping_version=0`, `converted_entries` linked to the span
+  (`annotation_id`, migration 0007 with `confidence`, `notes`, `override`), per-entry validation
+  and a `usage_records` row with purpose `structure`. `AgentDeps` carries the turn's model and
+  its spec for tools that call models; `model_info` is resolved from the catalogue cache or the
+  curated registry (vision, prices).
+- API: `POST .../documents/{id}/structure` (same service; the UI's button and the tests),
+  `GET .../annotations/{id}`, converted entries expose `annotation_id`, `confidence`, `notes`.
+  Web: `SpanView` shows the page crop of the span (the cached 110 dpi rendering, clipped) with
+  the span text next to the DMLex output, notes and confidence; runs without a mapping are
+  labelled by structurer.
+- Not verified live: structuring 10 spans with the owner's model (credits); the scripted-model
+  and rule paths are covered by tests. The curated registry has no prices for direct providers,
+  so estimates there give tokens only; OpenRouter models come with prices.

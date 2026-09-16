@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import ValidationError
 from pydantic_ai import BinaryContent, RunContext, ToolReturn
 from pydantic_ai.toolsets import FunctionToolset
 
@@ -22,8 +23,16 @@ from elexifier_agent.pdf_service import (
     profile_layouts,
     run_segmentation,
 )
+from elexifier_agent.structuring import (
+    StructuringError,
+    estimate_for,
+    pick_spans,
+    structure_sample,
+    usable_spans,
+)
 from elexifier_agent.tools._entries import ToolInputError, get_document
-from elexifier_core.db.models import Document, File
+from elexifier_core.db.models import Document, File, Project
+from elexifier_pipeline.pdf.structurers import StructureProfile
 
 pdf_toolset: FunctionToolset[AgentDeps] = FunctionToolset()
 
@@ -297,3 +306,177 @@ async def pdf_get_page(
     )
     content = [BinaryContent(data=image, media_type="image/png")] if image is not None else None
     return to_tool_return(result, content=content)
+
+
+async def _profile_from(
+    db: Any, deps: AgentDeps, profile: dict[str, Any] | None
+) -> tuple[StructureProfile, dict[str, Any]]:
+    """The structure profile: the call's values over the ones stored on the project."""
+    project = await db.get(Project, deps.project.id)
+    settings = (project.settings if project is not None else None) or deps.project.settings or {}
+    stored = dict(settings.get("structure_profile") or {})
+    merged = {**stored, **{k: v for k, v in (profile or {}).items() if v not in (None, "", [])}}
+    try:
+        return StructureProfile.model_validate(merged), merged
+    except ValidationError as exc:
+        raise ToolInputError(f"invalid profile: {exc.errors()[0]['msg']}") from exc
+
+
+async def _store_profile(db: Any, project_id: Any, profile: dict[str, Any]) -> None:
+    project = await db.get(Project, project_id)
+    if project is not None:
+        project.settings = {**(project.settings or {}), "structure_profile": profile}
+
+
+@pdf_toolset.tool
+async def pdf_estimate_cost(
+    ctx: RunContext[AgentDeps],
+    document_id: str | None = None,
+    with_images: bool | None = None,
+) -> ToolReturn:
+    """Estimate the tokens and cost of structuring every reviewed entry span with the current
+    model (accepted spans, or all proposals when nothing was reviewed yet). Show this to the
+    lexicographer before a full structuring run.
+
+    Args:
+        document_id: The PDF document. Omit when the project has one.
+        with_images: Include a page crop per entry (default: yes when the model sees images).
+    """
+    deps = ctx.deps
+    async with deps.session() as db:
+        try:
+            document = await _pdf_document(deps, db, document_id)
+        except ToolInputError as exc:
+            return error_result(str(exc))
+        spans = await usable_spans(db, document)
+        doc_id = str(document.id)
+    info = deps.model_info
+    images = with_images if with_images is not None else bool(info and info.supports_vision)
+    estimate = estimate_for(
+        spans,
+        with_images=images,
+        price_in_per_m=info.price_in_per_m if info else None,
+        price_out_per_m=info.price_out_per_m if info else None,
+    )
+    reviewed = sum(1 for s in spans if s.status in ("accepted", "edited"))
+    model_label = (deps.model_spec or {}).get("model_id") or (info.id if info else "the model")
+    summary = (
+        f"{estimate.entries} entry spans ({reviewed} reviewed) with {model_label}: about "
+        f"{estimate.input_tokens:,} input and {estimate.output_tokens:,} output tokens"
+        + (f", roughly ${estimate.usd_estimate:.2f}" if estimate.usd_estimate is not None else "")
+        + ("; page crops included" if images else "; text only")
+        + "."
+        + (" " + " ".join(estimate.notes) if estimate.notes else "")
+    )
+    return to_tool_return(
+        ToolResult(
+            summary=summary[:500],
+            data={"document_id": doc_id, **estimate.model_dump(), "reviewed_spans": reviewed},
+        )
+    )
+
+
+@pdf_toolset.tool
+async def pdf_structure(
+    ctx: RunContext[AgentDeps],
+    kind: Literal["sample"] = "sample",
+    n: int = 10,
+    span_ids: list[str] | None = None,
+    strategy: Literal["first", "spread"] = "spread",
+    profile: dict[str, Any] | None = None,
+    structurer: Literal["llm", "rule"] = "llm",
+    with_images: bool | None = None,
+    document_id: str | None = None,
+) -> ToolReturn:
+    """Turn entry spans into DMLex entries with the model (or the rule baseline) and validate
+    them. kind="sample" structures up to 20 spans right away, stores a run and opens the results
+    next to the page for review. Give the profile once (source language, target languages, what
+    an entry contains); it is remembered for the project.
+
+    Args:
+        kind: Only "sample" for now; full runs come later.
+        n: Sample size (1-20) when span_ids are not given.
+        span_ids: Structure exactly these annotation ids.
+        strategy: "spread" across the reviewed spans or the "first" ones.
+        profile: {"source_language": "en", "target_languages": ["sl"], "contents": "..."}.
+        structurer: "llm" (the project's model) or "rule" (headword + one definition, free).
+        with_images: Send a page crop per entry (default: yes when the model sees images).
+        document_id: The PDF document. Omit when the project has one.
+    """
+    deps = ctx.deps
+    if kind != "sample":
+        return error_result("only kind='sample' is available in this version")
+    async with deps.session() as db:
+        try:
+            document = await _pdf_document(deps, db, document_id)
+            struct_profile, merged = await _profile_from(db, deps, profile)
+            spans = await usable_spans(db, document)
+            if span_ids:
+                wanted = set(span_ids)
+                chosen = [s for s in spans if str(s.id) in wanted]
+                if not chosen:
+                    raise ToolInputError("none of the span_ids match a usable span")
+            else:
+                chosen = pick_spans(spans, n, strategy)
+            info = deps.model_info
+            images = with_images if with_images is not None else bool(info and info.supports_vision)
+            outcome = await structure_sample(
+                db,
+                deps.storage,
+                document=document,
+                spans=chosen,
+                profile=struct_profile,
+                model=deps.model,
+                structurer_name=structurer,
+                with_images=images and structurer == "llm",
+                triggered_by=deps.user.id,
+                model_spec=deps.model_spec,
+                project_id=deps.project.id,
+            )
+            if profile:
+                await _store_profile(db, deps.project.id, merged)
+            await db.commit()
+        except (ToolInputError, StructuringError) as exc:
+            return error_result(str(exc))
+        run = outcome.run
+        run_id, stats = str(run.id), dict(run.stats)
+        rows = []
+        for row, result in zip(outcome.converted, outcome.results, strict=True):
+            item: dict[str, Any] = {
+                "annotation_id": str(row.annotation_id),
+                "page": next((s.page_no for s in chosen if s.id == row.annotation_id), None),
+                "headword": row.headword,
+                "confidence": row.confidence,
+                "notes": row.notes,
+                "issues": row.issues,
+            }
+            if len(rows) < 3:
+                item["dmlex"] = row.dmlex
+            if result.error:
+                item["error"] = result.error
+            rows.append(item)
+        doc_id = str(document.id)
+    summary = (
+        f"Structured {stats['converted']} of {stats['requested']} spans with the {structurer} "
+        f"structurer: {stats['with_issues']} with issues ({stats['errors']} errors, "
+        f"{stats['warnings']} warnings), mean confidence {stats['confidence_mean']:.2f}, "
+        f"{stats['low_confidence']} below 0.6"
+        + (f", {stats['failed']} model failures" if stats.get("failed") else "")
+        + f"; {stats['usage']['input_tokens']:,} input / {stats['usage']['output_tokens']:,} "
+        "output tokens. Open the entries next to the page and ask the lexicographer to check them."
+    )
+    return to_tool_return(
+        ToolResult(
+            summary=summary[:500],
+            data={
+                "run_id": run_id,
+                "document_id": doc_id,
+                "stats": stats,
+                "profile": struct_profile.model_dump(),
+                "entries": rows,
+                "note": "entries after the first 3 only list issues; the run panel shows all",
+            },
+            cost={"tokens": stats["usage"]},
+            ui_actions=[UiAction(type="open_run", run_id=run_id)],
+        )
+    )

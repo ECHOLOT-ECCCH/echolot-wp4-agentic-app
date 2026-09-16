@@ -27,7 +27,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 - Current milestone: M2 PDF end to end (checklist in section 12c). M1 is complete (M1.10 verified
   with claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M2.6
+- Next task: M2.7
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -36,7 +36,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M2.5 done)
+- Last update: 2026-09-16 (M2.6 done; live check with the owner's model pending credits)
 
 Update this block at the end of every task.
 
@@ -639,7 +639,7 @@ Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
   part the API turns into a user-message annotation; tool `pdf_get_page(document_id, page, bbox?)`
   returns the words and, for vision models, the page image (110 dpi, cropped to the bbox).
   Acceptance: ask about a selected region and the answer refers to its words.
-- [ ] M2.6 Structuring, sample. `pipeline/pdf/structurers.py`: `RuleStructurer` (headword plus the
+- [x] M2.6 Structuring, sample. `pipeline/pdf/structurers.py`: `RuleStructurer` (headword plus the
   rest as one definition) and `LlmStructurer` (Pydantic AI agent per entry with
   `output_type=DmlexEntryDraft`, the project's model, optional page crop, concurrency semaphore,
   retries, per-entry usage); `StructureProfile` (source language, target languages, what the

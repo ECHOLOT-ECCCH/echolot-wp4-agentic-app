@@ -8,9 +8,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from elexifier_agent.catalog import curated_info
 from elexifier_agent.pdf_service import (
     SYNC_SEGMENT_MAX_PAGES,
     PdfServiceError,
@@ -19,9 +21,23 @@ from elexifier_agent.pdf_service import (
     page_rows,
     run_segmentation,
 )
+from elexifier_agent.structuring import (
+    StructuringError,
+    pick_spans,
+    structure_sample,
+    usable_spans,
+)
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
-from elexifier_api.deps import CurrentStorage, CurrentUser, DbSession, State
+from elexifier_api.deps import (
+    CurrentSecretBox,
+    CurrentSettings,
+    CurrentStorage,
+    CurrentUser,
+    DbSession,
+    State,
+)
+from elexifier_api.models_resolver import resolve_model
 from elexifier_api.schemas import (
     AnnotationBulk,
     AnnotationCreate,
@@ -30,11 +46,14 @@ from elexifier_api.schemas import (
     AnnotationPage,
     AnnotationSplit,
     AnnotationUpdate,
+    RunDetailOut,
     SegmentOut,
     SegmentRequest,
+    StructureRequest,
 )
 from elexifier_core.db.models import Annotation, AnnotationStatus, Document, ProjectRole
 from elexifier_core.events import publish
+from elexifier_pipeline.pdf.structurers import StructureProfile
 
 router = APIRouter(prefix="/api/projects/{project_id}", tags=["annotations"])
 
@@ -136,6 +155,18 @@ async def create_annotation(
     audit.record(db, user.id, "annotation.created", annotation.id, document=str(document.id))
     await db.flush()
     await db.refresh(annotation)
+    return AnnotationOut.model_validate(annotation)
+
+
+@router.get("/annotations/{annotation_id}", response_model=AnnotationOut)
+async def get_annotation(
+    project_id: uuid.UUID, annotation_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> AnnotationOut:
+    await get_project_or_404(db, project_id, user)
+    annotation = await db.get(Annotation, annotation_id)
+    document = await db.get(Document, annotation.document_id) if annotation else None
+    if annotation is None or document is None or document.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Annotation not found")
     return AnnotationOut.model_validate(annotation)
 
 
@@ -456,3 +487,79 @@ async def merge_annotation(
     await db.flush()
     await db.refresh(merged)
     return AnnotationOut.model_validate(merged)
+
+
+@router.post("/documents/{document_id}/structure", response_model=RunDetailOut)
+async def structure_document(
+    project_id: uuid.UUID,
+    document_id: uuid.UUID,
+    body: StructureRequest,
+    db: DbSession,
+    user: CurrentUser,
+    storage: CurrentStorage,
+    box: CurrentSecretBox,
+    settings: CurrentSettings,
+) -> RunDetailOut:
+    """Structure a sample of reviewed spans into DMLex (the UI's button; the agent uses the
+    pdf_structure tool). The model is the project's unless one is given."""
+    project, _role = await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
+    document = await _pdf_document(db, project_id, document_id)
+    spans = await usable_spans(db, document)
+    if body.span_ids:
+        wanted = set(body.span_ids)
+        chosen = [s for s in spans if s.id in wanted]
+    else:
+        chosen = pick_spans(spans, body.n, body.strategy)
+    if not chosen:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No usable entry spans")
+    stored = dict((project.settings or {}).get("structure_profile") or {})
+    merged = {
+        **stored,
+        **{k: v for k, v in (body.profile or {}).items() if v not in (None, "", [])},
+    }
+    try:
+        profile = StructureProfile.model_validate(merged)
+    except ValidationError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Invalid profile: {exc}"
+        ) from exc
+    model = None
+    model_spec: dict[str, Any] = {}
+    info = None
+    if body.structurer == "llm":
+        spec, model = await resolve_model(
+            db, user=user, project=project, requested=body.model, box=box, settings=settings
+        )
+        model_spec = spec.model_dump()
+        info = curated_info(spec.provider, spec.model_id)
+    with_images = (
+        body.with_images if body.with_images is not None else bool(info and info.supports_vision)
+    )
+    try:
+        outcome = await structure_sample(
+            db,
+            storage,
+            document=document,
+            spans=chosen,
+            profile=profile,
+            model=model,
+            structurer_name=body.structurer,
+            with_images=with_images and body.structurer == "llm",
+            triggered_by=user.id,
+            model_spec=model_spec,
+            project_id=project_id,
+        )
+    except StructuringError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    if body.profile:
+        project.settings = {**(project.settings or {}), "structure_profile": merged}
+    audit.record(
+        db,
+        user.id,
+        "run.structure",
+        outcome.run.id,
+        project=str(project_id),
+        structurer=body.structurer,
+    )
+    await db.flush()
+    return RunDetailOut.model_validate(outcome.run)

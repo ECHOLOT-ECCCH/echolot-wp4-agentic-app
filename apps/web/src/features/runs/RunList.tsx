@@ -27,7 +27,10 @@ export function RunList({ projectId }: { projectId: string }) {
             >
               <PlayIcon className="text-muted-foreground size-4 shrink-0" />
               <span className="truncate">
-                {run.kind === 'sample' ? 'Sample' : 'Full run'} · mapping v{run.mapping_version}
+                {run.kind === 'sample' ? 'Sample' : 'Full run'} ·{' '}
+                {run.mapping_version > 0
+                  ? `mapping v${run.mapping_version}`
+                  : `${run.scope.structurer ?? 'structuring'} structurer`}
               </span>
               <span
                 className={`ml-auto shrink-0 text-xs ${

@@ -184,3 +184,39 @@ async def test_split_and_merge_spans(
         json={"with_id": body["id"]},
     )
     assert cross_page.status_code == 422
+
+
+async def test_structure_sample_endpoint_with_rule_and_test_model(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    logged_in.apply(client)
+    pid, doc_id = await _pdf_project(client)
+    base = f"/api/projects/{pid}/documents/{doc_id}"
+    nothing = await client.post(f"{base}/structure", json={"structurer": "rule"})
+    assert nothing.status_code == 422
+    await client.post(f"{base}/segment", json={})
+    await client.post(f"{base}/annotations/bulk", json={"status": "accepted", "page_no": 1})
+
+    rule = await client.post(
+        f"{base}/structure",
+        json={"structurer": "rule", "n": 5, "profile": {"source_language": "en"}},
+    )
+    assert rule.status_code == 200, rule.text
+    run = rule.json()
+    assert run["kind"] == "sample" and run["mapping_version"] == 0
+    assert run["stats"]["converted"] == 5 and run["scope"]["structurer"] == "rule"
+    entries = (await client.get(f"/api/projects/{pid}/runs/{run['id']}/entries")).json()
+    assert entries["total"] == 5
+    first = entries["items"][0]
+    assert first["annotation_id"] and first["entry_id"] is None and first["confidence"] == 0.3
+    detail = (
+        await client.get(f"/api/projects/{pid}/runs/{run['id']}/entries/{first['id']}")
+    ).json()
+    assert detail["dmlex"]["headword"] == "abacus" and detail["xml"].startswith("<entry")
+    assert (await client.get(f"/api/projects/{pid}/annotations/{first['annotation_id']}")).json()[
+        "page_no"
+    ] == 1
+
+    # the model path needs a model: the project has none -> 422 with a clear message
+    no_model = await client.post(f"{base}/structure", json={"structurer": "llm", "n": 2})
+    assert no_model.status_code in (400, 422)

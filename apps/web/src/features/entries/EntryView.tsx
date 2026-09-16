@@ -7,7 +7,7 @@ import { TextPreview } from '@/features/preview/TextPreview'
 import { useConvertedEntry, useEntry } from '@/lib/queries'
 import type { ConvertedEntryDetail } from '@/lib/types'
 
-type OutputView = 'rendered' | 'xml' | 'json'
+export type OutputView = 'rendered' | 'xml' | 'json'
 
 export function EntryView({
   projectId,
@@ -95,7 +95,13 @@ export function EntryView({
   )
 }
 
-function ConvertedOutput({ output, view }: { output: ConvertedEntryDetail; view: OutputView }) {
+export function ConvertedOutput({
+  output,
+  view,
+}: {
+  output: ConvertedEntryDetail
+  view: OutputView
+}) {
   return (
     <div className="flex flex-col border-b last:border-b-0">
       {output.issues.length > 0 && (

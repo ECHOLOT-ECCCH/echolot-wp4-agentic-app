@@ -7,6 +7,7 @@ export type PreviewTarget =
   | { kind: 'document'; documentId: string; page?: number; overlaySetId?: string }
   | { kind: 'entry'; entryId: string; documentId?: string; runId?: string }
   | { kind: 'run'; runId: string }
+  | { kind: 'span'; runId: string; convertedId: string; documentId: string | null }
   | { kind: 'mapping'; version?: number }
   | { kind: 'spec' }
   | { kind: 'none' }
@@ -23,6 +24,7 @@ interface PreviewState {
   openDocument: (documentId: string, page?: number) => void
   openEntry: (entryId: string, documentId?: string, runId?: string) => void
   openRun: (runId: string) => void
+  openSpan: (runId: string, convertedId: string, documentId: string | null) => void
   openMapping: (version?: number) => void
   openSpec: () => void
   apply: (action: UiAction) => void
@@ -42,6 +44,11 @@ export const usePreview = create<PreviewState>((set) => ({
       revision: s.revision + 1,
     })),
   openRun: (runId) => set((s) => ({ target: { kind: 'run', runId }, revision: s.revision + 1 })),
+  openSpan: (runId, convertedId, documentId) =>
+    set((s) => ({
+      target: { kind: 'span', runId, convertedId, documentId },
+      revision: s.revision + 1,
+    })),
   openMapping: (version) =>
     set((s) => ({ target: { kind: 'mapping', version }, revision: s.revision + 1 })),
   openSpec: () => set((s) => ({ target: { kind: 'spec' }, revision: s.revision + 1 })),

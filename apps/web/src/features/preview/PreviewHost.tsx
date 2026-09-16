@@ -4,6 +4,7 @@ import { DownloadIcon, FileSearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DocumentPanel } from '@/features/entries/DocumentPanel'
 import { MappingEditor } from '@/features/mapping/MappingEditor'
+import { SpanView } from '@/features/pdf/SpanView'
 import { RunPanel } from '@/features/runs/RunPanel'
 import { SpecEditor } from '@/features/spec/SpecEditor'
 import { PdfViewer } from '@/features/preview/PdfViewer'
@@ -59,6 +60,16 @@ export function PreviewHost({ projectId }: { projectId: string }) {
   }
   if (target.kind === 'run') {
     return <RunPanel projectId={projectId} runId={target.runId} />
+  }
+  if (target.kind === 'span') {
+    return (
+      <SpanView
+        projectId={projectId}
+        runId={target.runId}
+        convertedId={target.convertedId}
+        documentId={target.documentId}
+      />
+    )
   }
   if (target.kind === 'mapping') {
     return <MappingEditor projectId={projectId} version={target.version} canEdit={canEdit} />

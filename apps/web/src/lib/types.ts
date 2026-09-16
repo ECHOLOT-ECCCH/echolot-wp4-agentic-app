@@ -242,7 +242,14 @@ export interface RunRecord {
   kind: RunKind
   mapping_version: number
   status: RunStatus
-  scope: { ordinals?: number[]; strategy?: string | null; query?: string | null }
+  scope: {
+    ordinals?: number[]
+    strategy?: string | null
+    query?: string | null
+    structurer?: string
+    span_ids?: string[]
+    options?: Record<string, unknown>
+  }
   stats: {
     phase?: string
     done?: number
@@ -267,7 +274,7 @@ export interface RunRecord {
 
 export interface EntryIssue {
   severity: 'error' | 'warning'
-  source: 'schema' | 'consistency' | 'writer'
+  source: 'schema' | 'consistency' | 'writer' | 'structurer'
   code: string
   path: string
   message: string
@@ -292,11 +299,14 @@ export interface ConvertedEntryItem {
   id: string
   run_id: string
   entry_id: string | null
+  annotation_id: string | null
   position: number
   ordinal: number | null
   headword: string | null
   issue_count: number
   issues: EntryIssue[]
+  confidence: number | null
+  notes: string[]
 }
 
 export interface ConvertedEntryPage {

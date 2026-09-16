@@ -213,6 +213,27 @@ export function useRunEntries(
   })
 }
 
+export function useConvertedEntryById(
+  projectId: string,
+  runId: string | null,
+  convertedId: string | null,
+) {
+  return useQuery({
+    queryKey: ['projects', projectId, 'runs', runId ?? '', 'entries', convertedId ?? ''] as const,
+    queryFn: () =>
+      api<ConvertedEntryDetail>(`/api/projects/${projectId}/runs/${runId}/entries/${convertedId}`),
+    enabled: Boolean(runId && convertedId),
+  })
+}
+
+export function useAnnotation(projectId: string, annotationId: string | null) {
+  return useQuery({
+    queryKey: ['projects', projectId, 'annotation', annotationId ?? ''] as const,
+    queryFn: () => api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${annotationId}`),
+    enabled: Boolean(annotationId),
+  })
+}
+
 /** Converted output of a source entry in a run (the latest run that has it when runId is null). */
 export function useConvertedEntry(projectId: string, entryId: string | null, runId: string | null) {
   const search = runId ? `?run_id=${runId}` : ''

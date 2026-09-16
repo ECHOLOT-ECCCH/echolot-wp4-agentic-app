@@ -12,7 +12,14 @@ not known yet: they are found by segmentation and confirmed by the lexicographer
   lines are indented), auto (decides from the bold share). Every proposal replaces the previous
   one; the lexicographer's accept/reject decisions and their own boxes stay.
 
+- pdf_estimate_cost: tokens and cost of structuring every reviewed span with the current model.
+- pdf_structure: turn spans into DMLex entries with the model (kind="sample", up to 20 at a
+  time) and validate them; needs a profile the first time (source language, target languages,
+  what an entry contains and how it is printed), which is remembered. The rule structurer is a
+  free baseline (headword plus one definition).
+
 Recommended order: analyse, tell the lexicographer what the pages look like and which cue marks
 an entry start, segment, look at the counts (entries per page, continuations, warnings), adjust
 the parameters when the counts are implausible, and ask the lexicographer to review a page.
-Structuring entries into DMLex comes after the review.
+Then agree the profile, structure a sample of ten spans, look at the confidences, notes and
+issues together, refine the profile, and only then talk about cost and the full run.

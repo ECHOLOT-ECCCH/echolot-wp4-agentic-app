@@ -396,6 +396,14 @@ class ConvertedEntry(UUIDPrimaryKeyMixin, Base):
     dmlex: Mapped[dict[str, Any]] = mapped_column(default=dict)  # normalized DMLex JSON
     issues: Mapped[list[Any]] = mapped_column(default=list)
     issue_count: Mapped[int] = mapped_column(Integer, default=0)
+    # PDF structuring (M2.6): the span this entry came from, the model's confidence and notes,
+    # and the lexicographer's corrected version when they edited the output
+    annotation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("annotations.id", ondelete="SET NULL")
+    )
+    confidence: Mapped[float | None]
+    notes: Mapped[list[Any]] = mapped_column(default=list)
+    override: Mapped[dict[str, Any] | None]
 
     run: Mapped[ConversionRun] = relationship(back_populates="converted_entries")
 
