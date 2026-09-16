@@ -161,3 +161,99 @@ async def fixture(test_db_url: str, tmp_path: Path) -> AsyncIterator[Fixture]:
         )
     finally:
         await db.dispose()
+
+
+@pytest.fixture
+async def pdf_fixture(test_db_url: str, tmp_path: Path) -> AsyncIterator[Fixture]:
+    """A PDF project with the two-column fixture analysed (pages + layouts), as M2.1 leaves it."""
+    from elexifier_core.db.models import PdfPage
+    from elexifier_pipeline.pdf.layout import PdfplumberLayout
+    from elexifier_pipeline.sample import COLUMNS_PDF
+
+    await truncate_all_async(test_db_url)
+    storage = LocalStorage(tmp_path / "storage")
+    db = Database(Settings(database_url=test_db_url))  # type: ignore[call-arg]
+    settings = Settings(database_url=test_db_url)  # type: ignore[call-arg]
+    async with db.session() as session:
+        user = User(oidc_sub="sub-pdf", email="pdf@example.com", name="Pia")
+        session.add(user)
+        await session.flush()
+        project = Project(owner_id=user.id, name="PDF dictionary", source_type="pdf")
+        session.add(project)
+        await session.flush()
+        session.add(ProjectMember(project_id=project.id, user_id=user.id, role="owner"))
+        file_id = uuid.uuid4()
+        key = make_key(str(project.id), "source", str(file_id), "columns.pdf")
+        stat = await storage.put(key, COLUMNS_PDF.read_bytes(), content_type="application/pdf")
+        session.add(
+            File(
+                id=file_id,
+                project_id=project.id,
+                kind="source",
+                name="columns.pdf",
+                s3_key=key,
+                size=stat.size,
+                sha256=stat.sha256 or "",
+                mime="application/pdf",
+                created_by=user.id,
+            )
+        )
+        await session.flush()
+        document = Document(
+            project_id=project.id,
+            source_file_id=file_id,
+            type="pdf",
+            status="ready",
+            entry_count=0,
+            stats={"page_count": 4, "scanned_pages": 1, "file_name": "columns.pdf"},
+        )
+        session.add(document)
+        await session.flush()
+        for layout in PdfplumberLayout().extract(COLUMNS_PDF):
+            page_key = make_key(
+                str(project.id), "derived", str(document.id), f"page-{layout.page:05d}.json"
+            )
+            await storage.put(
+                page_key, layout.model_dump_json().encode(), content_type="application/json"
+            )
+            session.add(
+                PdfPage(
+                    document_id=document.id,
+                    page_no=layout.page,
+                    width=layout.width,
+                    height=layout.height,
+                    rotation=layout.rotation,
+                    layout_s3_key=page_key,
+                    text_chars=layout.text_chars,
+                    is_scanned=layout.is_scanned,
+                    line_count=len(layout.lines),
+                )
+            )
+        await session.commit()
+        document_id = document.id
+        deferred: list[tuple[str, dict[str, Any]]] = []
+
+        async def fake_defer(name: str, kwargs: dict[str, Any]) -> int | None:
+            deferred.append((name, kwargs))
+            return len(deferred)
+
+        deps = AgentDeps(
+            project=ProjectContext(id=project.id, name=project.name, source_type="pdf"),
+            user=UserContext(id=user.id, email=user.email, name=user.name, role="owner"),
+            session_factory=db.session_factory,
+            storage=storage,
+            settings=settings,
+            defer_job=fake_defer,
+        )
+    try:
+        yield Fixture(
+            deps=deps,
+            db=db,
+            storage=storage,
+            file_id=file_id,
+            project_id=project.id,
+            document_id=document_id,
+            deferred=deferred,
+        )
+    finally:
+        await db.dispose()

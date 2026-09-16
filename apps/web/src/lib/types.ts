@@ -141,6 +141,20 @@ export interface DocumentDetail extends DocumentRecord {
     scanned_pages?: number
     text_chars?: number
     lines?: number
+    segmentation?: {
+      set_id: string
+      segmenter: string
+      params: Record<string, unknown>
+      stats: {
+        pages: number
+        spans: number
+        continuations: number
+        mode: string
+        warnings: string[]
+        confidence_mean: number
+      }
+      at: string
+    }
   }
 }
 

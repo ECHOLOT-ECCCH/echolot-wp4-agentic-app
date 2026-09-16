@@ -240,6 +240,39 @@ class PdfPage(UUIDPrimaryKeyMixin, Base):
     document: Mapped[Document] = relationship(back_populates="pages")
 
 
+class AnnotationStatus(StrEnum):
+    PROPOSED = "proposed"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    EDITED = "edited"
+
+
+class Annotation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A box on a PDF page: a proposed entry span from a segmenter, or a lexicographer's own."""
+
+    __tablename__ = "annotations"
+    __table_args__ = (
+        Index("ix_annotations_document_id_page_no", "document_id", "page_no"),
+        Index("ix_annotations_document_id_status", "document_id", "status"),
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    page_no: Mapped[int] = mapped_column(Integer)  # 1-based
+    bbox: Mapped[list[Any]] = mapped_column(default=list)  # [x0, top, x1, bottom], PLAN 7.10
+    label: Mapped[str] = mapped_column(String(64), default="entry")
+    entry_span_id: Mapped[str | None] = mapped_column(String(64))
+    source: Mapped[str] = mapped_column(String(8), default="rule")  # rule | ml | user
+    status: Mapped[str] = mapped_column(String(16), default=AnnotationStatus.PROPOSED.value)
+    payload: Mapped[dict[str, Any]] = mapped_column(default=dict)  # bboxes, line_ids, text ...
+    set_id: Mapped[uuid.UUID | None] = mapped_column(index=True)  # one segmentation run
+    position: Mapped[int] = mapped_column(Integer, default=0)  # reading order within the set
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
 class Entry(UUIDPrimaryKeyMixin, Base):
     """One indexed entry: where it is in the source file and how it is listed."""
 

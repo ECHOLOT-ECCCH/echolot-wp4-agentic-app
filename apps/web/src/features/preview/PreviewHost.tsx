@@ -38,6 +38,7 @@ export function PreviewHost({ projectId }: { projectId: string }) {
         documentId={target.documentId}
         entryId={null}
         runId={null}
+        page={target.page}
       />
     )
   }

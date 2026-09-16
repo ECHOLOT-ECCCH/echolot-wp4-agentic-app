@@ -19,6 +19,9 @@ describe('ui actions', () => {
       targetFor({ type: 'open_entry', entry_id: 'e1', document_id: 'd1', run_id: 'r1' }),
     ).toEqual({ kind: 'entry', entryId: 'e1', documentId: 'd1', runId: 'r1' })
     expect(targetFor({ type: 'open_run', run_id: 'r1' })).toEqual({ kind: 'run', runId: 'r1' })
+    expect(
+      targetFor({ type: 'show_overlay', document_id: 'd1', page: 3, overlay_set_id: 's1' }),
+    ).toEqual({ kind: 'document', documentId: 'd1', page: 3, overlaySetId: 's1' })
     expect(targetFor({ type: 'open_spec' })).toEqual({ kind: 'spec' })
     expect(targetFor({ type: 'open_file' })).toBeNull()
   })

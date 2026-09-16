@@ -27,7 +27,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 - Current milestone: M2 PDF end to end (checklist in section 12c). M1 is complete (M1.10 verified
   with claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M2.2
+- Next task: M2.3
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -36,7 +36,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M1.10 and M2.1 done)
+- Last update: 2026-09-16 (M2.2 done)
 
 Update this block at the end of every task.
 
@@ -614,7 +614,7 @@ Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
   `GET .../pages/{n}/image?dpi=`. Web: PDF documents in the document list with page counts; the PDF
   preview opens from the document. Acceptance: the sample PDF and a larger PDF become ready with
   layouts; a scanned page is flagged.
-- [ ] M2.2 Rule segmenter and annotations. `pipeline/pdf/segmenters.py`: `RuleSegmenter` (entry starts
+- [x] M2.2 Rule segmenter and annotations. `pipeline/pdf/segmenters.py`: `RuleSegmenter` (entry starts
   at lines whose first word is bold or larger than the body size, hanging indent, per-column
   reading order; every threshold in `params`, defaults derived from the page's font statistics) with
   `EntrySpan` confidence; `registry.py` with `get_segmenter(name)` over entry points group

@@ -43,7 +43,9 @@ export function DocumentList({ projectId }: { projectId: string }) {
                 <span className="text-muted-foreground ml-auto shrink-0 text-xs">
                   {doc.status === 'ready'
                     ? doc.type === 'pdf'
-                      ? `${(doc.page_count ?? 0).toLocaleString()} pages`
+                      ? `${(doc.page_count ?? 0).toLocaleString()} pages${
+                          doc.entry_count ? ` · ${doc.entry_count.toLocaleString()} entries` : ''
+                        }`
                       : `${doc.entry_count.toLocaleString()} entries`
                     : doc.status === 'error'
                       ? 'failed'

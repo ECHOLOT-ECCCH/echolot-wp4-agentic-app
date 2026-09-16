@@ -12,6 +12,7 @@ from pydantic_ai.toolsets import AbstractToolset
 from elexifier_agent.deps import AgentDeps
 from elexifier_agent.tools.conversion import conversion_toolset
 from elexifier_agent.tools.dev import dev_toolset
+from elexifier_agent.tools.pdf import pdf_toolset
 from elexifier_agent.tools.project import project_toolset
 from elexifier_agent.tools.xml import xml_toolset
 
@@ -49,6 +50,8 @@ def render_system_prompt(deps: AgentDeps) -> str:
     )
     if project.source_type == "xml":
         prompt += "\n\n" + load_prompt("xml_workflow.md")
+    elif project.source_type == "pdf":
+        prompt += "\n\n" + load_prompt("pdf_workflow.md")
     return prompt
 
 
@@ -57,7 +60,9 @@ def toolsets_for(source_type: str, *, dev_tools: bool = False) -> list[AbstractT
     toolsets: list[AbstractToolset[AgentDeps]] = [project_toolset]
     if source_type == "xml":
         toolsets.extend([xml_toolset, conversion_toolset])
-    # M1.8 adds full runs and export, M2 the PDF toolset, M3 the sandbox toolset.
+    elif source_type == "pdf":
+        toolsets.append(pdf_toolset)
+    # M2.6 adds structuring for PDFs, M3 the sandbox toolset.
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets

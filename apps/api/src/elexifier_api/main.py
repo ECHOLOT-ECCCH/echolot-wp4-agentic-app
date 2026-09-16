@@ -18,6 +18,7 @@ from elexifier_api import jobs as _jobs  # noqa: F401  # registers tasks on the 
 from elexifier_api.auth.oidc import OidcClient
 from elexifier_api.auth.session import SessionStore
 from elexifier_api.routers import (
+    annotations,
     auth,
     chat,
     credentials,
@@ -124,6 +125,7 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
     app.include_router(documents.router)
     app.include_router(runs.router)
     app.include_router(mappings.router)
+    app.include_router(annotations.router)
     return app
 
 

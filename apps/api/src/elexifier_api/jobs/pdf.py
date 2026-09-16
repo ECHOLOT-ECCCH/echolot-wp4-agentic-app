@@ -12,6 +12,7 @@ from typing import Any
 import structlog
 from sqlalchemy import delete
 
+from elexifier_agent.pdf_service import run_segmentation
 from elexifier_api.jobs.documents import _set_status, download_to_temp
 from elexifier_api.jobs.runtime import job_database, job_storage
 from elexifier_core.db.models import Document, DocumentStatus, File, PdfPage
@@ -143,3 +144,39 @@ async def extract_layout(document_id: str | uuid.UUID) -> dict[str, Any]:
 @app.task(name="documents.layout", queue=QUEUE_HEAVY, pass_context=False)
 async def extract_layout_task(document_id: str) -> dict[str, Any]:
     return await extract_layout(document_id)
+
+
+async def segment_document_job(
+    document_id: str,
+    segmenter: str = "rule",
+    params: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Segmentation of a large PDF in the worker (small ones run inside the request)."""
+    db = job_database()
+    storage = job_storage()
+    async with db.session() as session:
+        document = await session.get(Document, uuid.UUID(document_id))
+        if document is None:
+            raise LayoutError(f"document {document_id} does not exist")
+        _spans, stats, set_id = await run_segmentation(
+            session,
+            storage,
+            document,
+            segmenter_name=segmenter,
+            params=params,
+            created_by=uuid.UUID(user_id) if user_id else None,
+        )
+        await session.commit()
+    log.info("document.segmented", document_id=document_id, spans=stats.spans, mode=stats.mode)
+    return {"document_id": document_id, "set_id": str(set_id), "spans": stats.spans}
+
+
+@app.task(name="pdf.segment", queue=QUEUE_HEAVY, pass_context=False)
+async def segment_document_task(
+    document_id: str,
+    segmenter: str = "rule",
+    params: dict[str, Any] | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    return await segment_document_job(document_id, segmenter, params, user_id)

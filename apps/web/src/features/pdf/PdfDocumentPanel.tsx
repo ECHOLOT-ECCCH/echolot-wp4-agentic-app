@@ -11,9 +11,11 @@ import { usePreview } from '@/lib/uiActions'
 export function PdfDocumentPanel({
   projectId,
   document,
+  page,
 }: {
   projectId: string
   document: DocumentDetail
+  page?: number
 }) {
   const pages = usePages(projectId, document.id)
   const target = usePreview((s) => s.target)
@@ -21,6 +23,7 @@ export function PdfDocumentPanel({
   const scanned = document.stats.scanned_pages ?? 0
   const pageCount = document.stats.page_count ?? pages.data?.length ?? 0
   const focus = target.kind === 'file' && target.fileId === document.source_file_id ? target : null
+  const segmentation = document.stats.segmentation
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs">
@@ -29,6 +32,11 @@ export function PdfDocumentPanel({
         {document.stats.lines !== undefined && (
           <span className="text-muted-foreground">
             {document.stats.lines.toLocaleString()} text lines
+          </span>
+        )}
+        {segmentation && (
+          <span className="text-muted-foreground">
+            {segmentation.stats.spans.toLocaleString()} entry spans ({segmentation.stats.mode})
           </span>
         )}
         {scanned > 0 && (
@@ -41,7 +49,7 @@ export function PdfDocumentPanel({
       <div className="min-h-0 flex-1">
         <PdfViewer
           url={fileDownloadUrl(projectId, document.source_file_id, true)}
-          page={focus?.page}
+          page={page ?? focus?.page}
           bbox={focus?.bbox}
           revision={revision}
         />

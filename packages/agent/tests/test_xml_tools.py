@@ -26,7 +26,7 @@ async def call_tool(fixture: Fixture, name: str, args: dict[str, Any]) -> dict[s
             return ModelResponse(parts=[ToolCallPart(tool_name=name, args=args)])
         return ModelResponse(parts=[TextPart(content="done")])
 
-    agent = build_agent("xml", FunctionModel(script))
+    agent = build_agent(fixture.deps.project.source_type, FunctionModel(script))
     result = await agent.run(f"call {name}", deps=fixture.deps)
     assert result.output == "done"
     assert len(captured) == 1

@@ -4,7 +4,7 @@ import type { UiAction } from '@/lib/types'
 
 export type PreviewTarget =
   | { kind: 'file'; fileId: string; page?: number; bbox?: [number, number, number, number] }
-  | { kind: 'document'; documentId: string }
+  | { kind: 'document'; documentId: string; page?: number; overlaySetId?: string }
   | { kind: 'entry'; entryId: string; documentId?: string; runId?: string }
   | { kind: 'run'; runId: string }
   | { kind: 'mapping'; version?: number }
@@ -20,7 +20,7 @@ interface PreviewState {
     page?: number,
     bbox?: PreviewTarget extends { bbox?: infer B } ? B : never,
   ) => void
-  openDocument: (documentId: string) => void
+  openDocument: (documentId: string, page?: number) => void
   openEntry: (entryId: string, documentId?: string, runId?: string) => void
   openRun: (runId: string) => void
   openMapping: (version?: number) => void
@@ -34,8 +34,8 @@ export const usePreview = create<PreviewState>((set) => ({
   revision: 0,
   openFile: (fileId, page, bbox) =>
     set((s) => ({ target: { kind: 'file', fileId, page, bbox }, revision: s.revision + 1 })),
-  openDocument: (documentId) =>
-    set((s) => ({ target: { kind: 'document', documentId }, revision: s.revision + 1 })),
+  openDocument: (documentId, page) =>
+    set((s) => ({ target: { kind: 'document', documentId, page }, revision: s.revision + 1 })),
   openEntry: (entryId, documentId, runId) =>
     set((s) => ({
       target: { kind: 'entry', entryId, documentId, runId },
@@ -63,7 +63,18 @@ export function targetFor(action: UiAction): PreviewTarget | null {
         ? { kind: 'file', fileId: action.file_id, page: action.page, bbox: action.bbox }
         : null
     case 'open_document':
-      return action.document_id ? { kind: 'document', documentId: action.document_id } : null
+      return action.document_id
+        ? { kind: 'document', documentId: action.document_id, page: action.page }
+        : null
+    case 'show_overlay':
+      return action.document_id
+        ? {
+            kind: 'document',
+            documentId: action.document_id,
+            page: action.page,
+            overlaySetId: action.overlay_set_id,
+          }
+        : null
     case 'open_entry':
       return action.entry_id
         ? {

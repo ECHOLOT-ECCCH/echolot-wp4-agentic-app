@@ -508,3 +508,35 @@ Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, 
   the sample-fix-sample loop, asked before destructive choices and kept the spec current.
 - Not done: a second legacy export with a real model (the KKS mapping was only run as-is in the
   scale check); to be picked up when credits allow.
+
+## 2026-09-16 Rule segmenter and annotations (M2.2)
+
+- `RuleSegmenter` (`elexifier_pipeline.pdf.segmenters`) decides entry starts per line: mode
+  `bold` (first word bold), `size` (first word at least `headword_size_delta` above the page's
+  body size) or `indent` (line flush with the column edge within `indent_tolerance`); `auto`
+  picks bold when 3-70% of text lines start bold, else size when 2-70% start larger, else indent.
+  Running heads and page numbers (short lines in the top/bottom 5% of the page) are skipped.
+  Lines before the first start on a page or column become a continuation span (`continuation`,
+  confidence 0.4); spans do not cross pages. Confidence: 0.95 bold and flush, 0.8 bold indented,
+  0.9/0.75 size, 0.6 indent. Stats (spans, continuations, bold share, mean confidence) come with
+  warnings when the counts are implausible (under 1.5 entries per page, nearly one span per
+  line, many continuations). On the two-column fixture: 130 spans for 130 entries; size mode
+  shows the failure as 3 page-sized blobs.
+- Segmenters are discovered through `elexifier_pipeline.registry` (built-in `rule`, entry points
+  in group `elexifier.pipeline` named `segmenter.<name>`).
+- Migration 0006 `annotations`: one row per span with `bbox` (union box), `payload` (per-column
+  `bboxes`, `line_ids`, headword guess, confidence, continuation, text), `source` rule|ml|user,
+  `status` proposed|accepted|rejected|edited, `set_id` per segmentation run and `position` for
+  reading order. Re-segmenting replaces only `proposed` non-user rows; decisions and the
+  lexicographer's own boxes stay. `documents.entry_count` for PDFs counts non-rejected spans.
+- `run_segmentation` in `elexifier_agent.pdf_service` is shared by the `pdf_segment` tool, the
+  `POST .../segment` route and the `pdf.segment` job; documents above 400 pages are segmented in
+  the worker, smaller ones inside the request (the fixture takes milliseconds per page).
+- Tools `pdf_analyze` (profile from up to 12 pages spread over the document: columns, fonts,
+  bold-start share, sample lines, current segmentation and annotation counts) and `pdf_segment`
+  (returns stats, spans per page, first headwords, lowest-confidence spans, and a `show_overlay`
+  ui-action). The web opens the document at the page for now; drawing the boxes and the review
+  keyboard are M2.3.
+- API: `GET/POST .../documents/{id}/annotations`, `PATCH/DELETE .../annotations/{id}` (a moved
+  box keeps `original_bbox` and becomes `edited`), `POST .../annotations/bulk` (accept/reject by
+  ids, page or document, filtered by current status), `POST .../documents/{id}/segment`.

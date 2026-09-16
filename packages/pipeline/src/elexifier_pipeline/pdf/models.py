@@ -74,4 +74,48 @@ class PageLayout(BaseModel):
         return "\n".join(line.text for line in self.lines)
 
 
-__all__ = ["BBox", "Block", "FontStat", "Line", "PageLayout", "Word"]
+class EntrySpan(BaseModel):
+    """A proposed dictionary entry on a page: which lines belong to it and where it is."""
+
+    id: str
+    page: int
+    line_ids: list[str]
+    bboxes: list[BBox]  # one box per contiguous run of lines in a column
+    headword_guess: str | None = None
+    confidence: float = 0.5
+    source: str = "rule"  # rule | ml | user
+    continuation: bool = False  # continues an entry that started on the previous page/column
+    text: str = ""
+
+    @property
+    def bbox(self) -> BBox:
+        """The box covering all parts (for lists; drawing uses ``bboxes``)."""
+        xs0 = min(b[0] for b in self.bboxes)
+        tops = min(b[1] for b in self.bboxes)
+        xs1 = max(b[2] for b in self.bboxes)
+        bottoms = max(b[3] for b in self.bboxes)
+        return (xs0, tops, xs1, bottoms)
+
+
+class SegmentationStats(BaseModel):
+    pages: int = 0
+    spans: int = 0
+    continuations: int = 0
+    lines: int = 0
+    lines_skipped: int = 0  # running heads, page numbers
+    bold_start_share: float = 0.0  # share of text lines starting with a bold word
+    mode: str = "auto"  # bold | size | indent, as resolved
+    warnings: list[str] = Field(default_factory=list)
+    confidence_mean: float = 0.0
+
+
+__all__ = [
+    "BBox",
+    "Block",
+    "EntrySpan",
+    "FontStat",
+    "Line",
+    "PageLayout",
+    "SegmentationStats",
+    "Word",
+]

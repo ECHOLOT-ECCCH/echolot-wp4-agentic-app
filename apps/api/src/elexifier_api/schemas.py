@@ -306,3 +306,64 @@ class SpecOut(ApiModel):
 
 class SpecIn(BaseModel):
     markdown: str = Field(max_length=200_000)
+
+
+# --- annotations (PDF entry spans) --------------------------------------------------------------
+
+
+class AnnotationOut(ApiModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    page_no: int
+    bbox: list[float]
+    label: str
+    entry_span_id: str | None
+    source: str
+    status: str
+    payload: dict[str, Any]
+    set_id: uuid.UUID | None
+    position: int
+    created_by: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnnotationPage(BaseModel):
+    items: list[AnnotationOut]
+    total: int
+    offset: int
+    limit: int
+
+
+class AnnotationCreate(BaseModel):
+    page_no: int = Field(ge=1)
+    bbox: list[float] = Field(min_length=4, max_length=4)
+    label: str = Field(default="entry", max_length=64)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class AnnotationUpdate(BaseModel):
+    bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    label: str | None = Field(default=None, max_length=64)
+    status: Literal["proposed", "accepted", "rejected", "edited"] | None = None
+    payload: dict[str, Any] | None = None
+
+
+class AnnotationBulk(BaseModel):
+    status: Literal["accepted", "rejected", "proposed"]
+    ids: list[uuid.UUID] | None = None  # or everything on a page / in the document
+    page_no: int | None = None
+    only_status: Literal["proposed", "accepted", "rejected", "edited"] | None = "proposed"
+
+
+class SegmentRequest(BaseModel):
+    segmenter: str = "rule"
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class SegmentOut(BaseModel):
+    document_id: uuid.UUID
+    queued: bool
+    job_id: int | None = None
+    set_id: uuid.UUID | None = None
+    stats: dict[str, Any] | None = None

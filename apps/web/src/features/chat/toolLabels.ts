@@ -16,4 +16,6 @@ export const TOOL_LABELS: Record<string, string> = {
   run_stats: 'Checking a run',
   export: 'Preparing the export',
   validate_dmlex: 'Validating DMLex',
+  pdf_analyze: 'Analysing the PDF layout',
+  pdf_segment: 'Segmenting pages into entries',
 }

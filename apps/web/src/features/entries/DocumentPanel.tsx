@@ -12,11 +12,13 @@ export function DocumentPanel({
   documentId,
   entryId,
   runId,
+  page,
 }: {
   projectId: string
   documentId: string
   entryId: string | null
   runId: string | null
+  page?: number
 }) {
   const document = useDocument(projectId, documentId)
   const openEntry = usePreview((s) => s.openEntry)
@@ -50,7 +52,7 @@ export function DocumentPanel({
     )
   }
   if (doc.type === 'pdf') {
-    return <PdfDocumentPanel projectId={projectId} document={doc} />
+    return <PdfDocumentPanel projectId={projectId} document={doc} page={page} />
   }
   return (
     <div className="flex h-full">
