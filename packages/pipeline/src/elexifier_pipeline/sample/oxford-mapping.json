@@ -26,7 +26,7 @@
           ]
         },
         {
-          "inSelector": "hg/pr/ph",
+          "inSelector": "hg/pr/ph[normalize-space()]",
           "outElement": "pronunciation",
           "children": [
             {"inSelector": ".", "outElement": "transcription",

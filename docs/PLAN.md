@@ -26,13 +26,13 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M1 XML end to end (checklist in section 12b).
-- Next task: M1.3
+- Next task: M1.4
 - Blockers: none. `make dev-infra` provides Postgres, Keycloak and Garage; the owner's Anthropic key is
   stored in the app (Settings). CI runs on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M1.2 done)
+- Last update: 2026-09-16 (M1.3 done)
 
 Update this block at the end of every task.
 
@@ -540,7 +540,7 @@ validation report and export; every decision is recorded in the conversion spec.
   (strict, unknown keys rejected), `load_mapping(dict) -> MappingSpec`, a JSON Schema export for the
   UI, and `check_mapping(spec) -> list[Issue]` (unknown DMLex `outElement`, missing sense id
   autogeneration, XPath syntax errors, plural mismatches). Tests for each check.
-- [ ] M1.3 Schema-aware DMLex writer and validator. Vendor `legacy/dmlex.xsd` as
+- [x] M1.3 Schema-aware DMLex writer and validator. Vendor `legacy/dmlex.xsd` as
   `dmlex/schemas/dmlex.xsd` (with the OASIS notice) and derive the child order per element from its
   sequences at import time. `dmlex/writers.py`: `write_xml(resources, out)` emitting the DMLex
   namespace, schema-ordered children and UTF-8; `write_json(...)` (the converter's JSON with

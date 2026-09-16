@@ -8,3 +8,4 @@ Move an item into docs/PLAN.md when it is scheduled.
 - OCR adapter for scanned PDFs (ocrmypdf or Tesseract).
 - Push converted resources to Lexonomy.
 - Per-user budgets for admin-provided shared credentials.
+- Automatic homograph numbering for duplicate headwords (two-pass streaming) as a conversion option; the KKS sample needs it to validate (M1.8).

@@ -285,3 +285,20 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   `partOfSpeechs`); the writer must map plurals back to DMLex element names.
 - Open question for the owner: `kks_out.xml` was produced by a newer converter than the script given
   (namespace, schema order, `homographNumber`); if that version exists it should be compared.
+
+## 2026-09-16 DMLex writer and validator (M1.3)
+
+- XML writer: the DMLex namespace is declared once as the default namespace on
+  `lexicographicResource`; entries are serialised with plain tags and streamed into the document so
+  they inherit it. Children follow the XSD sequences derived from the vendored schema; attributes
+  and text placement (mixed `definition`, `example/text`, `headword`) come from the same map. Markers
+  are rebuilt inline from character offsets with the original nesting algorithm. Identical duplicate
+  siblings are dropped and counted in the writer report because DMLex requires siblings to be unique
+  and identical repeats carry no information.
+- Validator: `xmlschema.XMLSchema11`; errors carry the entry index parsed from the path. Uniqueness
+  constraints the library cannot evaluate ("field selects multiple values" when an entry has two
+  parts of speech) are reported as limitations, not as document errors.
+- Results on the fixtures: the Oxford mapping validates with zero errors after skipping empty
+  pronunciations. The owner's KKS mapping needs `langCode` instead of `language`, generated sense
+  ids, non-empty example fragments and `PartOfSpeech[@value]`; after that only duplicate headwords
+  remain, which need homograph numbering (planned for the conversion run).
