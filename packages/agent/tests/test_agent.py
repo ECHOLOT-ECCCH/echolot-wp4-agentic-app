@@ -64,7 +64,7 @@ async def test_agent_lists_files_with_scripted_model(fixture: Fixture) -> None:
     result = await agent.run("What files do I have?", deps=fixture.deps)
     assert result.output == "Your file starts with: <dictionary>"
     first, second = seen_tool_returns
-    assert first["summary"].startswith("1 file(s) in project 'Test dictionary'")
+    assert first["summary"].startswith("2 file(s) in project 'Test dictionary'")
     assert first["data"]["files"][0]["name"] == "dict.xml"
     assert second["data"]["truncated"] is True
     assert second["data"]["size_bytes"] > 64

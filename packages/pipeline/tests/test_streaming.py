@@ -41,17 +41,46 @@ def test_plan_detects_entry_element(kks_mapping: dict, oxford_mapping: dict) -> 
     assert oxford.entry_local_name == "se"
     assert streaming.simple_tag("/TEI/text/body/entry") == (None, "entry")
     assert streaming.simple_tag(".//tei:entry") == ("tei", "entry")
-    assert streaming.simple_tag("se[hw]") is None
+    assert streaming.simple_tag("se[hw]") == (None, "se")
+    assert streaming.simple_tag("se[not(@hidden='y')][hg/ps]") == (None, "se")
+    assert streaming.simple_tag("body/entry[form/orth='a/b']") == (None, "entry")
+    for bad in ("se | pv", "*", "se/..", "node()", "se[hw", ".//se/@id"):
+        assert streaming.simple_tag(bad) is None, bad
     with pytest.raises(dx.MappingError):
         streaming.plan_for(
             dx.load_mapping(
                 {
                     "inSelector": "/d",
                     "outElement": "lexicographicResource",
-                    "children": [{"inSelector": "e[@x]", "outElement": "entry"}],
+                    "children": [{"inSelector": "e | f", "outElement": "entry"}],
                 }
             )
         )
+
+
+def test_entry_predicate_filters_while_streaming() -> None:
+    xml = b"""<d><e hidden="y"><w>skip</w></e><e><w>keep</w></e><e hidden="n"><w>also</w></e></d>"""
+    desc = dx.load_mapping(
+        {
+            "inSelector": "/d",
+            "outElement": "lexicographicResource",
+            "children": [
+                {
+                    "inSelector": "e[not(@hidden='y')]",
+                    "outElement": "entry",
+                    "textVals": [
+                        {
+                            "inSelector": "w",
+                            "attribute": dx.ATTR_INNER_TEXT,
+                            "outElement": "headword",
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    entries = list(streaming.stream_transform(io.BytesIO(xml), desc))
+    assert [e["headword"] for e in entries] == ["keep", "also"]
 
 
 def test_nested_ancestors_and_namespaces() -> None:

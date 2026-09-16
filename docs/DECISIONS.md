@@ -333,3 +333,34 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   refreshed by SSE (`document.ready`, `document.error`, parse progress) and by polling while parsing.
 - The browser smoke test now depends on a running worker (document must become ready); CI starts
   one before Playwright, developers run `make worker`.
+
+## 2026-09-16 XML toolset and the first real mapping session (M1.6)
+
+- Ten tools in `elexifier_agent.tools.xml`, all reading entries through the entry index and
+  storage range reads (`tools/_entries.py`), never the whole file: `xml_profile`,
+  `xml_sample_entries`, `xml_search`, `xml_test_xpath`, `xml_distinct_values` (scans up to 5,000
+  entries; above 40 entries it downloads the file once to a temp file instead of one range read
+  per entry), `mapping_get`, `mapping_write`, `mapping_explain`, `spec_read`, `spec_update`.
+  `mapping_write` validates with `load_mapping_spec` + `check_mapping` and stores a new `mappings`
+  version only when there are no errors; warnings and infos are returned to the model either way.
+  `document_id` is optional everywhere: the project's single ready document is the default.
+- The agent's output cap is set to 16,384 tokens (`ModelSettings(max_tokens=...)` on the Agent).
+  The Anthropic default of 4,096 is too small for one `mapping_write` call carrying a complete
+  mapping (the first real run failed with "token limit exceeded before any response").
+- Entry selectors may carry predicates (`se[not(@hidden='y')]`): the streaming planner matches
+  the element name and the converter applies the predicate on the wrapped entry. Selectors that do
+  not end in an element name (unions, `*`, attribute steps) are rejected by `check_mapping` so the
+  agent learns it at `mapping_write` time rather than at the first conversion.
+- `check_mapping` also enforces the XSD assertion that `headwordTranslation`,
+  `headwordExplanation` and `exampleTranslation` need `langCode` unless the resource declares
+  exactly one `translationLanguage`; the model missed it in its first proposal (38 of 40 schema
+  errors).
+- Verification with the owner's key, `claude-opus-5`, Oxford sample (102 entries), through the
+  chat endpoint: turn 1 (22 tool calls, 257k input / 24k output tokens, 4 min 50 s) profiled the
+  file, sampled entries, checked distinct values and XPaths, corrected two wrong element meanings
+  given in the prompt, stored mapping v1 and a spec; turn 2 with corrections stored v2 and updated
+  the spec (1 min 37 s). Offline check of v2: 87 entries, schema-valid except 2 duplicate sense
+  indicators inside one entry (source data; the XSD requires distinct indicators) and the known
+  multi-part-of-speech validator limitation; 4 empty senses flagged by `check_consistency`.
+  M1.7 gives the agent the sample conversion and validation so it can see this itself.
+- REST routes for mappings and the spec are deferred to M1.9, where the editors need them.

@@ -26,13 +26,13 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M1 XML end to end (checklist in section 12b).
-- Next task: M1.6
+- Next task: M1.7
 - Blockers: none. `make dev-infra` provides Postgres, Keycloak and Garage; the owner's Anthropic key is
   stored in the app (Settings). CI runs on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M1.5 done)
+- Last update: 2026-09-16 (M1.6 done)
 
 Update this block at the end of every task.
 
@@ -561,7 +561,7 @@ validation report and export; every decision is recorded in the conversion spec.
   `GET .../documents/{id}/entries?offset&limit&q`, `GET .../entries/{id}` (source XML by offsets from
   storage). Web: `EntryNavigator` (paged list with search) and `EntryView` (source XML in CodeMirror)
   in the middle pane; `open_entry` ui-action opens it. Acceptance: browse and search Oxford entries.
-- [ ] M1.6 XML toolset. `tools/xml.py`: `xml_profile(document_id)`, `xml_sample_entries(document_id,
+- [x] M1.6 XML toolset. `tools/xml.py`: `xml_profile(document_id)`, `xml_sample_entries(document_id,
   n, strategy)`, `xml_search(document_id, query)`, `xml_distinct_values(document_id, xpath, limit)`
   (via `ExtractTextValues`), `mapping_get`, `mapping_write(mapping_json, note)` (validates, stores a
   new version in `mappings`), `mapping_explain` (plain-language rendering of the mapping tree),

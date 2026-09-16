@@ -6,16 +6,22 @@ from pathlib import Path
 
 from pydantic_ai import Agent, DeferredToolRequests, RunContext
 from pydantic_ai.models import Model
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset
 
 from elexifier_agent.deps import AgentDeps
 from elexifier_agent.tools.dev import dev_toolset
 from elexifier_agent.tools.project import project_toolset
+from elexifier_agent.tools.xml import xml_toolset
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 
 AgentOutput = str | DeferredToolRequests
 ConversionAgent = Agent[AgentDeps, AgentOutput]
+
+# Provider defaults are small (Anthropic: 4096). A mapping proposal is one tool call carrying the
+# whole mapping JSON, which does not fit. Every current model accepts this output cap.
+MAX_OUTPUT_TOKENS = 16384
 
 
 def load_prompt(name: str) -> str:
@@ -37,15 +43,20 @@ def render_system_prompt(deps: AgentDeps) -> str:
             caps.append("this model cannot see images, so page images cannot be shown to it")
         if caps:
             lines.append("- Model notes: " + "; ".join(caps))
-    return load_prompt("system.md").format(
+    prompt = load_prompt("system.md").format(
         project_block="\n".join(lines), dmlex_cheatsheet=load_prompt("dmlex_cheatsheet.md")
     )
+    if project.source_type == "xml":
+        prompt += "\n\n" + load_prompt("xml_workflow.md")
+    return prompt
 
 
 def toolsets_for(source_type: str, *, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]:
     """Toolsets are filtered by project type to keep the model's context small."""
     toolsets: list[AbstractToolset[AgentDeps]] = [project_toolset]
-    # M1 adds the XML and DMLex toolsets, M2 the PDF toolset, M3 the sandbox toolset.
+    if source_type == "xml":
+        toolsets.append(xml_toolset)
+    # M1.7/M1.8 add the conversion tools, M2 the PDF toolset, M3 the sandbox toolset.
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets
@@ -61,6 +72,7 @@ def build_agent(
         toolsets=toolsets_for(source_type, dev_tools=dev_tools),
         name=name,
         retries=2,
+        model_settings=ModelSettings(max_tokens=MAX_OUTPUT_TOKENS),
     )
 
     @agent.instructions

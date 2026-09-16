@@ -23,6 +23,7 @@ from elexifier_pipeline.xml.dmlexifier import (
     MappingError,
     TEltDesc,
 )
+from elexifier_pipeline.xml.streaming import simple_tag
 
 Severity = Literal["error", "warning", "info"]
 
@@ -98,10 +99,17 @@ def _plain_attribute(name: str) -> bool:
     return not name.startswith("{")
 
 
+CROSSLINGUAL_WITH_LANG = ("headwordTranslation", "headwordExplanation", "exampleTranslation")
+
+
 def check_mapping(spec: MappingSpec) -> list[Issue]:
     """Structural checks beyond the JSON shape; errors mean the output cannot be valid DMLex."""
     issues: list[Issue] = []
     known_objects = schema.object_names()
+    # XSD: translations need @langCode unless the resource declares exactly one translationLanguage
+    translation_languages = sum(
+        1 for c in spec.children or [] if c.outElement == "translationLanguage"
+    )
 
     def check_xpath(
         expr: str | None, namespaces: dict[str, str] | None, path: str, label: str
@@ -210,6 +218,15 @@ def check_mapping(spec: MappingSpec) -> list[Issue]:
         for child in desc.children or []:
             visit(child, f"{path}/{child.outElement}", desc)
         # requirements from the XSD
+        if desc.outElement == "entry" and simple_tag(desc.inSelector) is None:
+            issues.append(
+                Issue(
+                    severity="error",
+                    path=path,
+                    message="the entry selector must end in an element name, optionally with "
+                    "predicates (e.g. \"entry[not(@hidden='y')]\"), so large files can be streamed",
+                )
+            )
         if desc.outElement == "entry" and "headword" not in produced:
             issues.append(
                 Issue(severity="error", path=path, message="an entry needs a 'headword' text value")
@@ -233,6 +250,19 @@ def check_mapping(spec: MappingSpec) -> list[Issue]:
                         message="no 'entry' descriptor under the resource",
                     )
                 )
+        if (
+            desc.outElement in CROSSLINGUAL_WITH_LANG
+            and "langCode" not in produced
+            and translation_languages != 1
+        ):
+            issues.append(
+                Issue(
+                    severity="error",
+                    path=path,
+                    message=f"'{desc.outElement}' needs a 'langCode' text value (a constant is "
+                    "fine) unless the resource declares exactly one translationLanguage",
+                )
+            )
         if desc.outElement == "sense" and "id" not in produced:
             issues.append(
                 Issue(

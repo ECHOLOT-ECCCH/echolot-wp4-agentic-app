@@ -48,14 +48,42 @@ class EntryPlan:
     resource_scalars: JsonDict = field(default_factory=dict)
 
 
+def _last_step(expr: str) -> str | None:
+    """The final location step of an XPath, ignoring '/' inside predicates and strings; None for
+    unions or other top-level operators that make the expression more than one path."""
+    depth = 0
+    quote: str | None = None
+    start = 0
+    for i, ch in enumerate(expr):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        elif depth == 0 and ch == "/":
+            start = i + 1
+        elif depth == 0 and ch == "|":
+            return None
+    return expr[start:] if depth == 0 and quote is None else None
+
+
 def simple_tag(xpath: str) -> tuple[str | None, str] | None:
-    """Return (prefix, local name) when the last XPath step is a plain name test, else None."""
+    """Return (prefix, local name) when the last XPath step is a name test, optionally followed by
+    predicates (``se``, ``.//tei:entry``, ``se[not(@hidden='y')]``), else None. Predicates are
+    applied by the converter on the wrapped entry, so streaming only needs the element name."""
     expr = xpath.strip()
     if not expr:
         return None
-    last = expr.rsplit("/", 1)[-1]
+    last = _last_step(expr)
+    if last is None:
+        return None
     last = re.sub(r"^(child::|descendant::|self::)", "", last)
-    match = _SIMPLE_STEP.match(last)
+    name_test = last.split("[", 1)[0]
+    match = _SIMPLE_STEP.match(name_test)
     if not match:
         return None
     return match.group(1), match.group(2)
@@ -76,8 +104,9 @@ def plan_for(mapping: TEltDesc) -> EntryPlan:
     parsed = simple_tag(entry_desc.inSelector)
     if parsed is None:
         raise MappingError(
-            f"entry selector {entry_desc.inSelector!r} is not a simple element name; "
-            "streaming needs a selector such as 'DictionaryEntry', './/entry' or '/root/entry'"
+            f"entry selector {entry_desc.inSelector!r} does not end in an element name; "
+            "streaming needs a selector such as 'DictionaryEntry', './/entry', '/root/entry' "
+            "or \"entry[not(@hidden='y')]\""
         )
     prefix, local = parsed
     namespace = None

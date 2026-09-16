@@ -41,10 +41,12 @@ async def download_to_temp(storage: Storage, key: str, suffix: str = ".xml") -> 
 def _entry_tag(document: Document, profile: xml_index.XmlProfile) -> tuple[str, str]:
     """(entry_xpath, local tag) from the document's setting or the best candidate."""
     if document.entry_xpath:
+        # the index cannot evaluate predicates: every element with the name is an entry
         parsed = simple_tag(document.entry_xpath)
-        if parsed is None:
+        if parsed is None or "[" in document.entry_xpath:
             raise ParseError(
-                f"entry XPath {document.entry_xpath!r} must end in a plain element name"
+                f"entry XPath {document.entry_xpath!r} must end in a plain element name "
+                "(no predicates)"
             )
         return document.entry_xpath, parsed[1]
     if not profile.entry_candidates:

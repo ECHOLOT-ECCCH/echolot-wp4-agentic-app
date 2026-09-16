@@ -234,6 +234,44 @@ class Entry(UUIDPrimaryKeyMixin, Base):
     document: Mapped[Document] = relationship(back_populates="entries")
 
 
+# --- Mappings and conversion specs --------------------------------------------------------
+
+
+class Mapping(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    """One version of the project's mapping (the JSON descriptor tree, PLAN 7.8b)."""
+
+    __tablename__ = "mappings"
+    __table_args__ = (UniqueConstraint("project_id", "version"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    spec: Mapped[dict[str, Any]]
+    note: Mapped[str] = mapped_column(Text, default="")
+    issues: Mapped[list[Any]] = mapped_column(default=list)  # check_mapping output at save time
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    source: Mapped[str] = mapped_column(String(16), default="agent")  # agent | user | import
+
+
+class ConversionSpec(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    """Plain-language record of every conversion decision, versioned like the mapping."""
+
+    __tablename__ = "conversion_specs"
+    __table_args__ = (UniqueConstraint("project_id", "version"),)
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    markdown: Mapped[str] = mapped_column(Text, default="")
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
 # --- Conversations and agent runs ---------------------------------------------------------
 
 
