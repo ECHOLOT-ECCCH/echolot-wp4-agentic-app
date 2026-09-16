@@ -113,7 +113,7 @@ def test_round_trip_to_converter_descriptor(oxford_mapping: dict) -> None:
 def test_schema_knowledge() -> None:
     entry = schema.element_spec("entry")
     assert entry is not None
-    assert [c.name for c in entry.children][:3] == ["headword", "placeholderMarker", "partOfSpeech"]
+    assert [c.name for c in entry.children][:3] == ["headword", "partOfSpeech", "label"]
     assert entry.members() == {"headword", "id", "homographNumber"}
     assert schema.plural_of("entry") == "entries"
     assert schema.plural_of("partOfSpeech") == "partsOfSpeech"

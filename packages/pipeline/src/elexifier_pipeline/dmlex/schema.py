@@ -67,13 +67,13 @@ class ElementSpec:
         for child in self.children:
             if child.name in MARKER_ELEMENTS:
                 continue
-            spec = element_spec(child.name)
-            if spec is None or (
-                spec.is_text_bearing() and not spec.attributes and not spec.children
-            ):
+            spec = element_spec(child.name, self.name)
+            if spec is None:
                 names.add(child.name)
-            elif spec.is_text_bearing() and child.name == "headword":
-                names.add(child.name)  # headword carries text plus optional placeholder markers
+                continue
+            only_markers = all(c.name in MARKER_ELEMENTS for c in spec.children)
+            if spec.is_text_bearing() and not spec.attributes and only_markers:
+                names.add(child.name)  # a string member, possibly with inline markers
         if self.is_text_bearing():
             names.add("text")
         return names
@@ -85,58 +85,119 @@ def _occurs(node: etree._Element) -> tuple[int, int | None]:
     return min_occurs, None if max_raw == "unbounded" else int(max_raw)
 
 
+def _direct_children(complex_type: etree._Element) -> list[ChildSpec]:
+    """Child elements declared in this type's own content model (nested local types excluded)."""
+    found: list[ChildSpec] = []
+
+    def walk(node: etree._Element) -> None:
+        for child in node:
+            if (
+                child.tag in (f"{XS}sequence", f"{XS}choice", f"{XS}all", f"{XS}extension")
+                or child.tag == f"{XS}complexContent"
+            ):
+                walk(child)
+            elif child.tag == f"{XS}element":
+                name = child.get("ref") or child.get("name")
+                if name:
+                    lo, hi = _occurs(child)
+                    found.append(ChildSpec(name.split(":")[-1], lo, hi))
+
+    walk(complex_type)
+    return found
+
+
+def _direct_attributes(complex_type: etree._Element) -> dict[str, bool]:
+    attributes: dict[str, bool] = {}
+
+    def walk(node: etree._Element) -> None:
+        for child in node:
+            if child.tag == f"{XS}attribute":
+                name = child.get("name") or child.get("ref")
+                if name:
+                    attributes[name.split(":")[-1]] = child.get("use") == "required"
+            elif child.tag in (f"{XS}simpleContent", f"{XS}complexContent", f"{XS}extension"):
+                walk(child)
+
+    walk(complex_type)
+    return attributes
+
+
+def _spec_from(
+    name: str, element: etree._Element, types: dict[str, etree._Element], simple_types: set[str]
+) -> ElementSpec:
+    type_name = element.get("type")
+    complex_type = element.find(f"{XS}complexType")
+    if type_name and type_name in types:
+        complex_type = types[type_name]
+    if complex_type is None:
+        return ElementSpec(name, {}, (), mixed=False, simple=True)
+    simple_content = complex_type.find(f"{XS}simpleContent")
+    asserts = tuple(a.get("test") or "" for a in complex_type.findall(f"{XS}assert"))
+    return ElementSpec(
+        name,
+        _direct_attributes(complex_type),
+        tuple(_direct_children(complex_type)),
+        mixed=complex_type.get("mixed") == "true",
+        simple=simple_content is not None or (type_name in simple_types if type_name else False),
+        asserts=asserts,
+    )
+
+
 @lru_cache(maxsize=1)
 def _load() -> dict[str, ElementSpec]:
     root = etree.parse(str(SCHEMA_PATH)).getroot()
-    types = {ct.get("name"): ct for ct in root.findall(f"{XS}complexType") if ct.get("name")}
-    simple_types = {st.get("name") for st in root.findall(f"{XS}simpleType") if st.get("name")}
+    types: dict[str, etree._Element] = {
+        str(ct.get("name")): ct for ct in root.findall(f"{XS}complexType") if ct.get("name")
+    }
+    simple_types: set[str] = {
+        str(st.get("name")) for st in root.findall(f"{XS}simpleType") if st.get("name")
+    }
     specs: dict[str, ElementSpec] = {}
-    # global elements first, then local ones (headword, text, indicator ...) unless already known
-    elements = list(root.findall(f"{XS}element")) + [
-        e for e in root.iter(f"{XS}element") if e.getparent() is not root and e.get("name")
-    ]
-    for element in elements:
+    global_elements: dict[str, etree._Element] = {
+        str(e.get("name")): e for e in root.findall(f"{XS}element") if e.get("name")
+    }
+    for name, element in global_elements.items():
+        specs[name] = _spec_from(name, element, types, simple_types)
+    # Local elements (headword, text, indicator ...) are keyed as "parent.name" and, when not
+    # shadowing a global element, also by bare name.
+    for element in root.iter(f"{XS}element"):
         name = element.get("name")
-        if not name or name in specs:
+        if not name or element.getparent() is root:
             continue
-        type_name = element.get("type")
-        complex_type = element.find(f"{XS}complexType")
-        if type_name and type_name in types:
-            complex_type = types[type_name]
-        if complex_type is None:
-            specs[name] = ElementSpec(name, {}, (), mixed=False, simple=True)
-            continue
-        simple_content = complex_type.find(f"{XS}simpleContent")
-        attributes: dict[str, bool] = {}
-        for attr in complex_type.iter(f"{XS}attribute"):
-            attr_name = attr.get("name") or attr.get("ref")
-            if attr_name:
-                attributes[attr_name.split(":")[-1]] = attr.get("use") == "required"
-        children: list[ChildSpec] = []
-        for child in complex_type.iter(f"{XS}element"):
-            child_name = child.get("ref") or child.get("name")
-            if child_name:
-                lo, hi = _occurs(child)
-                children.append(ChildSpec(child_name.split(":")[-1], lo, hi))
-        asserts = tuple(a.get("test") or "" for a in complex_type.iter(f"{XS}assert"))
-        specs[name] = ElementSpec(
-            name,
-            attributes,
-            tuple(children),
-            mixed=complex_type.get("mixed") == "true",
-            simple=simple_content is not None
-            or (type_name in simple_types if type_name else False),
-            asserts=asserts,
-        )
+        owner: etree._Element | None = element.getparent()
+        parent_name = None
+        while owner is not None:
+            if owner.tag == f"{XS}complexType" and owner.get("name"):
+                parent_name = _type_owner(owner.get("name") or "", global_elements)
+                break
+            if owner.tag == f"{XS}element" and owner.get("name"):
+                parent_name = owner.get("name")
+                break
+            owner = owner.getparent()
+        spec = _spec_from(name, element, types, simple_types)
+        if parent_name:
+            specs[f"{parent_name}.{name}"] = spec
+        specs.setdefault(name, spec)
     return specs
 
 
-def element_spec(name: str) -> ElementSpec | None:
-    return _load().get(name)
+def _type_owner(type_name: str, global_elements: dict[str, etree._Element]) -> str | None:
+    for name, element in global_elements.items():
+        if element.get("type") == type_name:
+            return name
+    return None
+
+
+def element_spec(name: str, parent: str | None = None) -> ElementSpec | None:
+    """Spec of an element, preferring the local declaration inside ``parent`` when given."""
+    specs = _load()
+    if parent and f"{parent}.{name}" in specs:
+        return specs[f"{parent}.{name}"]
+    return specs.get(name)
 
 
 def element_names() -> set[str]:
-    return set(_load())
+    return {n for n in _load() if "." not in n}
 
 
 SCALAR_ONLY = frozenset({"headword", "text", "indicator", "description", "displayName", "note"})
@@ -148,5 +209,8 @@ def object_names() -> set[str]:
     return {
         n
         for n, s in _load().items()
-        if (s.children or s.attributes) and n not in SCALAR_ONLY and n not in MARKER_ELEMENTS
+        if "." not in n
+        and (s.children or s.attributes)
+        and n not in SCALAR_ONLY
+        and n not in MARKER_ELEMENTS
     }
