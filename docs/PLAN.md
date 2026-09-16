@@ -29,7 +29,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
   its live acceptance with a model (M2.7 cost check, M2.8 model part) is the owner's, planned
   together with the in-depth user test after M3. M1 is complete (M1.10 verified with
   claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M3.3
+- Next task: M3.4
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -38,7 +38,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M3.2 run_code tool with approval, artifacts and audit)
+- Last update: 2026-09-16 (M3.3 code-run card and previews)
 
 Update this block at the end of every task.
 
@@ -732,7 +732,7 @@ from the lexicographer's decisions gives a second opinion on PDF pages. Design n
   a fake runner (httpx `MockTransport`) through the scripted model, approval included.
   Acceptance: in the browser the approval card appears, approve runs the snippet, the tool card
   shows stdout and the artifact link, the preview opens the output.
-- [ ] M3.3 Artifact preview and code-run card. `CodeRunCard` (purpose, exit code, duration,
+- [x] M3.3 Artifact preview and code-run card. `CodeRunCard` (purpose, exit code, duration,
   stdout/stderr collapsible, output links); `TextPreview` gains Python and plain-text modes
   (`.py`, `.txt`, `.log`, `.jsonl`, `.csv`); artifacts of a run are listed under the run in the
   run panel. Acceptance: vitest for the card; manual check of the preview.

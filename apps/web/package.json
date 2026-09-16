@@ -22,6 +22,7 @@
     "@base-ui/react": "^1.8.0",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/merge": "^6.12.2",
     "@codemirror/search": "^6.7.2",

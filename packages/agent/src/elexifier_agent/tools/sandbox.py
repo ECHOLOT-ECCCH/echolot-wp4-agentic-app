@@ -302,6 +302,7 @@ async def run_code(
             data={
                 "code_run_id": str(code_run_id),
                 "code_file_id": code_file_id,
+                "purpose": purpose,
                 "exit_code": response.exit_code,
                 "killed": response.killed,
                 "duration_s": response.duration_s,

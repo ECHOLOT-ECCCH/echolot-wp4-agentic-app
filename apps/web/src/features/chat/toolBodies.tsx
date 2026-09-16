@@ -1,4 +1,8 @@
+import { useState } from 'react'
+
 import { IssueList } from '@/features/entries/IssueList'
+import { fileDownloadUrl } from '@/lib/api'
+import { formatBytes } from '@/lib/format'
 import type { EntryIssue } from '@/lib/types'
 import { usePreview } from '@/lib/uiActions'
 
@@ -196,6 +200,101 @@ export function DiffRunsBody({ data }: BodyProps) {
         </div>
       ))}
       {changed.length === 0 && <p className="text-muted-foreground">No differences.</p>}
+    </div>
+  )
+}
+
+/** What the lexicographer approves: the purpose in words and the snippet itself, instead of
+ *  the raw JSON arguments. */
+export function RunCodeArgs({ argsText }: { argsText?: string }) {
+  let args: Record<string, unknown> = {}
+  try {
+    args = argsText ? (JSON.parse(argsText) as Record<string, unknown>) : {}
+  } catch {
+    return (
+      <pre className="bg-muted/50 rounded-md p-2.5 text-xs whitespace-pre-wrap">{argsText}</pre>
+    )
+  }
+  const inputs = arr<string>(args.inputs)
+  const code = str(args.code)
+  return (
+    <div className="flex flex-col gap-1.5 text-xs" data-testid="run-code-args">
+      {args.purpose ? <p className="font-medium">{str(args.purpose)}</p> : null}
+      <p className="text-muted-foreground">
+        {inputs.length > 0 ? `Inputs: ${inputs.join(', ')}` : 'No inputs'}
+        {typeof args.timeout_s === 'number' ? ` · time limit ${args.timeout_s} s` : ''}
+        {' · no network, read-only file system except out/'}
+      </p>
+      <pre className="bg-muted/50 max-h-80 overflow-auto rounded-md p-2.5 font-mono text-[11px] leading-snug whitespace-pre">
+        {code || '(no code)'}
+      </pre>
+    </div>
+  )
+}
+
+function LogBlock({ label, text }: { label: string; text: string }) {
+  const [open, setOpen] = useState(label === 'stdout')
+  if (!text.trim()) return null
+  const lines = text.split('\n').length
+  return (
+    <div>
+      <button
+        type="button"
+        className="text-muted-foreground text-xs underline"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? 'Hide' : 'Show'} {label} ({lines} line{lines === 1 ? '' : 's'})
+      </button>
+      {open && (
+        <pre className="bg-muted mt-1 max-h-60 overflow-auto rounded-md p-2 font-mono text-[11px] leading-snug whitespace-pre-wrap">
+          {text}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+/** The outcome of a sandbox run: status, logs, and the outputs to open or download. */
+export function RunCodeBody({ data, projectId }: BodyProps) {
+  const openFile = usePreview((s) => s.openFile)
+  const outputs = arr<{ file_id: string; name: string; size: number; mime?: string }>(data.outputs)
+  const inputs = arr<{ name: string; mount_path: string }>(data.inputs)
+  const exitCode = typeof data.exit_code === 'number' ? data.exit_code : null
+  const killed = data.killed === true
+  const failed = killed || (exitCode !== null && exitCode !== 0)
+  return (
+    <div className="flex flex-col gap-1.5 text-xs" data-testid="run-code-body">
+      <p className={failed ? 'text-destructive' : 'text-muted-foreground'}>
+        {killed
+          ? `Killed at the time limit after ${num(data.duration_s).toFixed(1)} s`
+          : `Exit code ${exitCode ?? '?'} in ${num(data.duration_s).toFixed(1)} s`}
+        {inputs.length > 0 && ` · inputs: ${inputs.map((i) => i.mount_path).join(', ')}`}
+        {data.logs_truncated === true && ' · logs truncated'}
+      </p>
+      {outputs.length > 0 && (
+        <ul className="flex flex-col gap-0.5">
+          {outputs.map((output) => (
+            <li key={output.file_id} className="flex items-center gap-2">
+              <button
+                type="button"
+                className="font-medium underline-offset-2 hover:underline"
+                onClick={() => openFile(output.file_id)}
+              >
+                {output.name}
+              </button>
+              <span className="text-muted-foreground">{formatBytes(num(output.size))}</span>
+              <a
+                className="text-muted-foreground ml-auto underline"
+                href={fileDownloadUrl(projectId, output.file_id)}
+              >
+                download
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+      <LogBlock label="stdout" text={str(data.stdout)} />
+      <LogBlock label="stderr" text={str(data.stderr)} />
     </div>
   )
 }

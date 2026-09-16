@@ -24,3 +24,4 @@ Move an item into docs/PLAN.md when it is scheduled.
 - Review scoring: per-span "first word not in the headword font" and per-page "a flush-left line in the headword font that did not start an entry" (the segmenter must hand its evidence to the scorer); the learned segmenter (M3) as a second opinion producing disagreement flags.
 - Review sample: let the lexicographer choose the sample size, redraw it, and mark sample pages as seen.
 - Act on structurer verdicts: offer to split a merged span at the named headword (the line that starts with it), merge a fragment with its predecessor, reject a not_an_entry span, as one-click suggestions in the review panel and as an agent tool.
+- Files pane: group a code run's artifacts (code, log, step, outputs share `meta.code_run`) under one collapsible row with the purpose; stream sandbox inputs instead of staging them twice.

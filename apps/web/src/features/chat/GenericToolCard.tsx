@@ -8,6 +8,8 @@ import {
   DiffRunsBody,
   MappingWriteBody,
   ProfileBody,
+  RunCodeArgs,
+  RunCodeBody,
   RunConversionBody,
 } from '@/features/chat/toolBodies'
 import { TOOL_LABELS } from '@/features/chat/toolLabels'
@@ -20,6 +22,12 @@ const TOOL_BODIES: Record<string, (props: BodyProps) => React.ReactNode> = {
   mapping_write: MappingWriteBody,
   run_conversion: RunConversionBody,
   diff_runs: DiffRunsBody,
+  run_code: RunCodeBody,
+}
+
+/** Tools whose arguments deserve a readable view (the approval card shows them). */
+const TOOL_ARGS: Record<string, (props: { argsText?: string }) => React.ReactNode> = {
+  run_code: RunCodeArgs,
 }
 
 function isToolResult(value: unknown): value is ToolResultPayload {
@@ -54,7 +62,11 @@ export function makeGenericToolCard(projectId: string): ToolCallMessagePartCompo
         <ToolFallback.Trigger toolName={TOOL_LABELS[toolName] ?? toolName} status={status} />
         <ToolFallback.Content>
           <ToolFallback.Error status={status} />
-          <ToolFallback.Args argsText={argsText} />
+          {TOOL_ARGS[toolName] ? (
+            TOOL_ARGS[toolName]({ argsText })
+          ) : (
+            <ToolFallback.Args argsText={argsText} />
+          )}
           {requiresAction && (
             <ToolFallback.Approval
               addResult={addResult}

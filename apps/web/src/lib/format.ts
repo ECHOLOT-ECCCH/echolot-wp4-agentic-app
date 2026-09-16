@@ -28,10 +28,11 @@ export function isPdf(file: { mime: string; name: string }): boolean {
 export function languageFor(file: {
   mime: string
   name: string
-}): 'xml' | 'json' | 'markdown' | 'text' {
+}): 'xml' | 'json' | 'markdown' | 'python' | 'text' {
   const name = file.name.toLowerCase()
   if (file.mime.includes('xml') || name.endsWith('.xml') || name.endsWith('.tei')) return 'xml'
-  if (file.mime.includes('json') || name.endsWith('.json')) return 'json'
+  if (file.mime === 'application/json' || name.endsWith('.json')) return 'json'
   if (name.endsWith('.md')) return 'markdown'
-  return 'text'
+  if (file.mime === 'text/x-python' || name.endsWith('.py')) return 'python'
+  return 'text' // .txt, .log, .jsonl, .csv and anything else the sandbox wrote
 }

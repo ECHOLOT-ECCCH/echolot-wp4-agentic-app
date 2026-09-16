@@ -59,7 +59,11 @@ export function FileList({
                     className={`flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm ${
                       selected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'
                     }`}
-                    title={`${file.name} (${formatBytes(file.size)})`}
+                    title={
+                      typeof file.meta.purpose === 'string'
+                        ? `${file.name} (${formatBytes(file.size)}) — ${file.meta.purpose}`
+                        : `${file.name} (${formatBytes(file.size)})`
+                    }
                   >
                     <Icon className="text-muted-foreground size-4 shrink-0" />
                     <span className="truncate">{file.name}</span>

@@ -1,5 +1,6 @@
 import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
+import { python } from '@codemirror/lang-python'
 import { xml } from '@codemirror/lang-xml'
 import { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
@@ -20,6 +21,7 @@ export function TextPreview({
     if (language === 'xml') return [...base, xml()]
     if (language === 'json') return [...base, json()]
     if (language === 'markdown') return [...base, markdown()]
+    if (language === 'python') return [...base, python()]
     return base
   }, [file])
 

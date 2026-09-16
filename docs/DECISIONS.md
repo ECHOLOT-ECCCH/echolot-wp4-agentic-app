@@ -816,3 +816,18 @@ merged span and to name the headword where the next one starts.
   calls the tool); the API and agent tests cover the same path.
 - Incidental: the model picker dialog and its credential chips now scroll; with many credentials
   (each e2e run adds one) the model list was pushed off-screen.
+
+## 2026-09-16 M3.3 Code-run card and artifact previews
+
+- The approval card for `run_code` shows what the lexicographer is asked to allow: the
+  purpose in words, the inputs and time limit, and the snippet itself in a code block
+  (`RunCodeArgs`), instead of the raw JSON arguments the generic card shows for other tools
+  (`TOOL_ARGS` next to `TOOL_BODIES`).
+- The result card (`RunCodeBody`) shows the exit code or "killed at the time limit", the
+  duration, the mounted inputs, the outputs (open in the middle pane, download) and stdout /
+  stderr as collapsible blocks; the tool now puts the purpose into its data too.
+- Previews: `TextPreview` gets a Python mode (`@codemirror/lang-python`); `.txt`, `.log`,
+  `.jsonl`, `.csv` open as plain text (JSON Lines is deliberately not parsed as JSON). The
+  file list shows a code run's purpose in the tooltip of its artifacts (`meta.purpose`).
+- Not done: a per-run grouping of artifacts in the left pane; artifacts of a code run share
+  `meta.code_run`, so a grouping can be added when the list grows long (backlog).
