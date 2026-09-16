@@ -12,6 +12,7 @@ import { makeGenericToolCard } from '@/features/chat/GenericToolCard'
 import { ApprovalAwareToolGroup } from '@/features/chat/ToolGroup'
 import { ModelPicker } from '@/features/project/ModelPicker'
 import { api, csrfToken } from '@/lib/api'
+import { useChatContext } from '@/lib/chatContext'
 import { keys, useConversations, useCreateConversation } from '@/lib/queries'
 import type { Project } from '@/lib/types'
 import { isUiAction, usePreview } from '@/lib/uiActions'
@@ -117,6 +118,17 @@ function LiveThread({
         api: `/api/projects/${project.id}/conversations/${conversationId}/chat`,
         credentials: 'same-origin',
         headers: () => ({ 'X-CSRF-Token': csrfToken() }),
+        // selections on the PDF page travel with the message and are cleared once sent
+        prepareSendMessagesRequest: ({ id, messages, trigger, messageId, body }) => ({
+          body: {
+            ...(body as object | undefined),
+            id,
+            messages,
+            trigger,
+            messageId,
+            context: useChatContext.getState().take(),
+          },
+        }),
       }),
     [project.id, conversationId],
   )

@@ -305,6 +305,34 @@ export function useCreateRun(projectId: string) {
   })
 }
 
+export interface PageLayoutLine {
+  id: string
+  x0: number
+  top: number
+  x1: number
+  bottom: number
+  column: number
+  words: { text: string; x0: number; top: number; x1: number; bottom: number; bold: boolean }[]
+}
+
+export interface PageLayoutRecord {
+  page: number
+  width: number
+  height: number
+  lines: PageLayoutLine[]
+}
+
+export function pageLayoutOptions(projectId: string, documentId: string, pageNo: number) {
+  return {
+    queryKey: ['projects', projectId, 'documents', documentId, 'layout', pageNo] as const,
+    queryFn: () =>
+      api<PageLayoutRecord>(
+        `/api/projects/${projectId}/documents/${documentId}/pages/${pageNo}/layout`,
+      ),
+    staleTime: 10 * 60_000,
+  }
+}
+
 export function usePages(projectId: string, documentId: string | null) {
   return useQuery({
     queryKey: keys.pages(projectId, documentId ?? ''),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic_ai import RunContext, ToolReturn
+from pydantic_ai import BinaryContent, RunContext, ToolReturn
 from pydantic_ai.toolsets import FunctionToolset
 
 from elexifier_agent.contracts import ToolResult, UiAction, error_result, to_tool_return
@@ -13,13 +13,17 @@ from elexifier_agent.pdf_service import (
     SYNC_SEGMENT_MAX_PAGES,
     PdfServiceError,
     annotation_counts,
+    crop_png,
+    lines_in_region,
+    load_layout,
     load_layouts,
+    page_image,
     page_rows,
     profile_layouts,
     run_segmentation,
 )
 from elexifier_agent.tools._entries import ToolInputError, get_document
-from elexifier_core.db.models import Document
+from elexifier_core.db.models import Document, File
 
 pdf_toolset: FunctionToolset[AgentDeps] = FunctionToolset()
 
@@ -197,3 +201,99 @@ async def pdf_segment(
             ],
         )
     )
+
+
+MAX_REGION_CHARS = 6000
+PAGE_IMAGE_DPI = 110
+
+
+@pdf_toolset.tool
+async def pdf_get_page(
+    ctx: RunContext[AgentDeps],
+    page: int,
+    bbox: list[float] | None = None,
+    document_id: str | None = None,
+    with_image: bool | None = None,
+) -> ToolReturn:
+    """Read a page (or a region of it) of the PDF: the text lines in reading order with their
+    boxes, and, when the model can see images, a rendering of the region. Use it to look at a
+    passage the lexicographer points at, to check what a segmented span contains, or to see the
+    typography before choosing segmentation parameters.
+
+    Args:
+        page: 1-based page number.
+        bbox: Optional region [x0, top, x1, bottom] in PDF points (origin top-left), for example
+            the box of an annotation; omit for the whole page.
+        document_id: The PDF document. Omit when the project has one.
+        with_image: Attach the rendered page or region as an image (default: yes when the model
+            supports images).
+    """
+    deps = ctx.deps
+    region: tuple[float, float, float, float] | None = None
+    if bbox is not None:
+        if len(bbox) != 4 or bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            return error_result("bbox must be [x0, top, x1, bottom] with x1 > x0 and bottom > top")
+        region = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
+    async with deps.session() as db:
+        try:
+            document = await _pdf_document(deps, db, document_id)
+        except ToolInputError as exc:
+            return error_result(str(exc))
+        pages = await page_rows(db, document.id)
+        row = next((p for p in pages if p.page_no == page), None)
+        if row is None:
+            return error_result(f"page {page} does not exist (the document has {len(pages)} pages)")
+        file = await db.get(File, document.source_file_id)
+        if file is None:
+            return error_result("the source file of this document is gone")
+        layout = await load_layout(deps.storage, row)
+        lines = lines_in_region(layout, region)
+        vision = deps.model_info.supports_vision if deps.model_info else None
+        attach = with_image if with_image is not None else bool(vision)
+        image: bytes | None = None
+        if attach:
+            png = await page_image(deps.storage, document, file, page, PAGE_IMAGE_DPI)
+            image = crop_png(png, region, PAGE_IMAGE_DPI) if region else png
+        doc_id, file_id = str(document.id), str(file.id)
+    text_lines = []
+    used = 0
+    for line in lines:
+        entry = {
+            "id": line.id,
+            "text": line.text,
+            "bbox": [
+                round(line.x0, 1),
+                round(line.top, 1),
+                round(line.x1, 1),
+                round(line.bottom, 1),
+            ],
+            "column": line.column,
+            "bold_start": bool(line.words and line.words[0].bold),
+        }
+        used += len(line.text)
+        if used > MAX_REGION_CHARS:
+            break
+        text_lines.append(entry)
+    truncated = len(text_lines) < len(lines)
+    where = f"region {[round(v) for v in region]} of page {page}" if region else f"page {page}"
+    summary = (
+        f"{len(lines)} line(s) in {where}"
+        + (f", showing {len(text_lines)}" if truncated else "")
+        + ("; the image is attached." if image is not None else ".")
+        + (" The page has no text layer." if row.is_scanned else "")
+    )
+    result = ToolResult(
+        summary=summary,
+        data={
+            "document_id": doc_id,
+            "page": page,
+            "bbox": list(region) if region else None,
+            "page_size": [layout.width, layout.height],
+            "lines": text_lines,
+            "truncated": truncated,
+            "text": "\n".join(line["text"] for line in text_lines),
+        },
+        ui_actions=[UiAction(type="open_page", file_id=file_id, page=page, bbox=region)],
+    )
+    content = [BinaryContent(data=image, media_type="image/png")] if image is not None else None
+    return to_tool_return(result, content=content)

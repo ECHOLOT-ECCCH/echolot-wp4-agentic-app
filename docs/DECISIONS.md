@@ -579,3 +579,22 @@ Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, 
   `offsetTop` (whose offset parent is the resizable panel); the earlier version hid the box
   under the toolbars at small viewports.
 - The e2e smoke covers split, merge, draw and delete on the two-column fixture.
+
+## 2026-09-16 Select-to-chat and pdf_get_page (M2.5)
+
+- Two ways to quote the page: "Select for chat" turns the overlay into a region tool (the words
+  inside the dragged box come from the page layout, fetched on demand), and any text selected in
+  PDF.js's text layer shows an "Add to chat" button (box from the selection's client rects,
+  converted with the page scale). Both add a chip (page, box, words) on the composer; up to six
+  chips are kept, removable, and travel with the next message.
+- Transport: `prepareSendMessagesRequest` adds `context: [chips]` to the request body and clears
+  the store (the AI SDK body shape id/messages/trigger/messageId is reproduced). The API validates
+  the chips (`ContextChip`, 4,000 characters each) and appends to the last user message a text
+  part the model sees ("[Selected on page 3, box (...) in points]" plus the quoted text) and a
+  `data-context` part for the record; attaching is idempotent because the browser resends the
+  list. The user bubble therefore shows exactly what the model received.
+- `pdf_get_page(page, bbox?)` returns the lines of a page or region with boxes (capped at 6,000
+  characters) and, when the model supports images (or `with_image`), the rendering at 110 dpi
+  cropped to the region, sent as `BinaryContent` next to the tool result (`ToolReturn.content`).
+  Page images are rendered once per resolution and kept in storage (`page_image`, shared with
+  the API route); `open_page` opens the document view at that page and box.

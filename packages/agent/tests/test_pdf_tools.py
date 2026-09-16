@@ -58,3 +58,24 @@ async def test_pdf_analyze_and_segment(pdf_fixture: Fixture) -> None:
     assert bad["summary"].startswith("Error")
     unknown = await call_tool(pdf_fixture, "pdf_segment", {"segmenter": "nope"})
     assert unknown["summary"].startswith("Error: unknown segmenter")
+
+
+async def test_pdf_get_page_text_and_image(pdf_fixture: Fixture) -> None:
+    whole = await call_tool(pdf_fixture, "pdf_get_page", {"page": 1})
+    data = whole["data"]
+    assert whole["summary"].startswith("133 line(s) in page 1")
+    assert data["lines"][1]["text"].startswith("abacus n.") and data["lines"][1]["bold_start"]
+    assert data["page_size"] == [595.0, 842.0]
+
+    region = await call_tool(
+        pdf_fixture, "pdf_get_page", {"page": 1, "bbox": [40, 45, 300, 70], "with_image": True}
+    )
+    assert region["data"]["lines"] and all(line["bbox"][1] < 70 for line in region["data"]["lines"])
+    assert "image is attached" in region["summary"]
+
+    missing = await call_tool(pdf_fixture, "pdf_get_page", {"page": 9})
+    assert missing["summary"].startswith("Error: page 9 does not exist")
+    bad = await call_tool(pdf_fixture, "pdf_get_page", {"page": 1, "bbox": [10, 10, 5, 5]})
+    assert bad["summary"].startswith("Error: bbox")
+    scanned = await call_tool(pdf_fixture, "pdf_get_page", {"page": 4})
+    assert "no text layer" in scanned["summary"]

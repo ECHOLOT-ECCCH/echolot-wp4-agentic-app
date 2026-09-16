@@ -4,19 +4,24 @@ from storage, profiling a document, and running a segmenter into the annotations
 from __future__ import annotations
 
 import asyncio
+import io
+import tempfile
 import uuid
 from collections import Counter
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
+import anyio
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from elexifier_core.db.models import Annotation, AnnotationStatus, Document, PdfPage
+from elexifier_core.db.models import Annotation, AnnotationStatus, Document, File, PdfPage
 from elexifier_core.events import publish
-from elexifier_core.storage import Storage
+from elexifier_core.storage import NotFoundError, Storage, make_key
 from elexifier_pipeline import registry
-from elexifier_pipeline.pdf.models import EntrySpan, PageLayout, SegmentationStats
+from elexifier_pipeline.pdf.layout import PdfplumberLayout
+from elexifier_pipeline.pdf.models import BBox, EntrySpan, Line, PageLayout, SegmentationStats
 
 SYNC_SEGMENT_MAX_PAGES = 400
 LAYOUT_CONCURRENCY = 8
@@ -182,12 +187,73 @@ async def run_segmentation(
     return spans, stats, set_id
 
 
+def image_key(project_id: uuid.UUID, document_id: uuid.UUID, page_no: int, dpi: int) -> str:
+    return make_key(
+        str(project_id), "derived", str(document_id), f"page-{page_no:05d}-{dpi}dpi.png"
+    )
+
+
+async def page_image(
+    storage: Storage, document: Document, file: File, page_no: int, dpi: int = 110
+) -> bytes:
+    """PNG of one page, rendered once per resolution and kept in storage."""
+    key = image_key(document.project_id, document.id, page_no, dpi)
+    try:
+        return b"".join([chunk async for chunk in storage.open(key)])
+    except NotFoundError:
+        pass
+    with tempfile.NamedTemporaryFile(prefix="elexifier-", suffix=".pdf", delete=False) as handle:
+        async for chunk in storage.open(file.s3_key):
+            handle.write(chunk)
+        path = Path(handle.name)
+    try:
+        png = await asyncio.to_thread(PdfplumberLayout().render_page, path, page_no, dpi)
+    finally:
+        await anyio.Path(path).unlink(missing_ok=True)
+    await storage.put(key, png, content_type="image/png")
+    return png
+
+
+def crop_png(png: bytes, bbox: BBox, dpi: int, *, padding_pt: float = 6.0) -> bytes:
+    """Crop a rendered page to a pdfplumber box (points) with a little padding."""
+    from PIL import Image
+
+    scale = dpi / 72
+    with Image.open(io.BytesIO(png)) as image:
+        left = max(0, int((bbox[0] - padding_pt) * scale))
+        top = max(0, int((bbox[1] - padding_pt) * scale))
+        right = min(image.width, int((bbox[2] + padding_pt) * scale))
+        bottom = min(image.height, int((bbox[3] + padding_pt) * scale))
+        if right <= left or bottom <= top:
+            return png
+        out = io.BytesIO()
+        image.crop((left, top, right, bottom)).save(out, format="PNG")
+        return out.getvalue()
+
+
+def lines_in_region(layout: PageLayout, bbox: BBox | None) -> list[Line]:
+    """Lines whose box overlaps ``bbox`` (all lines when None), in reading order."""
+    if bbox is None:
+        return list(layout.lines)
+    x0, top, x1, bottom = bbox
+    picked = [
+        line
+        for line in layout.lines
+        if line.x1 > x0 and line.x0 < x1 and line.bottom > top and line.top < bottom
+    ]
+    return picked
+
+
 __all__ = [
     "SYNC_SEGMENT_MAX_PAGES",
     "PdfServiceError",
     "annotation_counts",
+    "crop_png",
+    "image_key",
+    "lines_in_region",
     "load_layout",
     "load_layouts",
+    "page_image",
     "page_rows",
     "profile_layouts",
     "run_segmentation",

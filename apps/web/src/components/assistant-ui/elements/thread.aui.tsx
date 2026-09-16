@@ -26,6 +26,7 @@ import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-ic
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { ContextChips } from '@/features/chat/ContextChips'
 import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
@@ -264,6 +265,7 @@ const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
         }
       >
         <ComposerAttachments />
+        <ContextChips />
         <ComposerPrimitive.Input
           placeholder="Send a message..."
           className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"

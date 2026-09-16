@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -59,8 +60,9 @@ def ui_action_chunk(action: UiAction) -> DataChunk:
     return DataChunk(type="data-ui-action", data=action.model_dump(exclude_none=True))
 
 
-def to_tool_return(result: ToolResult) -> ToolReturn:
-    """Convert a ToolResult to what the tool function returns to Pydantic AI."""
+def to_tool_return(result: ToolResult, *, content: Sequence[Any] | None = None) -> ToolReturn:
+    """Convert a ToolResult to what the tool function returns to Pydantic AI. ``content`` adds
+    multimodal parts (page images) the model receives next to the result."""
     data = result.data
     serialized = json.dumps(data, default=str, ensure_ascii=False)
     if len(serialized) > MAX_DATA_CHARS:
@@ -79,6 +81,7 @@ def to_tool_return(result: ToolResult) -> ToolReturn:
         return_value["cost"] = result.cost
     return ToolReturn(
         return_value=return_value,
+        content=list(content) if content else None,
         metadata=[ui_action_chunk(a) for a in result.ui_actions] or None,
     )
 

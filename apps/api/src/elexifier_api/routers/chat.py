@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from elexifier_agent.deps import AgentDeps, ProjectContext, UserContext
 from elexifier_agent.runtime import RunSummary
-from elexifier_agent.ui_messages import collect_tool_outputs, normalize_ui_messages
+from elexifier_agent.ui_messages import (
+    ContextChip,
+    attach_context,
+    collect_tool_outputs,
+    normalize_ui_messages,
+)
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
 from elexifier_api.deps import CurrentSecretBox, CurrentSettings, CurrentUser, DbSession, State
@@ -196,7 +201,14 @@ async def chat(
     # tool outputs recorded by earlier turns resolve approval parts the browser still holds
     stored = await load_messages(db, conversation.id)
     messages = normalize_ui_messages(messages, known_outputs=collect_tool_outputs(stored))
-    body = {**body, "messages": messages}
+    raw_context = body.get("context")
+    if isinstance(raw_context, list) and raw_context:
+        try:
+            chips = [ContextChip.model_validate(c) for c in raw_context[:6]]
+        except ValidationError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Malformed context") from exc
+        messages = attach_context(messages, chips)
+    body = {k: v for k, v in body.items() if k != "context"} | {"messages": messages}
     await replace_messages(db, conversation, messages)
     run = AgentRun(
         conversation_id=conversation.id,

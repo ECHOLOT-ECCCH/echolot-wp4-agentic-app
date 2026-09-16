@@ -36,12 +36,6 @@ def layout_key(project_id: uuid.UUID, document_id: uuid.UUID, page_no: int) -> s
     return make_key(str(project_id), "derived", str(document_id), f"page-{page_no:05d}.json")
 
 
-def image_key(project_id: uuid.UUID, document_id: uuid.UUID, page_no: int, dpi: int) -> str:
-    return make_key(
-        str(project_id), "derived", str(document_id), f"page-{page_no:05d}-{dpi}dpi.png"
-    )
-
-
 async def extract_layout(document_id: str | uuid.UUID) -> dict[str, Any]:
     """The job body; callable directly (tests) or through the Procrastinate task."""
     db = job_database()

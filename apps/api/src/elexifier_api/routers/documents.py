@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from elexifier_agent.pdf_service import page_image
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
 from elexifier_api.deps import CurrentStorage, CurrentUser, DbSession, State
-from elexifier_api.jobs.documents import download_to_temp, entry_source
-from elexifier_api.jobs.pdf import image_key
+from elexifier_api.jobs.documents import entry_source
 from elexifier_api.schemas import (
     DocumentCreate,
     DocumentDetailOut,
@@ -26,7 +25,6 @@ from elexifier_api.schemas import (
 )
 from elexifier_core.db.models import Document, DocumentStatus, Entry, File, PdfPage, ProjectRole
 from elexifier_core.storage import NotFoundError
-from elexifier_pipeline.pdf.layout import PdfplumberLayout
 
 router = APIRouter(prefix="/api/projects/{project_id}", tags=["documents"])
 
@@ -246,16 +244,7 @@ async def get_page_image(
     """PNG rendering of one page, rendered once per resolution and kept in storage."""
     await get_project_or_404(db, project_id, user)
     document, file, _page_row = await _page(db, project_id, document_id, page_no)
-    key = image_key(project_id, document.id, page_no, dpi)
-    try:
-        png = b"".join([chunk async for chunk in storage.open(key)])
-    except NotFoundError:
-        path = await download_to_temp(storage, file.s3_key, suffix=".pdf")
-        try:
-            png = await asyncio.to_thread(PdfplumberLayout().render_page, path, page_no, dpi)
-        finally:
-            path.unlink(missing_ok=True)
-        await storage.put(key, png, content_type="image/png")
+    png = await page_image(storage, document, file, page_no, dpi)
     return Response(
         content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"}
     )

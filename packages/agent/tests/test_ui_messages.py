@@ -132,3 +132,23 @@ def test_orphan_tool_returns_get_their_calls_back() -> None:
     # nothing to do when the calls are already there
     assert with_orphan_tool_calls([*history, *new], [*history, *new]) == [*history, *new]
     assert with_orphan_tool_calls(new[1:], [*history, *new]) == new[1:]
+
+
+def test_context_chips_become_a_quoted_block_on_the_last_user_message() -> None:
+    from elexifier_agent.ui_messages import ContextChip, attach_context
+
+    chip = ContextChip(
+        document_id="d1", page=3, bbox=(50, 100.4, 280, 130), text="abacus n. a frame", words=4
+    )
+    messages = [_user("what is this?")]
+    out = attach_context(messages, [chip])
+    parts = out[0]["parts"]
+    assert parts[0]["type"] == "text" and parts[0]["text"] == "what is this?"
+    assert parts[1]["type"] == "text"
+    assert parts[1]["text"].startswith("[Selected on page 3, box (50, 100, 280, 130) in points]")
+    assert "abacus n. a frame" in parts[1]["text"]
+    assert parts[2]["type"] == "data-context" and parts[2]["data"]["page"] == 3
+    # idempotent: the same chip is not attached twice (the browser resends the message list)
+    assert attach_context(out, [chip]) == out
+    # nothing happens when the last message is not from the user
+    assert attach_context([_user("a"), _stale_assistant()], [chip])[-1] == _stale_assistant()

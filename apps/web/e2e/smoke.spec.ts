@@ -269,6 +269,23 @@ test.describe('workspace smoke', () => {
     await expect(page.getByText('131 spans')).toBeVisible()
     await page.getByRole('button', { name: 'Delete box' }).click()
     await expect(page.getByText('130 spans')).toBeVisible()
+    await page.getByRole('button', { name: 'Done editing' }).click()
+
+    // select a region for the chat: the words inside become a chip on the composer
+    await page.getByRole('button', { name: 'Select for chat' }).click()
+    const pageBox = await overlay.boundingBox()
+    if (!pageBox) throw new Error('no page box')
+    await page.mouse.move(pageBox.x + pageBox.width * 0.08, pageBox.y + pageBox.height * 0.055)
+    await page.mouse.down()
+    await page.mouse.move(pageBox.x + pageBox.width * 0.45, pageBox.y + pageBox.height * 0.09, {
+      steps: 4,
+    })
+    await page.mouse.up()
+    const chips = page.getByTestId('context-chips')
+    await expect(chips).toContainText(/page 1, \d+ words/)
+    await expect(chips).toContainText(/abacus/)
+    await chips.getByRole('button', { name: /Remove selection/ }).click()
+    await expect(chips).toHaveCount(0)
   })
 
   test('deny keeps the gated tool from running', async ({ page }) => {

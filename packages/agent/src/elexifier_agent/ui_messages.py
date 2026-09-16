@@ -11,7 +11,10 @@ after approvals, reloads and interrupted turns.
 from __future__ import annotations
 
 import copy
+import json
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 UiMessage = dict[str, Any]
 FINAL_STATES = ("output-available", "output-error", "output-denied")
@@ -140,4 +143,58 @@ def _is_live_approval_turn(messages: list[UiMessage], last_assistant: int) -> bo
     return last_assistant >= 0 and last_assistant == len(messages) - 1
 
 
-__all__ = ["collect_tool_outputs", "normalize_ui_messages"]
+# --- context chips (selection on a PDF page sent with a message) ------------------------------
+
+MAX_CHIP_CHARS = 4000
+MAX_CHIPS = 6
+
+
+class ContextChip(BaseModel):
+    """A region the lexicographer selected on a page, attached to the next message."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    document_id: str
+    page: int = Field(ge=1)
+    bbox: tuple[float, float, float, float]
+    text: str = Field(max_length=MAX_CHIP_CHARS)
+    words: int = 0
+    file_id: str | None = None
+    label: str | None = None  # what the UI showed, e.g. "page 3, 12 words"
+
+
+def chip_text(chip: ContextChip) -> str:
+    box = ", ".join(str(round(v)) for v in chip.bbox)
+    return f'[Selected on page {chip.page}, box ({box}) in points]\n"""\n{chip.text.strip()}\n"""'
+
+
+def attach_context(messages: list[UiMessage], chips: list[ContextChip]) -> list[UiMessage]:
+    """Add the chips to the last user message: one text part the model sees, and a
+    ``data-context`` part the UI can render as chips again after a reload."""
+    if not chips or not messages or messages[-1].get("role") != "user":
+        return messages
+    messages = copy.deepcopy(messages)
+    last = messages[-1]
+    parts = list(last.get("parts", []))
+    already = {
+        json.dumps(p.get("data"), sort_keys=True)
+        for p in parts
+        if p.get("type") == "data-context" and isinstance(p.get("data"), dict)
+    }
+    for chip in chips[:MAX_CHIPS]:
+        data = chip.model_dump(mode="json")
+        if json.dumps(data, sort_keys=True) in already:
+            continue
+        parts.append({"type": "text", "text": chip_text(chip)})
+        parts.append({"type": "data-context", "data": data})
+    last["parts"] = parts
+    return messages
+
+
+__all__ = [
+    "ContextChip",
+    "attach_context",
+    "chip_text",
+    "collect_tool_outputs",
+    "normalize_ui_messages",
+]

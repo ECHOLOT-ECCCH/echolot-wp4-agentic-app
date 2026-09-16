@@ -73,9 +73,16 @@ export function PreviewHost({ projectId }: { projectId: string }) {
     )
   }
   const parsed = documents.data?.find((d) => d.source_file_id === file.id && d.status === 'ready')
-  if (parsed && !isPdf(file)) {
+  if (parsed) {
+    // analysed files open in their document view; PDFs keep the page and box of the request
     return (
-      <DocumentPanel projectId={projectId} documentId={parsed.id} entryId={null} runId={null} />
+      <DocumentPanel
+        projectId={projectId}
+        documentId={parsed.id}
+        entryId={null}
+        runId={null}
+        page={isPdf(file) ? target.page : undefined}
+      />
     )
   }
   return (

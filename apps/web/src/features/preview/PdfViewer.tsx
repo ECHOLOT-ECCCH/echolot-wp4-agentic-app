@@ -33,6 +33,8 @@ export interface PdfViewerProps {
   renderOverlay?: (context: PageRenderContext) => ReactNode
   /** Called when the visible page changes (for review panels that follow the reader). */
   onCurrentPageChange?: (page: number) => void
+  /** Called with the rendering scale (CSS px per PDF point) whenever it changes. */
+  onScaleChange?: (scale: number) => void
 }
 
 /**
@@ -47,6 +49,7 @@ export function PdfViewer({
   highlightBbox = true,
   renderOverlay,
   onCurrentPageChange,
+  onScaleChange,
 }: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
@@ -156,7 +159,8 @@ export function PdfViewer({
   const estimatedHeight = pageSize ? pageSize.height * scale : 1100 * scale
   useEffect(() => {
     setViewports(new Map())
-  }, [scale])
+    onScaleChange?.(scale)
+  }, [scale, onScaleChange])
 
   return (
     <div className="flex h-full flex-col">

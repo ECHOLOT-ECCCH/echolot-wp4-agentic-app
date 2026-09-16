@@ -178,3 +178,36 @@ async def test_events_stream_delivers_project_events(
     assert (await client.get(f"/api/projects/{uuid.uuid4()}/events")).status_code == 404
     client.cookies.clear()
     assert (await client.get(f"/api/projects/{pid}/events")).status_code == 401
+
+
+async def test_chat_attaches_selection_context(
+    client: httpx.AsyncClient, logged_in: LoggedIn
+) -> None:
+    logged_in.apply(client)
+    pid = await _project_with_test_model(client)
+    cid = (await client.post(f"/api/projects/{pid}/conversations", json={})).json()["id"]
+    body = _chat_body(_user_message("What does this say?"))
+    body["context"] = [
+        {
+            "document_id": str(uuid.uuid4()),
+            "page": 2,
+            "bbox": [50, 100, 280, 130],
+            "text": "abbey adv. a monastery or convent",
+            "words": 6,
+        }
+    ]
+    resp = await client.post(f"/api/projects/{pid}/conversations/{cid}/chat", json=body)
+    assert resp.status_code == 200, resp.text
+    stored = (await client.get(f"/api/projects/{pid}/conversations/{cid}/messages")).json()
+    user = stored[0]
+    kinds = [p["type"] for p in user["parts"]]
+    assert kinds == ["text", "text", "data-context"]
+    assert user["parts"][1]["text"].startswith("[Selected on page 2, box (50, 100, 280, 130)")
+    assert "abbey adv." in user["parts"][1]["text"]
+    assert user["parts"][2]["data"]["page"] == 2
+
+    bad = _chat_body(_user_message("again"))
+    bad["context"] = [{"page": "x"}]
+    assert (
+        await client.post(f"/api/projects/{pid}/conversations/{cid}/chat", json=bad)
+    ).status_code == 422

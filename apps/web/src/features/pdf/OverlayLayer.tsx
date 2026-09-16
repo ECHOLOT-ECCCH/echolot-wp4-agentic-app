@@ -14,7 +14,7 @@ const USER_COLOR = { stroke: '#0d9488', fill: 'rgba(13, 148, 136, 0.10)' }
 const HANDLE = 8
 const MIN_DRAW = 6
 
-export type EditTool = 'select' | 'draw' | 'split'
+export type EditTool = 'select' | 'draw' | 'split' | 'context'
 
 type Handle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'
 type Drag =
@@ -33,6 +33,8 @@ export interface OverlayEdits {
   onCreate: (bbox: Box) => void
   onChangeBox: (id: string, bbox: Box) => void
   onSplit: (id: string, y: number) => void
+  /** A region dragged with the "select for chat" tool. */
+  onRegion?: (bbox: Box) => void
 }
 
 export function OverlayLayer({
@@ -90,7 +92,7 @@ export function OverlayLayer({
   const onPointerDown = (event: React.PointerEvent) => {
     if (!editable || event.button !== 0) return
     const point = toPoints(event)
-    if (tool === 'draw') {
+    if (tool === 'draw' || tool === 'context') {
       event.preventDefault()
       svgRef.current?.setPointerCapture(event.pointerId)
       setDrag({ kind: 'draw', start: point, current: point })
@@ -138,7 +140,10 @@ export function OverlayLayer({
     const moved =
       Math.abs(drag.current[0] - drag.start[0]) + Math.abs(drag.current[1] - drag.start[1])
     if (drag.kind === 'draw') {
-      if (box[2] - box[0] >= MIN_DRAW && box[3] - box[1] >= MIN_DRAW) edits.onCreate(box)
+      if (box[2] - box[0] >= MIN_DRAW && box[3] - box[1] >= MIN_DRAW) {
+        if (tool === 'context') edits.onRegion?.(box)
+        else edits.onCreate(box)
+      }
       return
     }
     if (moved < 1) return // a click on the box: selection only
@@ -153,8 +158,8 @@ export function OverlayLayer({
       className="absolute inset-0 h-full w-full"
       data-testid="overlay-layer"
       style={{
-        pointerEvents: editable && tool === 'draw' ? 'all' : 'none',
-        cursor: tool === 'draw' ? 'crosshair' : undefined,
+        pointerEvents: editable && (tool === 'draw' || tool === 'context') ? 'all' : 'none',
+        cursor: tool === 'draw' || tool === 'context' ? 'crosshair' : undefined,
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -194,7 +199,7 @@ export function OverlayLayer({
                   strokeWidth={selected ? 3 : 1.25}
                   strokeDasharray={annotation.status === 'rejected' ? '4 3' : undefined}
                   style={{
-                    pointerEvents: tool === 'draw' ? 'none' : 'all',
+                    pointerEvents: tool === 'draw' || tool === 'context' ? 'none' : 'all',
                     cursor:
                       editable && tool === 'select'
                         ? 'move'
