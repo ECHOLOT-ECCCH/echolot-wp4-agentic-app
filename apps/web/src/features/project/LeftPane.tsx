@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DocumentList } from '@/features/entries/DocumentList'
 import { FileList } from '@/features/files/FileList'
 import { UploadDropzone } from '@/features/files/UploadDropzone'
+import { RunList } from '@/features/runs/RunList'
 import { keys, useFiles, useMembers } from '@/lib/queries'
 import type { Project } from '@/lib/types'
 
@@ -54,6 +55,8 @@ export function LeftPane({ project }: { project: Project }) {
         </section>
 
         <DocumentList projectId={project.id} />
+
+        <RunList projectId={project.id} />
 
         <section className="flex flex-col gap-1">
           <h2 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">

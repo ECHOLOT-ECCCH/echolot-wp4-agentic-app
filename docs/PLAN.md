@@ -26,13 +26,13 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M1 XML end to end (checklist in section 12b).
-- Next task: M1.7
+- Next task: M1.8
 - Blockers: none. `make dev-infra` provides Postgres, Keycloak and Garage; the owner's Anthropic key is
   stored in the app (Settings). CI runs on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M1.6 done)
+- Last update: 2026-09-16 (M1.7 done)
 
 Update this block at the end of every task.
 
@@ -568,7 +568,7 @@ validation report and export; every decision is recorded in the conversion spec.
   `spec_read`, `spec_update(markdown)`. Migration 0003 adds `mappings`, `conversion_specs`. System
   prompt gains a "how to build a mapping" section with the 7.8b format. Tests with `FunctionModel`.
   Acceptance: with the owner's Claude key, the agent profiles Oxford, proposes a mapping, and stores it.
-- [ ] M1.7 Sample conversion and side-by-side view. `run_conversion(kind="sample", entries=n |
+- [x] M1.7 Sample conversion and side-by-side view. `run_conversion(kind="sample", entries=n |
   entry_ids)` runs synchronously: converts the selected entries with the stored mapping, validates each
   entry (writer + validator on a temporary resource), stores `conversion_runs` + `converted_entries`
   (migration 0004), returns issues and a `open_entry` ui-action. `EntryView` shows source, DMLex XML

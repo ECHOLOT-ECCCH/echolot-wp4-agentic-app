@@ -44,6 +44,8 @@ export function useProjectEvents(projectId: string, onEvent?: (event: ProjectEve
         case 'run.finished':
           void queryClient.invalidateQueries({ queryKey: keys.files(projectId) })
           void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+          void queryClient.invalidateQueries({ queryKey: keys.runs(projectId) })
+          void queryClient.invalidateQueries({ queryKey: ['projects', projectId, 'entries'] })
           break
         case 'job.progress':
           if (event.data.kind === 'documents.parse') {

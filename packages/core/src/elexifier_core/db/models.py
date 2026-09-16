@@ -272,6 +272,77 @@ class ConversionSpec(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
 
 
+# --- Conversion runs ------------------------------------------------------------------------
+
+
+class RunKind(StrEnum):
+    SAMPLE = "sample"
+    FULL = "full"
+
+
+class ConversionStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class ConversionRun(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    """One application of a mapping version: a synchronous sample or a full run in the worker."""
+
+    __tablename__ = "conversion_runs"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    kind: Mapped[str] = mapped_column(String(16))  # RunKind
+    mapping_version: Mapped[int] = mapped_column(Integer)
+    steps_snapshot: Mapped[list[Any]] = mapped_column(default=list)  # custom steps (M3)
+    scope: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"ordinals": [...], "n": 10}
+    status: Mapped[str] = mapped_column(String(16), default=ConversionStatus.QUEUED.value)
+    output_file_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("files.id", ondelete="SET NULL")
+    )
+    stats: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    validation_report: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    job_id: Mapped[int | None] = mapped_column(BigInteger)
+    triggered_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[datetime | None]
+
+    converted_entries: Mapped[list[ConvertedEntry]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class ConvertedEntry(UUIDPrimaryKeyMixin, Base):
+    """The DMLex output of one source entry in one run, with its validation issues."""
+
+    __tablename__ = "converted_entries"
+    __table_args__ = (
+        Index("ix_converted_entries_run_id_position", "run_id", "position"),
+        Index("ix_converted_entries_run_id_entry_id", "run_id", "entry_id"),
+    )
+
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversion_runs.id", ondelete="CASCADE"))
+    entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("entries.id", ondelete="SET NULL")
+    )
+    position: Mapped[int] = mapped_column(Integer)  # order in the run's output
+    ordinal: Mapped[int | None] = mapped_column(Integer)  # source entry ordinal
+    headword: Mapped[str | None] = mapped_column(String(300))
+    dmlex: Mapped[dict[str, Any]] = mapped_column(default=dict)  # normalized DMLex JSON
+    issues: Mapped[list[Any]] = mapped_column(default=list)
+    issue_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    run: Mapped[ConversionRun] = relationship(back_populates="converted_entries")
+
+
 # --- Conversations and agent runs ---------------------------------------------------------
 
 

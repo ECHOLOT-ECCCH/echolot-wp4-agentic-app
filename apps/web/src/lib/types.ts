@@ -159,6 +159,77 @@ export interface EntryDetail extends EntryListItem {
   source_ref: { start: number; end: number }
 }
 
+export type RunKind = 'sample' | 'full'
+export type RunStatus = 'queued' | 'running' | 'done' | 'failed'
+
+export interface RunRecord {
+  id: string
+  project_id: string
+  document_id: string | null
+  kind: RunKind
+  mapping_version: number
+  status: RunStatus
+  scope: { ordinals?: number[]; strategy?: string | null; query?: string | null }
+  stats: {
+    requested?: number
+    converted?: number
+    skipped?: number
+    with_issues?: number
+    errors?: number
+    warnings?: number
+    resource_issues?: number
+  }
+  output_file_id: string | null
+  error: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export interface EntryIssue {
+  severity: 'error' | 'warning'
+  source: 'schema' | 'consistency' | 'writer'
+  code: string
+  path: string
+  message: string
+}
+
+export interface RunDetail extends RunRecord {
+  validation_report: {
+    summary?: string
+    valid?: boolean
+    error_count?: number
+    limitation_count?: number
+    resource_issues?: EntryIssue[]
+    plan_warnings?: string[]
+    resource_scalars?: Record<string, unknown>
+  }
+}
+
+export interface ConvertedEntryItem {
+  id: string
+  run_id: string
+  entry_id: string | null
+  position: number
+  ordinal: number | null
+  headword: string | null
+  issue_count: number
+  issues: EntryIssue[]
+}
+
+export interface ConvertedEntryPage {
+  items: ConvertedEntryItem[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export interface ConvertedEntryDetail extends ConvertedEntryItem {
+  dmlex: Record<string, unknown>
+  xml: string
+  mapping_version: number
+  run_created_at: string
+}
+
 export type UiActionType =
   | 'open_file'
   | 'open_document'

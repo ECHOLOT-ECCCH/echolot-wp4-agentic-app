@@ -186,3 +186,60 @@ class EntryPage(BaseModel):
 class EntryDetailOut(EntryOut):
     source_xml: str
     source_ref: dict[str, Any]
+
+
+# --- conversion runs ---------------------------------------------------------------------------
+
+
+class RunOut(ApiModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    document_id: uuid.UUID | None
+    kind: str
+    mapping_version: int
+    status: str
+    scope: dict[str, Any]
+    stats: dict[str, Any]
+    output_file_id: uuid.UUID | None
+    error: str | None
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class RunDetailOut(RunOut):
+    validation_report: dict[str, Any]
+
+
+class ConvertedEntryOut(ApiModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    entry_id: uuid.UUID | None
+    position: int
+    ordinal: int | None
+    headword: str | None
+    issue_count: int
+    issues: list[Any]
+
+
+class ConvertedEntryPage(BaseModel):
+    items: list[ConvertedEntryOut]
+    total: int
+    offset: int
+    limit: int
+
+
+class ConvertedEntryDetailOut(ConvertedEntryOut):
+    dmlex: dict[str, Any]
+    xml: str
+    mapping_version: int
+    run_created_at: datetime
+
+
+class SampleRunCreate(BaseModel):
+    kind: Literal["sample"] = "sample"
+    document_id: uuid.UUID | None = None
+    mapping_version: int | None = None
+    n: int = Field(default=10, ge=1, le=20)
+    ordinals: list[int] | None = None
+    strategy: Literal["first", "spread", "random"] = "spread"
+    query: str | None = None

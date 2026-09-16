@@ -10,10 +10,12 @@ export function DocumentPanel({
   projectId,
   documentId,
   entryId,
+  runId,
 }: {
   projectId: string
   documentId: string
   entryId: string | null
+  runId: string | null
 }) {
   const document = useDocument(projectId, documentId)
   const openEntry = usePreview((s) => s.openEntry)
@@ -51,12 +53,12 @@ export function DocumentPanel({
           projectId={projectId}
           documentId={documentId}
           selectedEntryId={entryId}
-          onSelect={(entry) => openEntry(entry.id, documentId)}
+          onSelect={(entry) => openEntry(entry.id, documentId, runId ?? undefined)}
         />
       </div>
       <div className="min-w-0 flex-1">
         {entryId ? (
-          <EntryView projectId={projectId} entryId={entryId} />
+          <EntryView projectId={projectId} entryId={entryId} runId={runId} />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-1 p-8 text-center">
             <p className="font-medium">{doc.entry_count.toLocaleString()} entries</p>

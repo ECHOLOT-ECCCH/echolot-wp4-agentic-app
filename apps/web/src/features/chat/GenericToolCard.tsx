@@ -3,13 +3,23 @@ import { PaperclipIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { ToolFallback } from '@/components/assistant-ui/elements/tool-fallback.aui'
+import {
+  type BodyProps,
+  DiffRunsBody,
+  MappingWriteBody,
+  ProfileBody,
+  RunConversionBody,
+} from '@/features/chat/toolBodies'
+import { TOOL_LABELS } from '@/features/chat/toolLabels'
 import { fileDownloadUrl } from '@/lib/api'
 import type { ToolResultPayload } from '@/lib/types'
 import { usePreview } from '@/lib/uiActions'
 
-const TOOL_LABELS: Record<string, string> = {
-  list_files: 'Listing project files',
-  read_file_head: 'Peeking into a file',
+const TOOL_BODIES: Record<string, (props: BodyProps) => React.ReactNode> = {
+  xml_profile: ProfileBody,
+  mapping_write: MappingWriteBody,
+  run_conversion: RunConversionBody,
+  diff_runs: DiffRunsBody,
 }
 
 function isToolResult(value: unknown): value is ToolResultPayload {
@@ -56,7 +66,12 @@ export function makeGenericToolCard(projectId: string): ToolCallMessagePartCompo
             />
           )}
           {!cancelled && payload && (
-            <ToolResultBody projectId={projectId} payload={payload} isError={isError} />
+            <ToolResultBody
+              projectId={projectId}
+              toolName={toolName}
+              payload={payload}
+              isError={isError}
+            />
           )}
           {!cancelled && !payload && result !== undefined && (
             <ToolFallback.Result result={result} />
@@ -71,10 +86,12 @@ export function makeGenericToolCard(projectId: string): ToolCallMessagePartCompo
 
 function ToolResultBody({
   projectId,
+  toolName,
   payload,
   isError,
 }: {
   projectId: string
+  toolName: string
   payload: ToolResultPayload
   isError: boolean
 }) {
@@ -83,9 +100,11 @@ function ToolResultBody({
   const data = payload.data ?? {}
   const hasData =
     Object.keys(data).length > 0 && !(Object.keys(data).length === 1 && 'error' in data)
+  const Body = isError ? undefined : TOOL_BODIES[toolName]
   return (
     <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm">
       <p className={isError ? 'text-destructive' : ''}>{payload.summary}</p>
+      {Body && <Body data={data} projectId={projectId} />}
       {payload.artifacts && payload.artifacts.length > 0 && (
         <ul className="flex flex-wrap gap-2">
           {payload.artifacts.map((artifact) => (

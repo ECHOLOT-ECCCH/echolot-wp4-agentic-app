@@ -3,6 +3,7 @@ import { DownloadIcon, FileSearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { DocumentPanel } from '@/features/entries/DocumentPanel'
+import { RunPanel } from '@/features/runs/RunPanel'
 import { PdfViewer } from '@/features/preview/PdfViewer'
 import { TextPreview } from '@/features/preview/TextPreview'
 import { ApiError, api, fileContentUrl, fileDownloadUrl } from '@/lib/api'
@@ -27,7 +28,14 @@ export function PreviewHost({ projectId }: { projectId: string }) {
     )
   }
   if (target.kind === 'document') {
-    return <DocumentPanel projectId={projectId} documentId={target.documentId} entryId={null} />
+    return (
+      <DocumentPanel
+        projectId={projectId}
+        documentId={target.documentId}
+        entryId={null}
+        runId={null}
+      />
+    )
   }
   if (target.kind === 'entry') {
     const documentId =
@@ -35,7 +43,17 @@ export function PreviewHost({ projectId }: { projectId: string }) {
     if (!documentId) {
       return <Empty title="Entry" body="The document of this entry is not available." />
     }
-    return <DocumentPanel projectId={projectId} documentId={documentId} entryId={target.entryId} />
+    return (
+      <DocumentPanel
+        projectId={projectId}
+        documentId={documentId}
+        entryId={target.entryId}
+        runId={target.runId ?? null}
+      />
+    )
+  }
+  if (target.kind === 'run') {
+    return <RunPanel projectId={projectId} runId={target.runId} />
   }
   if (target.kind !== 'file') {
     return (
@@ -53,7 +71,9 @@ export function PreviewHost({ projectId }: { projectId: string }) {
   }
   const parsed = documents.data?.find((d) => d.source_file_id === file.id && d.status === 'ready')
   if (parsed && !isPdf(file)) {
-    return <DocumentPanel projectId={projectId} documentId={parsed.id} entryId={null} />
+    return (
+      <DocumentPanel projectId={projectId} documentId={parsed.id} entryId={null} runId={null} />
+    )
   }
   return (
     <div className="flex h-full flex-col">

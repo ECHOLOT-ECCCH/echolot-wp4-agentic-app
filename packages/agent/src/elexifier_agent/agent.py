@@ -10,6 +10,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset
 
 from elexifier_agent.deps import AgentDeps
+from elexifier_agent.tools.conversion import conversion_toolset
 from elexifier_agent.tools.dev import dev_toolset
 from elexifier_agent.tools.project import project_toolset
 from elexifier_agent.tools.xml import xml_toolset
@@ -55,8 +56,8 @@ def toolsets_for(source_type: str, *, dev_tools: bool = False) -> list[AbstractT
     """Toolsets are filtered by project type to keep the model's context small."""
     toolsets: list[AbstractToolset[AgentDeps]] = [project_toolset]
     if source_type == "xml":
-        toolsets.append(xml_toolset)
-    # M1.7/M1.8 add the conversion tools, M2 the PDF toolset, M3 the sandbox toolset.
+        toolsets.extend([xml_toolset, conversion_toolset])
+    # M1.8 adds full runs and export, M2 the PDF toolset, M3 the sandbox toolset.
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets

@@ -12,6 +12,7 @@ from pydantic_ai.toolsets import FunctionToolset
 from sqlalchemy import func, select
 
 from elexifier_agent.contracts import ToolResult, UiAction, error_result, to_tool_return
+from elexifier_agent.conversion import latest_mapping
 from elexifier_agent.deps import AgentDeps
 from elexifier_agent.tools._entries import (
     MAX_SAMPLE_ENTRIES,
@@ -347,22 +348,11 @@ async def xml_distinct_values(
 # --- mapping ------------------------------------------------------------------------------
 
 
-async def _latest_mapping(db: Any, project_id: Any) -> Mapping | None:
-    return (
-        await db.execute(
-            select(Mapping)
-            .where(Mapping.project_id == project_id)
-            .order_by(Mapping.version.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-
-
 @xml_toolset.tool
 async def mapping_get(ctx: RunContext[AgentDeps]) -> ToolReturn:
     """Return the project's current mapping (latest version) with a plain-language summary."""
     async with ctx.deps.session() as db:
-        mapping = await _latest_mapping(db, ctx.deps.project.id)
+        mapping = await latest_mapping(db, ctx.deps.project.id)
     if mapping is None:
         return to_tool_return(
             ToolResult(
@@ -421,7 +411,7 @@ async def mapping_write(
             )
         )
     async with ctx.deps.session() as db:
-        latest = await _latest_mapping(db, ctx.deps.project.id)
+        latest = await latest_mapping(db, ctx.deps.project.id)
         version = (latest.version + 1) if latest else 1
         row = Mapping(
             project_id=ctx.deps.project.id,
@@ -456,7 +446,7 @@ async def mapping_explain(ctx: RunContext[AgentDeps]) -> ToolReturn:
     """Explain the current mapping in plain language (source path -> DMLex element), for the
     lexicographer and for the conversion spec."""
     async with ctx.deps.session() as db:
-        mapping = await _latest_mapping(db, ctx.deps.project.id)
+        mapping = await latest_mapping(db, ctx.deps.project.id)
     if mapping is None:
         return to_tool_return(ToolResult(summary="No mapping yet."))
     text = summarize(load_mapping_spec(mapping.spec))

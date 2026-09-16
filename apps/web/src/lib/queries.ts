@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type {
   Conversation,
+  ConvertedEntryDetail,
+  ConvertedEntryPage,
   Credential,
   DocumentDetail,
   DocumentRecord,
@@ -15,6 +17,8 @@ import type {
   ProbeResult,
   Project,
   Provider,
+  RunDetail,
+  RunRecord,
   SourceType,
   User,
 } from '@/lib/types'
@@ -31,6 +35,12 @@ export const keys = {
     ['projects', projectId, 'documents', documentId, 'entries', { offset, limit, q }] as const,
   entry: (projectId: string, entryId: string) =>
     ['projects', projectId, 'entries', entryId] as const,
+  runs: (projectId: string) => ['projects', projectId, 'runs'] as const,
+  run: (projectId: string, runId: string) => ['projects', projectId, 'runs', runId] as const,
+  runEntries: (projectId: string, runId: string, offset: number, limit: number, issues: boolean) =>
+    ['projects', projectId, 'runs', runId, 'entries', { offset, limit, issues }] as const,
+  converted: (projectId: string, entryId: string, runId: string | null) =>
+    ['projects', projectId, 'entries', entryId, 'converted', runId ?? 'latest'] as const,
   members: (projectId: string) => ['projects', projectId, 'members'] as const,
   conversations: (projectId: string) => ['projects', projectId, 'conversations'] as const,
   messages: (projectId: string, conversationId: string) =>
@@ -140,6 +150,53 @@ export function useEntry(projectId: string, entryId: string | null) {
     queryFn: () => api<EntryDetail>(`/api/projects/${projectId}/entries/${entryId}`),
     enabled: Boolean(entryId),
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useRuns(projectId: string) {
+  return useQuery({
+    queryKey: keys.runs(projectId),
+    queryFn: () => api<RunRecord[]>(`/api/projects/${projectId}/runs`),
+  })
+}
+
+export function useRun(projectId: string, runId: string | null) {
+  return useQuery({
+    queryKey: keys.run(projectId, runId ?? ''),
+    queryFn: () => api<RunDetail>(`/api/projects/${projectId}/runs/${runId}`),
+    enabled: Boolean(runId),
+  })
+}
+
+export function useRunEntries(
+  projectId: string,
+  runId: string | null,
+  params: { offset: number; limit: number; issues: boolean },
+) {
+  const search = new URLSearchParams({
+    offset: String(params.offset),
+    limit: String(params.limit),
+    issues: String(params.issues),
+  })
+  return useQuery({
+    queryKey: keys.runEntries(projectId, runId ?? '', params.offset, params.limit, params.issues),
+    queryFn: () =>
+      api<ConvertedEntryPage>(`/api/projects/${projectId}/runs/${runId}/entries?${search}`),
+    enabled: Boolean(runId),
+    placeholderData: (previous) => previous,
+  })
+}
+
+/** Converted output of a source entry in a run (the latest run that has it when runId is null). */
+export function useConvertedEntry(projectId: string, entryId: string | null, runId: string | null) {
+  const search = runId ? `?run_id=${runId}` : ''
+  return useQuery({
+    queryKey: keys.converted(projectId, entryId ?? '', runId),
+    queryFn: () =>
+      api<ConvertedEntryDetail[]>(
+        `/api/projects/${projectId}/entries/${entryId}/converted${search}`,
+      ),
+    enabled: Boolean(entryId),
   })
 }
 

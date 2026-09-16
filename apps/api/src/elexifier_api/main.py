@@ -17,7 +17,17 @@ from elexifier_api import __version__
 from elexifier_api import jobs as _jobs  # noqa: F401  # registers tasks on the shared app
 from elexifier_api.auth.oidc import OidcClient
 from elexifier_api.auth.session import SessionStore
-from elexifier_api.routers import auth, chat, credentials, documents, events, files, me, projects
+from elexifier_api.routers import (
+    auth,
+    chat,
+    credentials,
+    documents,
+    events,
+    files,
+    me,
+    projects,
+    runs,
+)
 from elexifier_api.schemas import HealthOut
 from elexifier_api.state import AppState
 from elexifier_core.crypto import SecretBox
@@ -111,6 +121,7 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
     app.include_router(chat.router)
     app.include_router(events.router)
     app.include_router(documents.router)
+    app.include_router(runs.router)
     return app
 
 

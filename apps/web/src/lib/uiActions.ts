@@ -5,7 +5,7 @@ import type { UiAction } from '@/lib/types'
 export type PreviewTarget =
   | { kind: 'file'; fileId: string; page?: number; bbox?: [number, number, number, number] }
   | { kind: 'document'; documentId: string }
-  | { kind: 'entry'; entryId: string; documentId?: string }
+  | { kind: 'entry'; entryId: string; documentId?: string; runId?: string }
   | { kind: 'run'; runId: string }
   | { kind: 'mapping'; version?: number }
   | { kind: 'spec' }
@@ -21,7 +21,8 @@ interface PreviewState {
     bbox?: PreviewTarget extends { bbox?: infer B } ? B : never,
   ) => void
   openDocument: (documentId: string) => void
-  openEntry: (entryId: string, documentId?: string) => void
+  openEntry: (entryId: string, documentId?: string, runId?: string) => void
+  openRun: (runId: string) => void
   apply: (action: UiAction) => void
   clear: () => void
 }
@@ -33,8 +34,12 @@ export const usePreview = create<PreviewState>((set) => ({
     set((s) => ({ target: { kind: 'file', fileId, page, bbox }, revision: s.revision + 1 })),
   openDocument: (documentId) =>
     set((s) => ({ target: { kind: 'document', documentId }, revision: s.revision + 1 })),
-  openEntry: (entryId, documentId) =>
-    set((s) => ({ target: { kind: 'entry', entryId, documentId }, revision: s.revision + 1 })),
+  openEntry: (entryId, documentId, runId) =>
+    set((s) => ({
+      target: { kind: 'entry', entryId, documentId, runId },
+      revision: s.revision + 1,
+    })),
+  openRun: (runId) => set((s) => ({ target: { kind: 'run', runId }, revision: s.revision + 1 })),
   apply: (action) =>
     set((s) => {
       const next = targetFor(action)
@@ -56,7 +61,12 @@ export function targetFor(action: UiAction): PreviewTarget | null {
       return action.document_id ? { kind: 'document', documentId: action.document_id } : null
     case 'open_entry':
       return action.entry_id
-        ? { kind: 'entry', entryId: action.entry_id, documentId: action.document_id }
+        ? {
+            kind: 'entry',
+            entryId: action.entry_id,
+            documentId: action.document_id,
+            runId: action.run_id,
+          }
         : null
     case 'open_run':
       return action.run_id ? { kind: 'run', runId: action.run_id } : null

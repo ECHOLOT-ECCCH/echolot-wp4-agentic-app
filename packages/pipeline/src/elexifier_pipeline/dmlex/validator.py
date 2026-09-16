@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from typing import IO, Any
 import xmlschema
 
 from elexifier_pipeline.dmlex.schema import SCHEMA_PATH
+from elexifier_pipeline.dmlex.writers import WriterReport, write_xml
 
 _ENTRY_INDEX = re.compile(r"/entry\[(\d+)\]")
 
@@ -168,3 +170,101 @@ def check_consistency(entries: Iterable[dict[str, Any]]) -> list[ConsistencyIssu
                         ConsistencyIssue(index, entry_id, "empty-example", "example without text")
                     )
     return issues
+
+
+# --- per-entry validation of converted entries (sample runs, run reports) -------------------
+
+
+@dataclass
+class EntryIssue:
+    severity: str  # error | warning
+    source: str  # schema | consistency | writer
+    code: str
+    path: str
+    message: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "severity": self.severity,
+            "source": self.source,
+            "code": self.code,
+            "path": self.path,
+            "message": self.message,
+        }
+
+
+@dataclass
+class EntryValidation:
+    report: ValidationReport
+    per_entry: dict[int, list[EntryIssue]]  # index into the entries given
+    resource_issues: list[EntryIssue]  # not attributable to one entry
+
+    def issues_for(self, index: int) -> list[EntryIssue]:
+        return self.per_entry.get(index, [])
+
+    @property
+    def entries_with_issues(self) -> int:
+        return len(self.per_entry)
+
+
+_CONSISTENCY_ERRORS = ("duplicate-entry-id", "duplicate-sense-id", "empty-headword")
+
+
+def _relative_path(path: str) -> str:
+    # "/lexicographicResource/entry[3]/sense[2]/x" -> "sense[2]/x"
+    return re.sub(r"^/lexicographicResource/entry(\[\d+\])?/?", "", path) or "entry"
+
+
+def validate_entries(
+    scalars: dict[str, Any],
+    entries: list[dict[str, Any]],
+    *,
+    max_errors: int = 1000,
+) -> EntryValidation:
+    """Write the entries as a temporary DMLex resource, validate it, and attribute every finding
+    to its entry. Missing resource scalars (uri, langCode) get placeholders so that only entry
+    problems surface; the placeholders are reported as resource issues."""
+    resource_issues: list[EntryIssue] = []
+    header = dict(scalars)
+    for required, placeholder in (("uri", "urn:elexifier:sample"), ("langCode", "und")):
+        if not header.get(required):
+            header[required] = placeholder
+            resource_issues.append(
+                EntryIssue(
+                    "warning",
+                    "writer",
+                    "missing-resource-value",
+                    "lexicographicResource",
+                    f"the mapping produces no resource '{required}'; placeholder used",
+                )
+            )
+    writer_report = WriterReport()
+    buffer = io.BytesIO()
+    write_xml(buffer, header, entries, writer_report)
+    for warning in writer_report.warnings:
+        resource_issues.append(EntryIssue("warning", "writer", "dropped-value", "", warning))
+    for kind, count in writer_report.dropped_duplicates.items():
+        resource_issues.append(
+            EntryIssue(
+                "warning",
+                "writer",
+                "duplicate-sibling",
+                "",
+                f"{count} identical '{kind}' sibling(s) dropped (DMLex requires unique siblings)",
+            )
+        )
+    buffer.seek(0)
+    report = validate_xml(buffer, max_errors=max_errors)
+    per_entry: dict[int, list[EntryIssue]] = {}
+    for error in report.errors:
+        issue = EntryIssue("error", "schema", "schema", _relative_path(error.path), error.reason)
+        if error.entry_index is None:
+            resource_issues.append(issue)
+        else:
+            per_entry.setdefault(error.entry_index, []).append(issue)
+    for finding in check_consistency(entries):
+        severity = "error" if finding.code in _CONSISTENCY_ERRORS else "warning"
+        per_entry.setdefault(finding.entry_index, []).append(
+            EntryIssue(severity, "consistency", finding.code, "entry", finding.message)
+        )
+    return EntryValidation(report=report, per_entry=per_entry, resource_issues=resource_issues)

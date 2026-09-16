@@ -364,3 +364,39 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   multi-part-of-speech validator limitation; 4 empty senses flagged by `check_consistency`.
   M1.7 gives the agent the sample conversion and validation so it can see this itself.
 - REST routes for mappings and the spec are deferred to M1.9, where the editors need them.
+
+## 2026-09-16 Sample conversion and side-by-side view (M1.7)
+
+- Samples convert indexed entries from their byte ranges, not by re-streaming the file: the bytes
+  before the first entry give the ancestor chain (`head_ancestors`), the entry fragment is
+  serialised back inside a replica of that chain (`wrap_fragment`) so namespaces and prefixes
+  resolve exactly as in the document, and `transform_wrapped` applies the mapping. Entries at any
+  position cost one range read. Entries nested under differing ancestors (an entry inside a
+  `superEntry` next to top-level entries) get the first entry's chain; not seen in the samples.
+- Mappings may hold several `entry` descriptors (the agent's Oxford v2 makes phrasal verbs,
+  fixed phrases and idioms separate entries). The first descriptor decides the streamed element;
+  the others run on the same wrapped element, so they only find what sits inside a primary entry.
+  `EntryPlan.warnings` names descriptors whose selector starts elsewhere. `stream_transform`
+  now yields normalized entries (DMLex JSON names) by default because normalization needs the
+  producing descriptor.
+- Generated ids in samples follow the source ordinal (`entry.id.<ordinal+1>`) only for
+  single-descriptor mappings; with secondary descriptors the counter is run-local, since seeding
+  per source entry collided (`entry.id.23` twice in the first real sample).
+- Per-entry validation writes the sample as a temporary resource (placeholders for missing
+  `uri`/`langCode`, reported as resource issues), validates it with the XSD and attributes errors
+  by entry index; `check_consistency` findings are added as errors (duplicates, empty headword) or
+  warnings (empty sense, empty part of speech). Stored per entry in `converted_entries.issues`.
+- Migration 0004: `conversion_runs`, `converted_entries` (normalized DMLex JSON; XML is rendered
+  on request by the writer). The sample service lives in `elexifier_agent.conversion` because
+  both the tool and the API use it and the agent package cannot import the API.
+- Tools: `run_conversion(kind="sample", n | ordinals, strategy, query, mapping_version_number)`
+  and `diff_runs(run_a, run_b)`. Full runs are M1.8. A `run.finished` event is published so the
+  runs list refreshes.
+- UI: `open_entry` carries `run_id`; `EntryView` shows the source next to the DMLex output
+  (rendered, XML, JSON) with issues; `RunPanel` lists a run's entries with issue badges; the left
+  pane lists runs; tool cards for profile, mapping_write, run_conversion and diff_runs.
+- Verification with `claude-opus-5` on the Oxford project: the agent picked 10 entries
+  (`ordinals` of baby, back, b and a spread), the sample produced 38 output entries (multiword
+  units) with 2 hidden entries skipped, 3 errors and 7 warnings; it then started checking the
+  sources behind the warnings. The turn was cut short by the owner's exhausted API credits; the
+  API stored the failed agent run with the provider's message and kept the conversation intact.

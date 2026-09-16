@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+import copy
+import json
+
+from sqlalchemy import func, select
+
+from elexifier_core.db.models import ConversionRun, ConvertedEntry
+from elexifier_pipeline.sample import OXFORD_MAPPING
+
+from .conftest import Fixture
+from .test_xml_tools import call_tool
+
+
+async def test_sample_run_converts_validates_and_stores(fixture: Fixture) -> None:
+    missing = await call_tool(fixture, "run_conversion", {"n": 3})
+    assert missing["summary"].startswith("Error: no mapping stored yet")
+
+    mapping = json.loads(OXFORD_MAPPING.read_text(encoding="utf-8"))
+    stored = await call_tool(fixture, "mapping_write", {"mapping": mapping, "note": "v1"})
+    assert stored["data"]["stored"] is True
+
+    result = await call_tool(fixture, "run_conversion", {"ordinals": [1, 2, 6], "n": 3})
+    data = result["data"]
+    assert result["summary"].startswith("Sample run with mapping v1: 3 entries converted")
+    assert data["stats"]["requested"] == 3 and data["stats"]["converted"] == 3
+    assert [e["headword"] for e in data["entries"]] == ["b", "BA", "BAAS"]
+    assert data["entries"][0]["dmlex"]["id"] == "entry.id.2"  # ids follow the ordinal
+    assert data["entries"][0]["dmlex"]["headword"] == "b"
+    assert data["resource_issues"] == [] and data["plan_warnings"] == []
+    assert data["validation"].startswith("valid DMLex XML") or "error" in data["validation"]
+
+    async with fixture.db.session() as db:
+        run = (await db.execute(select(ConversionRun))).scalar_one()
+        assert run.kind == "sample" and run.status == "done" and run.mapping_version == 1
+        assert run.scope["ordinals"] == [1, 2, 6]
+        rows = (
+            (
+                await db.execute(
+                    select(ConvertedEntry)
+                    .where(ConvertedEntry.run_id == run.id)
+                    .order_by(ConvertedEntry.position)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [r.ordinal for r in rows] == [1, 2, 6]
+        assert rows[0].dmlex["senses"][0]["id"].startswith("entry.id.2.sense.id.")
+        assert all(isinstance(r.issues, list) for r in rows)
+
+
+async def test_sample_reports_issues_and_diff_runs_compares(fixture: Fixture) -> None:
+    mapping = json.loads(OXFORD_MAPPING.read_text(encoding="utf-8"))
+    await call_tool(fixture, "mapping_write", {"mapping": mapping, "note": "v1"})
+    first = await call_tool(fixture, "run_conversion", {"ordinals": [1, 2], "n": 2})
+
+    # v2 breaks the headword selector: entries lose their headword -> schema + consistency errors
+    broken = copy.deepcopy(mapping)
+    entry = next(c for c in broken["children"] if c["outElement"] == "entry")
+    headword = next(t for t in entry["textVals"] if t["outElement"] == "headword")
+    headword["inSelector"] = "nonexistent"
+    stored = await call_tool(fixture, "mapping_write", {"mapping": broken, "note": "v2"})
+    assert stored["data"]["stored"] is True
+    second = await call_tool(fixture, "run_conversion", {"ordinals": [1, 2], "n": 2})
+    assert "2 with issues" in second["summary"]
+    issues = second["data"]["entries"][0]["issues"]
+    assert {i["code"] for i in issues} >= {"empty-headword", "schema"}
+    assert second["data"]["mapping_version"] == 2
+
+    diff = await call_tool(
+        fixture, "diff_runs", {"run_a": first["data"]["run_id"], "run_b": second["data"]["run_id"]}
+    )
+    assert diff["summary"].startswith("Run with mapping v1 vs run with mapping v2: 2 of 2 shared")
+    assert diff["data"]["changed_total"] == 2 and diff["data"]["issue_delta"] > 0
+    assert any(c.startswith("- headword") for c in diff["data"]["changed"][0]["changes"])
+
+    # a run can pin an older mapping version
+    pinned = await call_tool(
+        fixture, "run_conversion", {"ordinals": [1], "n": 1, "mapping_version_number": 1}
+    )
+    assert pinned["data"]["mapping_version"] == 1
+    assert pinned["data"]["entries"][0]["issues"] == []
+    async with fixture.db.session() as db:
+        assert (await db.execute(select(func.count()).select_from(ConversionRun))).scalar() == 3
+
+    bad = await call_tool(fixture, "diff_runs", {"run_a": "x", "run_b": "y"})
+    assert bad["summary"].startswith("Error")
+
+
+async def test_secondary_entry_descriptors_get_distinct_ids(fixture: Fixture) -> None:
+    mapping = json.loads(OXFORD_MAPPING.read_text(encoding="utf-8"))
+    # phrasal verbs (<pv>/<pvp>) as separate entries next to the main <se> entries
+    mapping["children"].append(
+        {
+            "inSelector": "se/pv/pvp[lp[normalize-space()]]",
+            "outElement": "entry",
+            "textVals": [
+                {
+                    "inSelector": "lp[1]",
+                    "attribute": "{http://elex.is/wp1/teiLex0Mapper/meta}innerTextRec",
+                    "outElement": "headword",
+                },
+                {
+                    "attribute": "{http://elex.is/wp1/teiLex0Mapper/meta}autogenerated",
+                    "outElement": "id",
+                },
+            ],
+        }
+    )
+    await call_tool(fixture, "mapping_write", {"mapping": mapping, "note": "with phrasal verbs"})
+    result = await call_tool(fixture, "run_conversion", {"ordinals": [85, 86], "n": 2})
+    data = result["data"]
+    assert data["stats"]["converted"] > 2  # "back" has phrasal verbs
+    async with fixture.db.session() as db:
+        rows = (await db.execute(select(ConvertedEntry))).scalars().all()
+    ids = [r.dmlex.get("id") for r in rows]
+    assert len(ids) == len(set(ids)) and all(ids)
+    assert not any(i["code"] == "duplicate-entry-id" for r in rows for i in r.issues)

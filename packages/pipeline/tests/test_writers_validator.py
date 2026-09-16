@@ -49,11 +49,8 @@ def test_streamed_entries_write_and_validate(
 ) -> None:
     desc = dx.load_mapping(oxford_mapping)
     plan = streaming.plan_for(desc)
-    entry_desc = plan.entry_desc
     out = tmp_path / "streamed.xml"
-    entries = writers.iter_normalized(
-        streaming.stream_transform(samples["oxford"], desc, plan=plan), entry_desc
-    )
+    entries = streaming.stream_transform(samples["oxford"], desc, plan=plan)
     with out.open("wb") as fh:
         first_entries = []
 
@@ -192,3 +189,24 @@ def test_json_writer_and_consistency(oxford_mapping: dict, samples: dict) -> Non
         "empty-pos",
         "empty-sense",
     ]
+
+
+def test_validate_entries_attributes_findings(oxford_mapping: dict, samples: dict) -> None:
+    desc = dx.load_mapping(oxford_mapping)
+    plan = streaming.plan_for(desc)
+    entries = list(streaming.stream_transform(samples["oxford"], desc, plan=plan, limit=12))
+    entries[3] = dict(entries[3], headword="")  # break one entry
+    entries[5] = dict(entries[5], senses=[{"id": "dup"}, {"id": "dup", "indicator": "x"}])
+    result = validator.validate_entries(plan.resource_scalars, entries)
+    assert not result.report.valid
+    assert {3, 5} <= set(result.per_entry)
+    codes = {i.code for i in result.issues_for(3)}
+    assert "empty-headword" in codes and "schema" in codes  # XSD assert + consistency
+    assert any(i.code == "duplicate-sense-id" for i in result.issues_for(5))
+    assert all(i.path.startswith(("sense", "entry", "headword")) for i in result.issues_for(5))
+    assert result.resource_issues == []
+
+    # missing resource values get placeholders and a resource-level warning
+    result = validator.validate_entries({}, entries[:2])
+    assert [i.code for i in result.resource_issues] == ["missing-resource-value"] * 2
+    assert result.report.valid and result.per_entry == {}

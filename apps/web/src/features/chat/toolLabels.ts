@@ -1,0 +1,16 @@
+export const TOOL_LABELS: Record<string, string> = {
+  list_files: 'Listing project files',
+  read_file_head: 'Peeking into a file',
+  xml_profile: 'Profiling the XML structure',
+  xml_sample_entries: 'Reading sample entries',
+  xml_search: 'Searching entries',
+  xml_test_xpath: 'Testing an XPath',
+  xml_distinct_values: 'Collecting distinct values',
+  mapping_get: 'Reading the mapping',
+  mapping_write: 'Storing a mapping version',
+  mapping_explain: 'Explaining the mapping',
+  spec_read: 'Reading the conversion spec',
+  spec_update: 'Updating the conversion spec',
+  run_conversion: 'Converting a sample',
+  diff_runs: 'Comparing two runs',
+}

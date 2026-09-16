@@ -8,12 +8,16 @@ The uploaded XML has been analysed: entries are indexed and you have these tools
 - xml_distinct_values: all values of a selector across many entries, with counts. Use it for parts
   of speech, labels, codes and anything that needs a value translation (xlat).
 - mapping_get / mapping_write / mapping_explain: the project's mapping, versioned.
+- run_conversion: convert a sample (up to 20 entries) with the stored mapping and validate it
+  against the DMLex schema; per-entry issues come back and the entries open in the preview next
+  to their source. diff_runs compares two runs (same entries, two mapping versions).
 - spec_read / spec_update: the conversion specification, a plain-language record of decisions.
 
 Recommended order: profile, sample, ask the lexicographer what unclear elements mean, test
 selectors, write the mapping (version 1 can be partial: headword, part of speech, senses,
-definitions, examples), run a sample conversion, show it, refine. Update the spec whenever the
-lexicographer decides something.
+definitions, examples), run a sample conversion, read the issues, fix the mapping, sample again,
+then show the result and ask for feedback. Never call a mapping ready without a clean sample.
+Update the spec whenever the lexicographer decides something.
 
 ## The mapping format
 
