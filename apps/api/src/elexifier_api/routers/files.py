@@ -16,7 +16,7 @@ from sqlalchemy import select
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
 from elexifier_api.deps import CurrentSettings, CurrentStorage, CurrentUser, DbSession, State
-from elexifier_api.routers.documents import create_document_for_file, is_xml_file
+from elexifier_api.routers.documents import create_document_for_file, document_type_for
 from elexifier_api.schemas import FileOut
 from elexifier_core.db.models import File, FileKind, ProjectRole
 from elexifier_core.storage import NotFoundError, make_key, safe_filename
@@ -154,8 +154,8 @@ async def upload_file(
         size=stat.size,
     )
     await db.flush()
-    if kind == FileKind.SOURCE.value and project.source_type == "xml" and is_xml_file(record):
-        # XML sources are parsed right away so the entry index is ready when the chat starts
+    if kind == FileKind.SOURCE.value and document_type_for(record) == project.source_type:
+        # sources matching the project type are analysed right away (XML index, PDF layout)
         await create_document_for_file(db, state, record)
     await db.refresh(record)
     return FileOut.model_validate(record)

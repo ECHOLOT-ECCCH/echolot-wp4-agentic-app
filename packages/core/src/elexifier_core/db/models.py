@@ -214,6 +214,30 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     entries: Mapped[list[Entry]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+    pages: Mapped[list[PdfPage]] = relationship(
+        back_populates="document", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class PdfPage(UUIDPrimaryKeyMixin, Base):
+    """One page of a PDF document: geometry and where its extracted layout JSON lives."""
+
+    __tablename__ = "pdf_pages"
+    __table_args__ = (UniqueConstraint("document_id", "page_no"),)
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True
+    )
+    page_no: Mapped[int] = mapped_column(Integer)  # 1-based
+    width: Mapped[float]
+    height: Mapped[float]
+    rotation: Mapped[int] = mapped_column(Integer, default=0)
+    layout_s3_key: Mapped[str] = mapped_column(String(512))
+    text_chars: Mapped[int] = mapped_column(Integer, default=0)
+    is_scanned: Mapped[bool] = mapped_column(default=False)
+    line_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    document: Mapped[Document] = relationship(back_populates="pages")
 
 
 class Entry(UUIDPrimaryKeyMixin, Base):

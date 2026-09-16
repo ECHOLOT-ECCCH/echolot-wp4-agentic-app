@@ -4,6 +4,6 @@ The worker imports this package through ``ELX task_modules`` (see settings); the
 so that tasks are registered on the shared app object before deferring them.
 """
 
-from elexifier_api.jobs import conversions, documents
+from elexifier_api.jobs import conversions, documents, pdf
 
-__all__ = ["conversions", "documents"]
+__all__ = ["conversions", "documents", "pdf"]

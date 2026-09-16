@@ -451,3 +451,24 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
 - Verified in the browser on the Oxford project: edited the agent's v2 (part-of-speech tag
   `noun` -> `substantive`), saved as v3, ran a sample from the editor, the rendered entry shows
   the new tag; the e2e smoke now covers editor -> save -> sample -> side-by-side -> spec save.
+
+## 2026-09-16 PDF layout extraction (M2.1)
+
+- `elexifier_pipeline.pdf.layout.PdfplumberLayout`: words from pdfplumber with font, size, bold
+  and italic (from the font name), baseline rows split at large horizontal gaps, columns from the
+  distribution of line starts (peaks at least 6% of the lines, merged within 12% of the page
+  width so hanging indents stay in their column), lines in reading order (column, top), blocks
+  as runs of lines without a large vertical gap, font statistics and the body size. A page with
+  fewer than 20 characters is flagged `is_scanned`. Rendering uses pypdfium2 (PNG at a given dpi).
+  Measured on a generated 162-page two-column PDF: 76 ms per page, 78 MB RSS.
+- Fixtures: `sample/pdfgen.py` writes small PDFs with the standard Type1 fonts (no library needed),
+  deterministic; `sample/columns-dictionary.pdf` is three two-column pages plus one page without a
+  text layer. It stands in until the owner provides a real PDF in `legacy/pdf/`.
+- Migration 0005 `pdf_pages` (geometry, `layout_s3_key`, text_chars, is_scanned, line_count). The
+  job `documents.layout` stores one layout JSON per page under `derived/{document_id}/` and works
+  in chunks of 10 pages with progress events; PDF uploads in PDF projects create a document
+  automatically (the same path as XML), and `POST /documents` accepts PDFs in any project.
+- API: `GET .../documents/{id}/pages`, `.../pages/{n}/layout` (the JSON), `.../pages/{n}/image?dpi`
+  (rendered once per resolution and kept in storage; meant for the model and thumbnails, the
+  browser renders with PDF.js). Web: PDF documents show page counts; opening one shows page facts
+  and the scan warning above the existing viewer. Overlays follow in M2.2/M2.3.

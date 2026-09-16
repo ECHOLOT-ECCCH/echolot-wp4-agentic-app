@@ -2,6 +2,7 @@ import { AlertTriangleIcon, Loader2Icon } from 'lucide-react'
 
 import { EntryNavigator } from '@/features/entries/EntryNavigator'
 import { EntryView } from '@/features/entries/EntryView'
+import { PdfDocumentPanel } from '@/features/pdf/PdfDocumentPanel'
 import { useDocument } from '@/lib/queries'
 import { usePreview } from '@/lib/uiActions'
 
@@ -32,7 +33,9 @@ export function DocumentPanel({
         <Loader2Icon className="text-muted-foreground size-6 animate-spin" />
         <p className="font-medium">Analysing {doc.file_name}</p>
         <p className="text-muted-foreground text-sm">
-          Finding entries and building the index. Large files take a minute.
+          {doc.type === 'pdf'
+            ? 'Extracting the layout of every page. Long dictionaries take a few minutes.'
+            : 'Finding entries and building the index. Large files take a minute.'}
         </p>
       </div>
     )
@@ -45,6 +48,9 @@ export function DocumentPanel({
         <p className="text-muted-foreground max-w-md text-sm">{doc.error}</p>
       </div>
     )
+  }
+  if (doc.type === 'pdf') {
+    return <PdfDocumentPanel projectId={projectId} document={doc} />
   }
   return (
     <div className="flex h-full">

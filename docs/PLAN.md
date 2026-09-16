@@ -25,8 +25,9 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M1 XML end to end (checklist in section 12b).
-- Next task: M1.10
+- Current milestone: M2 PDF end to end (checklist in section 12c); M1.10 (live-model acceptance) stays
+  open until the owner's API credits are available, then it is run first.
+- Next task: M2.2 (M1.10 as soon as the API accepts calls)
 - Blockers: M1.10 needs the owner's Anthropic account to have API credits; on 2026-09-16 the API
   answered "credit balance is too low" (the monthly spend limit was raised, but prepaid credits or
   auto-reload are what the API checks). `make dev-infra` provides Postgres, Keycloak and Garage; the
@@ -35,7 +36,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M1.9 done)
+- Last update: 2026-09-16 (M2.1 done; M1.10 blocked on API credits)
 
 Update this block at the end of every task.
 
@@ -593,13 +594,77 @@ validation report and export; every decision is recorded in the conversion spec.
   model and on one more legacy export if provided; record results and prompt adjustments in
   `docs/DECISIONS.md` under Verification.
 
+## 12c. Milestone 2: PDF end to end (checklist)
+
+Goal: a born-digital PDF dictionary becomes DMLex through the chat: the layout is extracted in the
+worker, a rule segmenter proposes entry boxes that the lexicographer reviews and corrects on the page,
+an LLM structurer turns each entry into DMLex with a cost estimate first, and the existing writers,
+validator and runs produce the output. Fixtures: `sample/sample-dictionary.pdf` (2 pages) for tests;
+a real ~200-page PDF from the owner in `legacy/pdf/` for the acceptance (ask once, keep working).
+Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
+
+- [x] M2.1 Layout extraction. `pipeline/pdf/layout.py`: `PdfplumberLayout.extract(pdf, pages)` yields
+  `PageLayout(page, width, height, rotation, lines[], blocks[])` per 7.7 (words with font, size, bold,
+  italic; lines by baseline clustering; blocks by column and vertical gaps; text density per page to
+  flag scans), `render_page(pdf, page, dpi)` with pypdfium2. Migration 0005 `pdf_pages`
+  (document_id, page_no, width, height, rotation, layout_s3_key, text_chars, is_scanned). Job
+  `documents.layout` for PDF documents (status queued|parsing|ready|error, progress every 10 pages,
+  layout JSON per page in storage under `derived/`). PDF uploads in PDF projects create a document
+  automatically, like XML. API: `GET .../documents/{id}/pages`, `GET .../pages/{n}/layout`,
+  `GET .../pages/{n}/image?dpi=`. Web: PDF documents in the document list with page counts; the PDF
+  preview opens from the document. Acceptance: the sample PDF and a larger PDF become ready with
+  layouts; a scanned page is flagged.
+- [ ] M2.2 Rule segmenter and annotations. `pipeline/pdf/segmenters.py`: `RuleSegmenter` (entry starts
+  at lines whose first word is bold or larger than the body size, hanging indent, per-column
+  reading order; every threshold in `params`, defaults derived from the page's font statistics) with
+  `EntrySpan` confidence; `registry.py` with `get_segmenter(name)` over entry points group
+  `elexifier.pipeline`. Migration 0006 `annotations` (document_id, page_no, bbox, label,
+  entry_span_id, source rule|ml|user, status proposed|accepted|rejected|edited, payload, created_by,
+  set_id). Job `pdf.segment(document_id, params)` replaces the proposed set. API: list annotations by
+  page and status, bulk accept/reject, create/update/delete (user). Tools `pdf_analyze(document_id)`
+  (pages, fonts, columns, density, scan warning) and `pdf_segment(document_id, params)` with a
+  `show_overlay` ui-action. Acceptance: the sample PDF yields one span per entry; a wrong threshold
+  is visible as merged or split spans.
+- [ ] M2.3 Overlays and review mode. `OverlayLayer` (SVG over react-pdf pages using the 7.10
+  conversion through the PDF.js viewport), spans coloured by status, a review list with keyboard
+  j/k (next/previous), a (accept), r (reject), bulk accept page; `show_overlay` and `open_page`
+  ui-actions focus a span; PDF documents get an entry navigator built from accepted spans
+  (headword guess, page). Acceptance: review the sample PDF's spans with the keyboard; statuses
+  persist across reload.
+- [ ] M2.4 Edit mode. Draw a new box, resize by handles, relabel, split at a line, merge adjacent
+  spans; all saved as `user` annotations with the original kept as `edited`. Acceptance: fix two
+  wrong spans on the sample PDF and see the entry navigator update.
+- [ ] M2.5 Select-to-chat. Drag a region or select text on the page: the words inside (with page and
+  bbox) become a context chip on the composer and travel with the next message as a `data-context`
+  part the API turns into a user-message annotation; tool `pdf_get_page(document_id, page, bbox?)`
+  returns the words and, for vision models, the page image (110 dpi, cropped to the bbox).
+  Acceptance: ask about a selected region and the answer refers to its words.
+- [ ] M2.6 Structuring, sample. `pipeline/pdf/structurers.py`: `RuleStructurer` (headword plus the
+  rest as one definition) and `LlmStructurer` (Pydantic AI agent per entry with
+  `output_type=DmlexEntryDraft`, the project's model, optional page crop, concurrency semaphore,
+  retries, per-entry usage); `StructureProfile` (source language, target languages, what the
+  dictionary contains) kept in the conversion spec; `pdf_estimate_cost(document_id, with_images)`
+  from `ModelInfo` prices; `pdf_structure(kind="sample", n | span_ids)` synchronous up to 20 entries
+  storing a run with `converted_entries` (confidence, notes) and the usage in `usage_records`;
+  the side-by-side view shows the page crop next to the DMLex. Acceptance: 10 sample entries
+  structured with the owner's model; the usage is recorded.
+- [ ] M2.7 Structuring, full. `pdf_structure(kind="full")` needs approval and enqueues
+  `pdf.structure`: batches with concurrency, a cache keyed by (model, profile, span text) so re-runs
+  after corrections only pay for changed entries, progress, cost accounting against the estimate,
+  a low-confidence review list, user overrides of extracted entries (edited DMLex JSON kept as
+  `converted_entries.override`), export through the existing writers and validation.
+  Acceptance: the whole sample PDF becomes valid DMLex; the recorded cost is within 25% of the
+  estimate.
+- [ ] M2.8 Acceptance on the owner's PDF. Run the whole flow on the ~200-page PDF with the owner's
+  model; record timings, costs and prompt adjustments in `docs/DECISIONS.md` under Verification.
+
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)
 
 ### M1 XML end-to-end (expanded into section 12b)
 Scope: document parse job (`documents`, `entries` tables, `LxmlXmlSource`), XML toolset (`xml_profile`, `xml_sample_entries`, `xml_search`, `mapping_write`, `mapping_explain`), `run_conversion` (sample synchronous up to 50 entries, full as a job with progress and approval), `validate_dmlex`, `diff_runs`, `run_stats`, `export`, `spec_read`, `spec_update`; DMLex model, writers, validator with vendored schemas; UI: entry navigator, `EntryView` side by side (source XML, DMLex XML/JSON, readable rendering), `DiffView`, `MappingTable` editor bound to MappingSpec v1, `SpecEditor`, specialised tool cards (profile summary, mapping proposal, sample before/after, validation report, job progress).
 Acceptance: a real legacy XML dictionary becomes schema-valid DMLex XML and JSON through the chat, with at most manual edits in the mapping table; full run of 50k entries completes as a job with progress; export downloads.
 
-### M2 PDF end-to-end
+### M2 PDF end-to-end (expanded into section 12c)
 Scope: layout extraction job (`pdf_pages`, layout JSON in storage), `PdfViewer` overlays from `EntrySpan` sets, review mode (accept/reject, keyboard j/k/a/r), edit mode (draw, resize, relabel, split, merge), select-to-chat (drag region or text-layer selection, words inside become a context chip with page and bbox), PDF toolset (`pdf_analyze`, `pdf_get_page`, `pdf_segment`, `pdf_estimate_cost`, `pdf_structure` sample and full, `annotations_get`), `LlmStructurer` batch job with concurrency, caching and cost accounting, extracted-entry editing saved as user overrides, low-confidence review list.
 Acceptance: a ~200-page born-digital PDF dictionary becomes DMLex with user corrections applied; the cost estimate shown before the batch is within 25% of the recorded usage.
 

@@ -158,6 +158,7 @@ class DocumentOut(ApiModel):
     entry_xpath: str | None
     headword_xpath: str | None
     entry_count: int
+    page_count: int | None = None  # PDF documents, once the layout is extracted
     error: str | None
     parsed_at: datetime | None
     created_at: datetime
@@ -166,6 +167,18 @@ class DocumentOut(ApiModel):
 
 class DocumentDetailOut(DocumentOut):
     stats: dict[str, Any]
+
+
+class PdfPageOut(ApiModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    page_no: int
+    width: float
+    height: float
+    rotation: int
+    text_chars: int
+    is_scanned: bool
+    line_count: int
 
 
 class EntryOut(ApiModel):

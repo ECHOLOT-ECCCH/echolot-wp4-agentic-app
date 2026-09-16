@@ -8,11 +8,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SAMPLES = path.resolve(HERE, '../../../packages/pipeline/src/elexifier_pipeline/sample')
 const stamp = () => new Date().toISOString().replace(/\D/g, '').slice(0, 14)
 
-async function createProject(page: Page, name: string) {
+async function createProject(page: Page, name: string, sourceType: 'xml' | 'pdf' = 'xml') {
   await page.goto('/')
   await page.getByRole('heading', { name: 'Elexifier' }).waitFor()
   await page.getByRole('button', { name: /new project/i }).click()
   await page.getByLabel('Name').fill(name)
+  if (sourceType === 'pdf') await page.getByRole('button', { name: /^PDF/ }).click()
   await page.getByRole('button', { name: 'Create' }).click()
   await page.getByRole('link', { name: new RegExp(name) }).click()
   await page.waitForURL(/\/projects\//)
@@ -187,6 +188,23 @@ test.describe('workspace smoke', () => {
     await page.keyboard.insertText('# Sample spec\n\n- entries are <entry>')
     await page.getByRole('button', { name: /^Save$/ }).click()
     await expect(page.getByText('Specification saved as version 1')).toBeVisible()
+  })
+
+  test('pdf project: upload, layout job, page facts and viewer', async ({ page }) => {
+    const id = stamp()
+    await createProject(page, `PDF ${id}`, 'pdf')
+    await page
+      .locator('input[type=file]')
+      .setInputFiles(path.join(SAMPLES, 'columns-dictionary.pdf'))
+    const document = page.getByRole('button', { name: /^columns-dictionary\.pdf.*pages$/ })
+    await expect(document, 'layout job did not finish; is `make worker` running?').toBeVisible({
+      timeout: 90_000,
+    })
+    await expect(document).toContainText('4 pages')
+    await document.click()
+    await expect(page.getByText(/1 page without a text layer/)).toBeVisible()
+    await expect(page.locator('.react-pdf__Page').first()).toBeVisible()
+    await expect(page.getByText('1 / 4')).toBeVisible()
   })
 
   test('deny keeps the gated tool from running', async ({ page }) => {

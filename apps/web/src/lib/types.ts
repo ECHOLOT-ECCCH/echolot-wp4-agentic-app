@@ -122,6 +122,7 @@ export interface DocumentRecord {
   entry_xpath: string | null
   headword_xpath: string | null
   entry_count: number
+  page_count: number | null
   error: string | null
   parsed_at: string | null
   created_at: string
@@ -136,7 +137,23 @@ export interface DocumentDetail extends DocumentRecord {
     total_elements?: number
     entry_candidates?: EntryCandidate[]
     element_stats?: { tag: string; count: number; depth: number; has_text: boolean }[]
+    page_count?: number
+    scanned_pages?: number
+    text_chars?: number
+    lines?: number
   }
+}
+
+export interface PdfPageRecord {
+  id: string
+  document_id: string
+  page_no: number
+  width: number
+  height: number
+  rotation: number
+  text_chars: number
+  is_scanned: boolean
+  line_count: number
 }
 
 export interface EntryListItem {

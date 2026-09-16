@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
 from elexifier_api.deps import CurrentStorage, CurrentUser, DbSession, State
-from elexifier_api.jobs.documents import entry_source
+from elexifier_api.jobs.documents import download_to_temp, entry_source
+from elexifier_api.jobs.pdf import image_key
 from elexifier_api.schemas import (
     DocumentCreate,
     DocumentDetailOut,
@@ -20,8 +22,11 @@ from elexifier_api.schemas import (
     EntryDetailOut,
     EntryOut,
     EntryPage,
+    PdfPageOut,
 )
-from elexifier_core.db.models import Document, DocumentStatus, Entry, File, ProjectRole
+from elexifier_core.db.models import Document, DocumentStatus, Entry, File, PdfPage, ProjectRole
+from elexifier_core.storage import NotFoundError
+from elexifier_pipeline.pdf.layout import PdfplumberLayout
 
 router = APIRouter(prefix="/api/projects/{project_id}", tags=["documents"])
 
@@ -33,6 +38,18 @@ def is_xml_file(file: File) -> bool:
     return file.mime in XML_LIKE or file.mime.endswith("+xml") or name.endswith((".xml", ".tei"))
 
 
+def is_pdf_file(file: File) -> bool:
+    return file.mime == "application/pdf" or file.name.lower().endswith(".pdf")
+
+
+def document_type_for(file: File) -> str | None:
+    if is_xml_file(file):
+        return "xml"
+    if is_pdf_file(file):
+        return "pdf"
+    return None
+
+
 async def create_document_for_file(
     db: AsyncSession,
     state: State,
@@ -41,11 +58,12 @@ async def create_document_for_file(
     entry_xpath: str | None = None,
     headword_xpath: str | None = None,
 ) -> Document:
-    """Create a queued document for a file and defer the parse job."""
+    """Create a queued document for a file and defer its analysis job (XML parse or PDF layout)."""
+    doc_type = document_type_for(file) or "xml"
     document = Document(
         project_id=file.project_id,
         source_file_id=file.id,
-        type="xml",
+        type=doc_type,
         status=DocumentStatus.QUEUED.value,
         entry_xpath=entry_xpath,
         headword_xpath=headword_xpath,
@@ -57,7 +75,8 @@ async def create_document_for_file(
 
 
 async def defer_parse(state: State, document: Document) -> None:
-    job_id = await state.jobs.configure_task("documents.parse", queue="heavy").defer_async(
+    task = "documents.layout" if document.type == "pdf" else "documents.parse"
+    job_id = await state.jobs.configure_task(task, queue="heavy").defer_async(
         document_id=str(document.id)
     )
     document.job_id = int(job_id) if job_id is not None else None
@@ -65,8 +84,13 @@ async def defer_parse(state: State, document: Document) -> None:
 
 def _out(document: Document, file_name: str, detail: bool = False) -> DocumentOut:
     model = DocumentDetailOut if detail else DocumentOut
-    data = {k: getattr(document, k) for k in DocumentOut.model_fields if k != "file_name"}
+    data = {
+        k: getattr(document, k)
+        for k in DocumentOut.model_fields
+        if k not in ("file_name", "page_count")
+    }
     data["file_name"] = file_name
+    data["page_count"] = (document.stats or {}).get("page_count")
     if detail:
         data["stats"] = document.stats
     return model(**data)
@@ -108,9 +132,9 @@ async def create_document(
     file = await db.get(File, body.file_id)
     if file is None or file.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-    if not is_xml_file(file):
+    if document_type_for(file) is None:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "Only XML files can be parsed in this milestone"
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Only XML and PDF files can be analysed"
         )
     document = await create_document_for_file(
         db, state, file, entry_xpath=body.entry_xpath, headword_xpath=body.headword_xpath
@@ -158,6 +182,83 @@ async def reparse_document(
     await db.flush()
     await db.refresh(document)
     return _out(document, file.name)
+
+
+@router.get("/documents/{document_id}/pages", response_model=list[PdfPageOut])
+async def list_pages(
+    project_id: uuid.UUID, document_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> list[PdfPageOut]:
+    await get_project_or_404(db, project_id, user)
+    await _document(db, project_id, document_id)
+    rows = (
+        (
+            await db.execute(
+                select(PdfPage).where(PdfPage.document_id == document_id).order_by(PdfPage.page_no)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [PdfPageOut.model_validate(p) for p in rows]
+
+
+async def _page(db: AsyncSession, project_id: uuid.UUID, document_id: uuid.UUID, page_no: int):
+    document, file = await _document(db, project_id, document_id)
+    page = (
+        await db.execute(
+            select(PdfPage).where(PdfPage.document_id == document_id, PdfPage.page_no == page_no)
+        )
+    ).scalar_one_or_none()
+    if page is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Page not found")
+    return document, file, page
+
+
+@router.get("/documents/{document_id}/pages/{page_no}/layout")
+async def get_page_layout(
+    project_id: uuid.UUID,
+    document_id: uuid.UUID,
+    page_no: int,
+    db: DbSession,
+    user: CurrentUser,
+    storage: CurrentStorage,
+) -> Response:
+    """The extracted layout of one page (words, lines, blocks; PLAN 7.7 and 7.10)."""
+    await get_project_or_404(db, project_id, user)
+    _document_row, _file, page = await _page(db, project_id, document_id, page_no)
+    try:
+        body = b"".join([chunk async for chunk in storage.open(page.layout_s3_key)])
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Layout not found") from exc
+    return Response(content=body, media_type="application/json")
+
+
+@router.get("/documents/{document_id}/pages/{page_no}/image")
+async def get_page_image(
+    project_id: uuid.UUID,
+    document_id: uuid.UUID,
+    page_no: int,
+    db: DbSession,
+    user: CurrentUser,
+    storage: CurrentStorage,
+    dpi: int = Query(default=110, ge=36, le=300),
+) -> Response:
+    """PNG rendering of one page, rendered once per resolution and kept in storage."""
+    await get_project_or_404(db, project_id, user)
+    document, file, _page_row = await _page(db, project_id, document_id, page_no)
+    key = image_key(project_id, document.id, page_no, dpi)
+    try:
+        png = b"".join([chunk async for chunk in storage.open(key)])
+    except NotFoundError:
+        path = await download_to_temp(storage, file.s3_key, suffix=".pdf")
+        try:
+            png = await asyncio.to_thread(PdfplumberLayout().render_page, path, page_no, dpi)
+        finally:
+            path.unlink(missing_ok=True)
+        await storage.put(key, png, content_type="image/png")
+    return Response(
+        content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"}
+    )
 
 
 @router.get("/documents/{document_id}/entries", response_model=EntryPage)

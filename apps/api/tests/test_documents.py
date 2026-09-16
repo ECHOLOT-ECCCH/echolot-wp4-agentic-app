@@ -10,7 +10,7 @@ from elexifier_api.jobs import documents as jobs_documents
 from elexifier_api.jobs.runtime import reset_job_runtime
 from elexifier_api.state import AppState
 from elexifier_core.db.models import Document, Entry
-from elexifier_pipeline.sample import OXFORD_XML, SAMPLE_PDF
+from elexifier_pipeline.sample import COLUMNS_PDF, OXFORD_MAPPING, OXFORD_XML, SAMPLE_PDF
 
 from .conftest import LoggedIn
 
@@ -110,7 +110,7 @@ async def test_reparse_with_explicit_xpaths_and_errors(
     assert failed["status"] == "error" and "plain element name" in failed["error"]
 
 
-async def test_pdf_and_non_xml_files_are_not_parsed(
+async def test_only_sources_matching_the_project_type_are_analysed(
     client: httpx.AsyncClient, logged_in: LoggedIn
 ) -> None:
     logged_in.apply(client)
@@ -119,7 +119,11 @@ async def test_pdf_and_non_xml_files_are_not_parsed(
     ]
     pdf = await _upload(client, pid, SAMPLE_PDF)
     assert (await client.get(f"/api/projects/{pid}/documents")).json() == []
+    # an explicit request still works for a PDF in an XML project (layout job)
     resp = await client.post(f"/api/projects/{pid}/documents", json={"file_id": pdf["id"]})
+    assert resp.status_code == 201 and resp.json()["type"] == "pdf"
+    text = await _upload(client, pid, OXFORD_MAPPING, name="notes.txt")
+    resp = await client.post(f"/api/projects/{pid}/documents", json={"file_id": text["id"]})
     assert resp.status_code == 422
     # PDF projects do not auto-parse XML uploads either
     pdf_pid = (await client.post("/api/projects", json={"name": "P", "source_type": "pdf"})).json()[
@@ -127,3 +131,56 @@ async def test_pdf_and_non_xml_files_are_not_parsed(
     ]
     await _upload(client, pdf_pid, OXFORD_XML)
     assert (await client.get(f"/api/projects/{pdf_pid}/documents")).json() == []
+
+
+async def test_pdf_upload_runs_the_layout_job_and_serves_pages(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    from elexifier_api.jobs import pdf as jobs_pdf
+
+    logged_in.apply(client)
+    pid = (await client.post("/api/projects", json={"name": "PDF", "source_type": "pdf"})).json()[
+        "id"
+    ]
+    file = await _upload(client, pid, COLUMNS_PDF)
+    docs = (await client.get(f"/api/projects/{pid}/documents")).json()
+    assert len(docs) == 1 and docs[0]["type"] == "pdf" and docs[0]["status"] == "queued"
+    doc = docs[0]
+    assert doc["source_file_id"] == file["id"]
+
+    result = await jobs_pdf.extract_layout(doc["id"])
+    assert result == {"document_id": doc["id"], "pages": 4, "scanned_pages": 1}
+
+    detail = (await client.get(f"/api/projects/{pid}/documents/{doc['id']}")).json()
+    assert detail["status"] == "ready" and detail["entry_count"] == 0
+    assert detail["stats"]["page_count"] == 4 and detail["stats"]["scanned_pages"] == 1
+
+    pages = (await client.get(f"/api/projects/{pid}/documents/{doc['id']}/pages")).json()
+    assert [p["page_no"] for p in pages] == [1, 2, 3, 4]
+    assert (
+        pages[0]["width"] == 595.0 and pages[0]["line_count"] > 100 and not pages[0]["is_scanned"]
+    )
+    assert pages[3]["is_scanned"] and pages[3]["line_count"] == 0
+
+    layout = await client.get(f"/api/projects/{pid}/documents/{doc['id']}/pages/1/layout")
+    assert layout.status_code == 200
+    body = layout.json()
+    assert body["page"] == 1 and len(body["columns"]) == 2
+    assert body["lines"][1]["words"][0]["text"] == "abacus" and body["lines"][1]["words"][0]["bold"]
+    assert (
+        await client.get(f"/api/projects/{pid}/documents/{doc['id']}/pages/9/layout")
+    ).status_code == 404
+
+    image = await client.get(
+        f"/api/projects/{pid}/documents/{doc['id']}/pages/1/image", params={"dpi": 36}
+    )
+    assert image.status_code == 200 and image.headers["content-type"] == "image/png"
+    assert image.content[:8] == b"\x89PNG\r\n\x1a\n"
+    again = await client.get(
+        f"/api/projects/{pid}/documents/{doc['id']}/pages/1/image", params={"dpi": 36}
+    )
+    assert again.content == image.content  # served from storage the second time
+
+    # re-running the job replaces the pages instead of duplicating them
+    await jobs_pdf.extract_layout(doc["id"])
+    assert len((await client.get(f"/api/projects/{pid}/documents/{doc['id']}/pages")).json()) == 4

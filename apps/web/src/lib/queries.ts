@@ -17,6 +17,7 @@ import type {
   Member,
   ModelInfo,
   ModelSpec,
+  PdfPageRecord,
   ProbeResult,
   Project,
   Provider,
@@ -39,6 +40,8 @@ export const keys = {
     ['projects', projectId, 'documents', documentId, 'entries', { offset, limit, q }] as const,
   entry: (projectId: string, entryId: string) =>
     ['projects', projectId, 'entries', entryId] as const,
+  pages: (projectId: string, documentId: string) =>
+    ['projects', projectId, 'documents', documentId, 'pages'] as const,
   runs: (projectId: string) => ['projects', projectId, 'runs'] as const,
   run: (projectId: string, runId: string) => ['projects', projectId, 'runs', runId] as const,
   runEntries: (projectId: string, runId: string, offset: number, limit: number, issues: boolean) =>
@@ -288,6 +291,15 @@ export function useCreateRun(projectId: string) {
       document_id?: string
     }) => api<RunDetail>(`/api/projects/${projectId}/runs`, { method: 'POST', json: body }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.runs(projectId) }),
+  })
+}
+
+export function usePages(projectId: string, documentId: string | null) {
+  return useQuery({
+    queryKey: keys.pages(projectId, documentId ?? ''),
+    queryFn: () => api<PdfPageRecord[]>(`/api/projects/${projectId}/documents/${documentId}/pages`),
+    enabled: Boolean(documentId),
+    staleTime: 5 * 60_000,
   })
 }
 
