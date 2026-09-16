@@ -224,6 +224,11 @@ def _wrap(chain: list[Ancestor], entry: etree._Element) -> etree._ElementTree:
     return etree.ElementTree(root)
 
 
+def wrap_element(chain: list[Ancestor], entry: etree._Element) -> etree._ElementTree:
+    """Public name of :func:`_wrap` for other pipeline modules."""
+    return _wrap(chain, entry)
+
+
 def transform_wrapped(
     wrapped: etree._ElementTree, plan: EntryPlan, transformer: _Transformer
 ) -> list[tuple[TEltDesc, JsonDict]]:

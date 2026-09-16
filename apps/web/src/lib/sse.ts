@@ -50,6 +50,8 @@ export function useProjectEvents(projectId: string, onEvent?: (event: ProjectEve
         case 'job.progress':
           if (event.data.kind === 'documents.parse') {
             void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+          } else if (event.data.kind === 'conversions.run') {
+            void queryClient.invalidateQueries({ queryKey: keys.runs(projectId) })
           }
           break
         case 'ui_action':

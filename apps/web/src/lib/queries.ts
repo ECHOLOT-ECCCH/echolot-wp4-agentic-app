@@ -153,10 +153,13 @@ export function useEntry(projectId: string, entryId: string | null) {
   })
 }
 
+const runActive = (status?: string) => status === 'queued' || status === 'running'
+
 export function useRuns(projectId: string) {
   return useQuery({
     queryKey: keys.runs(projectId),
     queryFn: () => api<RunRecord[]>(`/api/projects/${projectId}/runs`),
+    refetchInterval: (query) => (query.state.data?.some((r) => runActive(r.status)) ? 3000 : false),
   })
 }
 
@@ -165,6 +168,7 @@ export function useRun(projectId: string, runId: string | null) {
     queryKey: keys.run(projectId, runId ?? ''),
     queryFn: () => api<RunDetail>(`/api/projects/${projectId}/runs/${runId}`),
     enabled: Boolean(runId),
+    refetchInterval: (query) => (runActive(query.state.data?.status) ? 2000 : false),
   })
 }
 

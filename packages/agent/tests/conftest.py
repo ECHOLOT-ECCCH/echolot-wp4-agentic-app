@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -48,6 +49,7 @@ class Fixture:
     file_id: uuid.UUID
     project_id: uuid.UUID
     document_id: uuid.UUID | None = None
+    deferred: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -133,12 +135,19 @@ async def fixture(test_db_url: str, tmp_path: Path) -> AsyncIterator[Fixture]:
         document.entry_count = len(refs)
         await session.commit()
         document_id = document.id
+        deferred: list[tuple[str, dict[str, Any]]] = []
+
+        async def fake_defer(name: str, kwargs: dict[str, Any]) -> int | None:
+            deferred.append((name, kwargs))
+            return len(deferred)
+
         deps = AgentDeps(
             project=ProjectContext(id=project.id, name=project.name, source_type="xml"),
             user=UserContext(id=user.id, email=user.email, name=user.name, role="owner"),
             session_factory=db.session_factory,
             storage=storage,
             settings=settings,
+            defer_job=fake_defer,
         )
     try:
         yield Fixture(
@@ -148,6 +157,7 @@ async def fixture(test_db_url: str, tmp_path: Path) -> AsyncIterator[Fixture]:
             file_id=file_id,
             project_id=project.id,
             document_id=document_id,
+            deferred=deferred,
         )
     finally:
         await db.dispose()

@@ -171,6 +171,9 @@ export interface RunRecord {
   status: RunStatus
   scope: { ordinals?: number[]; strategy?: string | null; query?: string | null }
   stats: {
+    phase?: string
+    done?: number
+    total?: number | null
     requested?: number
     converted?: number
     skipped?: number
@@ -178,6 +181,10 @@ export interface RunRecord {
     errors?: number
     warnings?: number
     resource_issues?: number
+    homographs_numbered?: number
+    output_files?: { file_id: string; name: string; format: string; size: number }[]
+    report_file_id?: string
+    timings?: Record<string, number>
   }
   output_file_id: string | null
   error: string | null
@@ -202,6 +209,9 @@ export interface RunDetail extends RunRecord {
     resource_issues?: EntryIssue[]
     plan_warnings?: string[]
     resource_scalars?: Record<string, unknown>
+    issue_codes?: Record<string, number>
+    entries_with_issues?: number
+    errors?: { output_index: number | null; ordinal: number | null; path: string; reason: string }[]
   }
 }
 

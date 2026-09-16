@@ -235,11 +235,14 @@ class ConvertedEntryDetailOut(ConvertedEntryOut):
     run_created_at: datetime
 
 
-class SampleRunCreate(BaseModel):
-    kind: Literal["sample"] = "sample"
+class RunCreate(BaseModel):
+    kind: Literal["sample", "full"] = "sample"
     document_id: uuid.UUID | None = None
     mapping_version: int | None = None
+    # sample options
     n: int = Field(default=10, ge=1, le=20)
     ordinals: list[int] | None = None
     strategy: Literal["first", "spread", "random"] = "spread"
     query: str | None = None
+    # full-run options
+    number_homographs: bool = True

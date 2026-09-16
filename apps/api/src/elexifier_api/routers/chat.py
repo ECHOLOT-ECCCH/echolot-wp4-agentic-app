@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,6 +20,7 @@ from elexifier_api.authz import get_project_or_404
 from elexifier_api.deps import CurrentSecretBox, CurrentSettings, CurrentUser, DbSession, State
 from elexifier_api.models_resolver import resolve_model
 from elexifier_api.schemas import ConversationCreate, ConversationOut, MessagesIn
+from elexifier_api.state import AppState
 from elexifier_core.db.models import (
     AgentRun,
     Conversation,
@@ -210,6 +212,7 @@ async def chat(
         storage=state.storage,
         settings=settings,
         conversation_id=conversation.id,
+        defer_job=_deferrer(state),
     )
 
     async def on_complete(summary: RunSummary) -> None:
@@ -254,6 +257,14 @@ async def chat(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Malformed chat request (messages)"
         ) from exc
+
+
+def _deferrer(state: AppState) -> Callable[[str, dict[str, Any]], Awaitable[int | None]]:
+    async def defer(name: str, kwargs: dict[str, Any]) -> int | None:
+        job_id = await state.jobs.configure_task(name, queue="heavy").defer_async(**kwargs)
+        return int(job_id) if job_id is not None else None
+
+    return defer
 
 
 def _project_context(project: Project) -> ProjectContext:

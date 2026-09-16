@@ -26,13 +26,13 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M1 XML end to end (checklist in section 12b).
-- Next task: M1.8
+- Next task: M1.9
 - Blockers: none. `make dev-infra` provides Postgres, Keycloak and Garage; the owner's Anthropic key is
   stored in the app (Settings). CI runs on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M1.7 done)
+- Last update: 2026-09-16 (M1.8 done)
 
 Update this block at the end of every task.
 
@@ -575,7 +575,7 @@ validation report and export; every decision is recorded in the conversion spec.
   and DMLex JSON side by side with per-entry issues; `diff_runs` for two runs. Tool cards for
   profile, mapping proposal and sample results. Acceptance: sample of 10 Oxford entries visible
   side by side with validation results.
-- [ ] M1.8 Full run, export, report. `run_conversion(kind="full")` requires approval and enqueues
+- [x] M1.8 Full run, export, report. `run_conversion(kind="full")` requires approval and enqueues
   `conversions.run`: the worker streams entries, converts with the mapping, writes DMLex XML and JSON
   to storage as `output` files, validates the XML, stores stats and the validation report
   (artifact), publishes progress every N entries and `run.finished`. `export(run_id, format)`,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from collections.abc import Iterator
 
@@ -103,3 +104,101 @@ async def test_sample_run_routes(
         await client.post(f"/api/projects/{pid}/runs", json={"ordinals": [99999]})
     ).status_code == 422
     assert (await client.get(f"/api/projects/{pid}/runs/{doc_id}")).status_code == 404
+
+
+async def test_full_run_job_writes_outputs_and_report(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    from elexifier_api.jobs import conversions as jobs_conversions
+    from elexifier_pipeline.dmlex.validator import validate_xml
+
+    logged_in.apply(client)
+    pid, _doc_id = await _parsed_project(client, app_state)
+
+    created = await client.post(f"/api/projects/{pid}/runs", json={"kind": "full"})
+    assert created.status_code == 201, created.text
+    run = created.json()
+    assert run["kind"] == "full" and run["status"] == "queued"
+    assert run["stats"] == {"phase": "queued", "done": 0, "total": 102}
+    duplicate = await client.post(f"/api/projects/{pid}/runs", json={"kind": "full"})
+    assert duplicate.status_code == 422 and "already queued" in duplicate.text
+
+    # run the job body inline (no worker process in tests)
+    result = await jobs_conversions.run_full_conversion(run["id"])
+    assert result["converted"] == 102 and result["valid"] is True
+
+    detail = (await client.get(f"/api/projects/{pid}/runs/{run['id']}")).json()
+    assert detail["status"] == "done" and detail["output_file_id"] == result["xml_file_id"]
+    stats = detail["stats"]
+    assert stats["converted"] == 102 and stats["phase"] == "done"
+    assert [f["format"] for f in stats["output_files"]] == ["xml", "json"]
+    report = detail["validation_report"]
+    assert report["valid"] is True and report["summary"].startswith("valid DMLex XML")
+    assert report["resource_scalars"]["langCode"] == "en" and "timings" in report
+
+    files = (await client.get(f"/api/projects/{pid}/files")).json()
+    kinds = {f["id"]: f["kind"] for f in files}
+    assert kinds[result["xml_file_id"]] == "output" and kinds[result["json_file_id"]] == "output"
+    assert kinds[stats["report_file_id"]] == "artifact"
+
+    # the export downloads and validates on its own
+    download = await client.get(f"/api/projects/{pid}/files/{result['xml_file_id']}/download")
+    assert download.status_code == 200
+    assert download.content.startswith(b'<?xml version="1.0" encoding="UTF-8"?>')
+    assert validate_xml(io.BytesIO(download.content)).valid
+    exported_json = await client.get(f"/api/projects/{pid}/files/{result['json_file_id']}/download")
+    assert len(json.loads(exported_json.content)["entries"]) == 102
+
+    # only entries with findings get rows (here: consistency warnings, no schema errors)
+    issues = (await client.get(f"/api/projects/{pid}/runs/{run['id']}/entries")).json()
+    assert issues["total"] == stats["with_issues"] > 0 and stats["errors"] == 0
+    assert all(
+        i["severity"] == "warning" and i["source"] == "consistency"
+        for row in issues["items"]
+        for i in row["issues"]
+    )
+    assert all(row["entry_id"] and row["ordinal"] is not None for row in issues["items"])
+    listed = (await client.get(f"/api/projects/{pid}/runs")).json()
+    assert listed[0]["id"] == run["id"] and listed[0]["status"] == "done"
+
+
+async def test_full_run_job_records_failures(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    from elexifier_api.jobs import conversions as jobs_conversions
+
+    logged_in.apply(client)
+    pid, _doc_id = await _parsed_project(client, app_state)
+    async with app_state.db.session() as db:
+        # a mapping that loads but cannot be applied: the entry selector is a union
+        db.add(
+            Mapping(
+                project_id=pid,
+                version=2,
+                spec={
+                    "inSelector": "/oxford",
+                    "outElement": "lexicographicResource",
+                    "children": [{"inSelector": "se | pv", "outElement": "entry"}],
+                },
+            )
+        )
+        await db.commit()
+    refused = await client.post(f"/api/projects/{pid}/runs", json={"kind": "full"})
+    assert refused.status_code == 422 and "cannot be applied" in refused.text
+
+    created = await client.post(
+        f"/api/projects/{pid}/runs", json={"kind": "full", "mapping_version": 1}
+    )
+    run_id = created.json()["id"]
+    async with app_state.db.session() as db:
+        # break the run before the job starts: the source file disappears
+        from sqlalchemy import update
+
+        from elexifier_core.db.models import ConversionRun
+
+        await db.execute(
+            update(ConversionRun).where(ConversionRun.id == run_id).values(document_id=None)
+        )
+        await db.commit()
+    with pytest.raises(jobs_conversions.ConversionJobError):
+        await jobs_conversions.run_full_conversion(run_id)

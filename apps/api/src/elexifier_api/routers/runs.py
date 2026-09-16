@@ -3,24 +3,30 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from elexifier_agent.conversion import ConversionError, entry_xml, mapping_version, run_sample
+from elexifier_agent.conversion import (
+    ConversionError,
+    entry_xml,
+    mapping_version,
+    queue_full_run,
+    run_sample,
+)
 from elexifier_agent.tools._entries import pick_entries
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
-from elexifier_api.deps import CurrentStorage, CurrentUser, DbSession
+from elexifier_api.deps import CurrentStorage, CurrentUser, DbSession, State
 from elexifier_api.schemas import (
     ConvertedEntryDetailOut,
     ConvertedEntryOut,
     ConvertedEntryPage,
+    RunCreate,
     RunDetailOut,
     RunOut,
-    SampleRunCreate,
 )
 from elexifier_core.db.models import (
     ConversionRun,
@@ -79,12 +85,13 @@ async def list_runs(project_id: uuid.UUID, db: DbSession, user: CurrentUser) -> 
 @router.post("/runs", response_model=RunDetailOut, status_code=status.HTTP_201_CREATED)
 async def create_run(
     project_id: uuid.UUID,
-    body: SampleRunCreate,
+    body: RunCreate,
     db: DbSession,
     user: CurrentUser,
     storage: CurrentStorage,
+    state: State,
 ) -> RunDetailOut:
-    """Run a sample conversion synchronously (the UI's "run sample" button)."""
+    """Run a sample conversion synchronously, or queue a full run for the worker."""
     await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
     if body.document_id is not None:
         document = await db.get(Document, body.document_id)
@@ -114,6 +121,35 @@ async def create_run(
     mapping = await mapping_version(db, project_id, body.mapping_version)
     if mapping is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No such mapping version")
+    if body.kind == "full":
+        if document.status != DocumentStatus.READY.value:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Document is not ready")
+
+        async def defer(name: str, kwargs: dict[str, Any]) -> int | None:
+            job_id = await state.jobs.configure_task(name, queue="heavy").defer_async(**kwargs)
+            return int(job_id) if job_id is not None else None
+
+        try:
+            run = await queue_full_run(
+                db,
+                document=document,
+                mapping=mapping,
+                triggered_by=user.id,
+                options={"number_homographs": body.number_homographs},
+                defer=defer,
+            )
+        except ConversionError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+        audit.record(
+            db,
+            user.id,
+            "run.full",
+            run.id,
+            project=str(project_id),
+            mapping_version=mapping.version,
+        )
+        await db.flush()
+        return RunDetailOut.model_validate(run)
     entries = await pick_entries(
         db, document, n=body.n, strategy=body.strategy, ordinals=body.ordinals, query=body.query
     )
@@ -176,12 +212,21 @@ async def list_converted_entries(
         .scalars()
         .all()
     )
-    return ConvertedEntryPage(
-        items=[ConvertedEntryOut.model_validate(r) for r in rows],
-        total=total,
-        offset=offset,
-        limit=limit,
-    )
+    # full runs store issue rows without the output; show the source headword instead
+    missing = [r.entry_id for r in rows if r.headword is None and r.entry_id is not None]
+    headwords: dict[uuid.UUID, str | None] = {}
+    if missing:
+        found = (
+            await db.execute(select(Entry.id, Entry.headword).where(Entry.id.in_(missing)))
+        ).all()
+        headwords = {entry_id: headword for entry_id, headword in found}
+    items = []
+    for r in rows:
+        item = ConvertedEntryOut.model_validate(r)
+        if item.headword is None and r.entry_id is not None:
+            item = item.model_copy(update={"headword": headwords.get(r.entry_id)})
+        items.append(item)
+    return ConvertedEntryPage(items=items, total=total, offset=offset, limit=limit)
 
 
 @router.get("/runs/{run_id}/entries/{converted_id}", response_model=ConvertedEntryDetailOut)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import uuid
+from typing import Any
 
 from sqlalchemy import func, select
 
@@ -117,3 +119,85 @@ async def test_secondary_entry_descriptors_get_distinct_ids(fixture: Fixture) ->
     ids = [r.dmlex.get("id") for r in rows]
     assert len(ids) == len(set(ids)) and all(ids)
     assert not any(i["code"] == "duplicate-entry-id" for r in rows for i in r.issues)
+
+
+async def test_full_run_needs_approval_then_queues_a_job(fixture: Fixture) -> None:
+    from pydantic_ai import DeferredToolRequests, DeferredToolResults
+    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+    from elexifier_agent.agent import build_agent
+
+    mapping = json.loads(OXFORD_MAPPING.read_text(encoding="utf-8"))
+    await call_tool(fixture, "mapping_write", {"mapping": mapping, "note": "v1"})
+
+    returns: list[Any] = []
+
+    def script(messages, info: AgentInfo) -> ModelResponse:  # type: ignore[no-untyped-def]
+        # answer with text right after a run_conversion result, otherwise ask for a full run
+        last = [
+            part
+            for part in messages[-1].parts
+            if isinstance(part, ToolReturnPart) and part.tool_name == "run_conversion"
+        ]
+        if last:
+            returns.append(last[0].content)
+            return ModelResponse(parts=[TextPart(content="queued")])
+        return ModelResponse(
+            parts=[ToolCallPart(tool_name="run_conversion", args={"kind": "full"})]
+        )
+
+    agent = build_agent("xml", FunctionModel(script))
+    first = await agent.run("convert everything", deps=fixture.deps)
+    assert isinstance(first.output, DeferredToolRequests)
+    assert [c.tool_name for c in first.output.approvals] == ["run_conversion"]
+    assert fixture.deferred == []
+
+    call_id = first.output.approvals[0].tool_call_id
+    second = await agent.run(
+        deps=fixture.deps,
+        message_history=first.all_messages(),
+        deferred_tool_results=DeferredToolResults(approvals={call_id: True}),
+    )
+    assert second.output == "queued"
+    result = returns[0]
+    assert result["summary"].startswith("Full run queued with mapping v1 (102 entries)")
+    run_id = result["data"]["run_id"]
+    assert fixture.deferred == [("conversions.run", {"run_id": run_id})]
+
+    async with fixture.db.session() as db:
+        run = await db.get(ConversionRun, uuid.UUID(run_id))
+        assert run is not None and run.kind == "full" and run.status == "queued"
+        assert run.job_id == 1 and run.scope == {"options": {"number_homographs": True}}
+
+    stats = await call_tool(fixture, "run_stats", {"run_id": run_id})
+    assert stats["summary"].startswith("Full run with mapping v1 is queued")
+    exported = await call_tool(fixture, "export", {"run_id": run_id})
+    assert exported["summary"].startswith("Error: the run is queued")
+
+    # a second full run is refused while one is pending
+    again = await agent.run(
+        "again",
+        deps=fixture.deps,
+        message_history=second.all_messages(),
+        deferred_tool_results=None,
+    )
+    assert isinstance(again.output, DeferredToolRequests)
+    returns.clear()
+    third = await agent.run(
+        deps=fixture.deps,
+        message_history=again.all_messages(),
+        deferred_tool_results=DeferredToolResults(
+            approvals={again.output.approvals[0].tool_call_id: True}
+        ),
+    )
+    assert third.output == "queued"
+    assert returns[0]["summary"].startswith("Error: a full run is already queued")
+
+
+async def test_validate_dmlex_on_a_project_file(fixture: Fixture) -> None:
+    result = await call_tool(fixture, "validate_dmlex", {"file_id": str(fixture.file_id)})
+    assert "validation error" in result["summary"]  # the source XML is not DMLex
+    assert result["data"]["valid"] is False and result["data"]["first_errors"]
+    missing = await call_tool(fixture, "validate_dmlex", {})
+    assert missing["summary"].startswith("Error: pass run_id or file_id")

@@ -29,12 +29,18 @@ export function RunList({ projectId }: { projectId: string }) {
               <span className="truncate">
                 {run.kind === 'sample' ? 'Sample' : 'Full run'} · mapping v{run.mapping_version}
               </span>
-              <span className="text-muted-foreground ml-auto shrink-0 text-xs">
+              <span
+                className={`ml-auto shrink-0 text-xs ${
+                  run.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'
+                }`}
+              >
                 {run.status === 'done'
-                  ? `${run.stats.converted ?? 0} entries${
+                  ? `${(run.stats.converted ?? 0).toLocaleString()} entries${
                       run.stats.with_issues ? `, ${run.stats.with_issues} ⚠` : ''
                     }`
-                  : run.status}
+                  : run.status === 'running' && run.stats.total
+                    ? `${Math.round(((run.stats.done ?? 0) / run.stats.total) * 100)}%`
+                    : run.status}
               </span>
             </button>
           </li>

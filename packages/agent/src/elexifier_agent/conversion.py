@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -34,6 +35,9 @@ from elexifier_pipeline.xml.mapping import load_mapping_spec
 
 MAX_HEAD_BYTES = 8 * 1024 * 1024
 MAX_SAMPLE_RUN_ENTRIES = 50
+FULL_RUN_TASK = "conversions.run"
+
+Deferrer = Callable[[str, dict[str, Any]], Awaitable[int | None]]
 
 
 class ConversionError(Exception):
@@ -225,6 +229,66 @@ async def run_sample(
         skipped=skipped,
         plan_warnings=plan.warnings,
     )
+
+
+async def queue_full_run(
+    db: AsyncSession,
+    *,
+    document: Document,
+    mapping: Mapping,
+    triggered_by: uuid.UUID | None,
+    options: dict[str, Any] | None = None,
+    defer: Deferrer | None,
+) -> ConversionRun:
+    """Create a queued full run and hand it to the worker. Commits nothing."""
+    if defer is None:
+        raise ConversionError("background jobs are not available in this context")
+    try:
+        streaming.plan_for(load_mapping_spec(mapping.spec).to_desc())
+    except MappingError as exc:
+        raise ConversionError(
+            f"mapping version {mapping.version} cannot be applied: {exc}"
+        ) from exc
+    running = (
+        (
+            await db.execute(
+                select(ConversionRun).where(
+                    ConversionRun.project_id == document.project_id,
+                    ConversionRun.kind == RunKind.FULL.value,
+                    ConversionRun.status.in_(
+                        [ConversionStatus.QUEUED.value, ConversionStatus.RUNNING.value]
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if running is not None:
+        raise ConversionError(
+            f"a full run is already {running.status} (run {running.id}); wait for it to finish"
+        )
+    run = ConversionRun(
+        project_id=document.project_id,
+        document_id=document.id,
+        kind=RunKind.FULL.value,
+        mapping_version=mapping.version,
+        scope={"options": options or {}},
+        status=ConversionStatus.QUEUED.value,
+        stats={"phase": "queued", "done": 0, "total": document.entry_count},
+        triggered_by=triggered_by,
+    )
+    db.add(run)
+    await db.flush()
+    run.job_id = await defer(FULL_RUN_TASK, {"run_id": str(run.id)})
+    await publish(
+        db,
+        document.project_id,
+        "job.progress",
+        {"kind": FULL_RUN_TASK, "run_id": str(run.id), "phase": "queued", "done": 0},
+    )
+    await db.flush()
+    return run
 
 
 def diff_dmlex(a: Any, b: Any, path: str = "") -> list[str]:

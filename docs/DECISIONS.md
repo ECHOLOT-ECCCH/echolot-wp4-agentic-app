@@ -400,3 +400,33 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   units) with 2 hidden entries skipped, 3 errors and 7 warnings; it then started checking the
   sources behind the warnings. The turn was cut short by the owner's exhausted API credits; the
   API stored the failed agent run with the provider's message and kept the conversation intact.
+
+## 2026-09-16 Full runs as jobs, export and report (M1.8)
+
+- `elexifier_pipeline.xml.convert.convert_document` runs three passes with flat memory: stream and
+  convert into a temporary JSONL spool (one line per output entry with its source ordinal), write
+  DMLex XML and JSON from the spool, then validate the XML and run the consistency checks. The
+  spool makes homograph numbering possible in one job: duplicate (headword, parts of speech)
+  groups without any source number get `homographNumber` 1..n (the XSD's `entryUnique` key),
+  on by default and switchable per run (`number_homographs`).
+- The job `conversions.run` (`elexifier_api.jobs.conversions`) stores the XML and JSON as
+  `output` files, the full validation report (up to 10,000 errors) as an `artifact`, and
+  `converted_entries` rows only for entries with findings (capped at 5,000, without the DMLex
+  body): storing every converted entry of a large dictionary in Postgres would double the data
+  for no gain, the files are the output. Progress is published every 2 s (`job.progress`, kind
+  `conversions.run`, phase converting/writing/validating) and copied into `run.stats` so the UI
+  can poll while a run is active; `run.finished` closes it.
+- `run_conversion(kind="full")` raises `ApprovalRequired` unless the call is approved (Pydantic AI
+  conditional approval); after approval it creates a queued run and defers the job through
+  `AgentDeps.defer_job`, which the API binds to the Procrastinate app (tests pass a fake). One
+  full run per project at a time. New tools `run_stats`, `export` (points at the output file of a
+  finished run) and `validate_dmlex` (a run's XML or any uploaded XML file).
+- Scale check on the KKS export (149 MB, 88,575 entries, owner's mapping as is): upload 0.3 s,
+  parse job 14 s, full run 219 s of which convert 6.1 s, write 2.4 s, validate 207 s (xmlschema
+  with XSD 1.1 on the 28 MB output); worker RSS 397 MB during validation. Output: 88,575 entries,
+  2,585 homograph numbers, 40,361 schema errors (the as-is mapping lacks sense ids and langCode,
+  which `check_mapping` flags before a run). Oxford (102 entries, agent's mapping v2): 0.4 s.
+- The validation phase has no per-entry progress; the UI shows it as indeterminate with a note.
+  Faster validation (a first pass with lxml against a generated XSD 1.0 subset, or validating
+  in the conversion pass per entry and keeping only identity constraints for the end) is on the
+  backlog.

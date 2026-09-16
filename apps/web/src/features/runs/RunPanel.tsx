@@ -1,7 +1,11 @@
 import { useState } from 'react'
 
+import { DownloadIcon } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { IssueList } from '@/features/entries/IssueList'
+import { fileDownloadUrl } from '@/lib/api'
+import { formatBytes } from '@/lib/format'
 import { useRun, useRunEntries } from '@/lib/queries'
 import { usePreview } from '@/lib/uiActions'
 
@@ -21,6 +25,10 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
   const report = data.validation_report
   const resourceIssues = report.resource_issues ?? []
   const total = entries.data?.total ?? 0
+  const active = data.status === 'queued' || data.status === 'running'
+  const outputs = stats.output_files ?? []
+  const issueCodes = Object.entries(report.issue_codes ?? {})
+  const firstErrors = report.errors ?? []
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs">
@@ -39,6 +47,30 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
           {data.status}
         </span>
       </div>
+      {active && (
+        <div className="flex shrink-0 flex-col gap-1 border-b px-3 py-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="capitalize">{stats.phase ?? data.status}</span>
+            <span className="text-muted-foreground">
+              {stats.phase === 'validating'
+                ? 'checking the whole output against the DMLex schema, this takes a few minutes for large dictionaries'
+                : `${(stats.done ?? 0).toLocaleString()}${
+                    stats.total ? ` / ${stats.total.toLocaleString()}` : ''
+                  } entries`}
+            </span>
+          </div>
+          <div className="bg-muted h-1.5 w-full overflow-hidden rounded">
+            <div
+              className={`bg-primary h-full transition-all ${stats.total ? '' : 'animate-pulse'}`}
+              style={{
+                width: stats.total
+                  ? `${Math.min(100, Math.round(((stats.done ?? 0) / stats.total) * 100))}%`
+                  : '100%',
+              }}
+            />
+          </div>
+        </div>
+      )}
       <div className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-1 border-b px-3 py-2 text-sm sm:grid-cols-4">
         <Stat label="converted" value={stats.converted ?? 0} />
         <Stat
@@ -49,9 +81,45 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
         <Stat label="errors" value={stats.errors ?? 0} tone={stats.errors ? 'error' : undefined} />
         <Stat label="warnings" value={stats.warnings ?? 0} />
       </div>
-      {(report.summary || resourceIssues.length > 0 || (report.plan_warnings ?? []).length > 0) && (
+      {outputs.length > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs">
+          <span className="text-muted-foreground">Outputs</span>
+          {outputs.map((file) => (
+            <a
+              key={file.file_id}
+              href={fileDownloadUrl(projectId, file.file_id)}
+              className="bg-muted hover:bg-accent inline-flex items-center gap-1 rounded-md px-2 py-1"
+            >
+              <DownloadIcon className="size-3" />
+              DMLex {file.format.toUpperCase()}
+              <span className="text-muted-foreground">{formatBytes(file.size)}</span>
+            </a>
+          ))}
+          {stats.report_file_id && (
+            <a
+              href={fileDownloadUrl(projectId, stats.report_file_id)}
+              className="text-muted-foreground underline"
+            >
+              validation report
+            </a>
+          )}
+          {stats.homographs_numbered ? (
+            <span className="text-muted-foreground ml-auto">
+              {stats.homographs_numbered} homograph number(s) assigned
+            </span>
+          ) : null}
+        </div>
+      )}
+      {(report.summary ||
+        resourceIssues.length > 0 ||
+        (report.plan_warnings ?? []).length > 0 ||
+        data.error) && (
         <div className="flex shrink-0 flex-col gap-1 border-b px-3 py-2 text-xs">
-          {report.summary && <p className="text-muted-foreground">{report.summary}</p>}
+          {report.summary && (
+            <p className={report.valid ? 'text-muted-foreground' : 'text-destructive'}>
+              {report.summary}
+            </p>
+          )}
           {(report.plan_warnings ?? []).map((w, i) => (
             <p key={i} className="text-amber-700 dark:text-amber-400">
               {w}
@@ -60,6 +128,39 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
           <IssueList issues={resourceIssues} compact />
           {data.error && <p className="text-destructive">{data.error}</p>}
         </div>
+      )}
+      {issueCodes.length > 0 && (
+        <div className="flex shrink-0 flex-wrap gap-x-3 gap-y-1 border-b px-3 py-2 text-xs">
+          <span className="text-muted-foreground">By kind</span>
+          {issueCodes.map(([code, count]) => (
+            <span key={code}>
+              <code>{code}</code> {count.toLocaleString()}
+            </span>
+          ))}
+        </div>
+      )}
+      {data.kind === 'full' && firstErrors.length > 0 && (
+        <details className="shrink-0 border-b px-3 py-2 text-xs">
+          <summary className="cursor-pointer">
+            First {firstErrors.length} schema error(s)
+            {report.error_count && report.error_count > firstErrors.length
+              ? ` of ${report.error_count.toLocaleString()}`
+              : ''}
+          </summary>
+          <ul className="mt-1 flex max-h-60 flex-col gap-0.5 overflow-auto">
+            {firstErrors.map((e, i) => (
+              <li key={i}>
+                <span className="text-muted-foreground">
+                  {e.ordinal !== null ? `entry ${e.ordinal + 1}` : 'resource'}
+                </span>{' '}
+                <code>
+                  {e.path.replace(/^\/lexicographicResource\/entry\[\d+\]\/?/, '') || 'entry'}
+                </code>{' '}
+                {e.reason}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-xs">
         <label className="flex items-center gap-1.5">

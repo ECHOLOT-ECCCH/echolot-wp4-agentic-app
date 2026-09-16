@@ -13,4 +13,7 @@ export const TOOL_LABELS: Record<string, string> = {
   spec_update: 'Updating the conversion spec',
   run_conversion: 'Converting a sample',
   diff_runs: 'Comparing two runs',
+  run_stats: 'Checking a run',
+  export: 'Preparing the export',
+  validate_dmlex: 'Validating DMLex',
 }

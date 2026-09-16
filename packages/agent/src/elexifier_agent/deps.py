@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,6 +40,8 @@ class AgentDeps:
     settings: Settings
     model_info: ModelInfo | None = None
     conversation_id: uuid.UUID | None = None
+    # Hands a background job to the queue: (task name, kwargs) -> job id. None when no queue.
+    defer_job: Callable[[str, dict[str, Any]], Awaitable[int | None]] | None = None
 
     def session(self) -> AsyncSession:
         """A fresh database session; tools commit their own work."""

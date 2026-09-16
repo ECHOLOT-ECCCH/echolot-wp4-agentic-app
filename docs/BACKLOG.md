@@ -13,3 +13,6 @@ Move an item into docs/PLAN.md when it is scheduled.
 - Trigram index on entries.headword/snippet for search on very large documents.
 - Persist the partial assistant turn (tool calls already made) when the provider fails mid-run, so the tool cards survive a reload; today only the run is stored and the message is dropped.
 - EntryView: collapsible entry navigator so the side-by-side view gets the whole middle pane.
+- Faster full-run validation: xmlschema (XSD 1.1) needs ~2.3 ms per entry and the whole output in memory; validate structure per entry during conversion and keep only the document-wide identity constraints for the end.
+- Append a job-result message to the conversation when a full run finishes so the agent reports without being asked (PLAN section 4 flow).
+- Cancel a running full run from the UI and the chat.
