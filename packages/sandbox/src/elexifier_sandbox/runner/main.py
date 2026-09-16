@@ -1,77 +1,109 @@
-"""Sandbox runner service (docs/PLAN.md 7.12).
-
-Milestone 0 ships the service skeleton with the request/response contract; execution arrives in
-milestone 3. Until then ``POST /run`` answers 501 so callers can integrate against the real shape.
-"""
+"""Sandbox runner service (docs/PLAN.md 7.12): the only process that talks to the Docker
+daemon. ``POST /run`` executes one snippet in a fresh container and answers with its exit code,
+logs and the outputs uploaded to storage."""
 
 from __future__ import annotations
 
-import os
+import asyncio
 import secrets
+from functools import lru_cache
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
-from pydantic import BaseModel, Field
 
-RUNNER_TOKEN = os.environ.get("SANDBOX_RUNNER_TOKEN", "")
-SANDBOX_RUNTIME = os.environ.get("SANDBOX_RUNTIME", "runc")
-
-
-class RunInput(BaseModel):
-    s3_key: str
-    mount_path: str = Field(pattern=r"^in/[A-Za-z0-9._\-/ ]+$")
-
-
-class RunLimits(BaseModel):
-    timeout_s: int = Field(default=300, ge=1, le=3600)
-    cpus: float = Field(default=2, gt=0, le=8)
-    memory_mb: int = Field(default=2048, ge=128, le=16384)
-    pids: int = Field(default=256, ge=16, le=4096)
-    max_output_mb: int = Field(default=200, ge=1, le=4096)
+from elexifier_core.settings import Settings, get_settings
+from elexifier_core.storage import Storage, build_storage
+from elexifier_sandbox.runner.execute import (
+    ExecutionError,
+    ExecutionSettings,
+    RunRequest,
+    RunResponse,
+    execute,
+)
 
 
-class RunRequest(BaseModel):
-    run_id: str
-    project_id: str
-    language: str = "python"
-    code: str
-    inputs: list[RunInput] = Field(default_factory=list)
-    limits: RunLimits = Field(default_factory=RunLimits)
+@lru_cache(maxsize=1)
+def runner_settings() -> Settings:
+    return get_settings()
 
 
-class RunOutput(BaseModel):
-    s3_key: str
-    name: str
-    size: int
+@lru_cache(maxsize=1)
+def runner_storage() -> Storage:
+    return build_storage(runner_settings())
 
 
-class RunResponse(BaseModel):
-    exit_code: int
-    stdout: str
-    stderr: str
-    truncated: bool
-    duration_s: float
-    outputs: list[RunOutput]
+def execution_settings(settings: Settings) -> ExecutionSettings:
+    return ExecutionSettings(
+        image=settings.sandbox_image,
+        runtime="runsc" if settings.sandbox_runtime == "runsc" else None,
+    )
+
+
+def docker_client() -> Any:
+    """A docker-py client from the environment (DOCKER_HOST or the default socket)."""
+    import docker
+
+    return docker.from_env(timeout=30)
 
 
 def require_token(x_runner_token: str | None = Header(default=None)) -> None:
-    if (
-        not RUNNER_TOKEN
-        or not x_runner_token
-        or not secrets.compare_digest(x_runner_token, RUNNER_TOKEN)
-    ):
+    token = runner_settings().sandbox_runner_token
+    if not token or not x_runner_token or not secrets.compare_digest(x_runner_token, token):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid runner token")
 
 
-app = FastAPI(title="Elexifier sandbox runner", version="0.1.0")
+app = FastAPI(title="Elexifier sandbox runner", version="0.2.0")
+
+
+def _daemon_status(settings: Settings) -> dict[str, Any]:
+    """Whether the daemon answers and the sandbox image is present."""
+    import docker.errors
+
+    try:
+        client = docker_client()
+        client.ping()
+        try:
+            client.images.get(settings.sandbox_image)
+            image = "present"
+        except docker.errors.ImageNotFound:
+            image = "missing"
+        return {"docker": "ok", "image": image}
+    except Exception as exc:  # no daemon, no socket
+        return {"docker": f"unavailable: {type(exc).__name__}", "image": "unknown"}
 
 
 @app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    return {"status": "ok", "runtime": SANDBOX_RUNTIME, "execution": "not available until M3"}
+async def healthz() -> dict[str, Any]:
+    settings = runner_settings()
+    state = await asyncio.to_thread(_daemon_status, settings)
+    return {
+        "status": "ok",
+        "runtime": settings.sandbox_runtime,
+        "image_name": settings.sandbox_image,
+        **state,
+    }
 
 
 @app.post("/run", response_model=RunResponse, dependencies=[Depends(require_token)])
-async def run(_request: RunRequest) -> RunResponse:
-    raise HTTPException(
-        status.HTTP_501_NOT_IMPLEMENTED, "sandboxed execution arrives in milestone 3"
-    )
+async def run(request: RunRequest) -> RunResponse:
+    settings = runner_settings()
+    try:
+        client = await asyncio.to_thread(docker_client)
+        return await execute(
+            request,
+            storage=runner_storage(),
+            client=client,
+            settings=execution_settings(settings),
+        )
+    except ExecutionError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except Exception as exc:  # daemon or image trouble: the caller can report it
+        import docker.errors
+
+        if isinstance(exc, docker.errors.ImageNotFound):
+            detail = (
+                f"sandbox image {settings.sandbox_image!r} is missing; run `make sandbox-image`"
+            )
+        else:
+            detail = f"sandbox unavailable: {type(exc).__name__}: {exc}"[:500]
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail) from exc

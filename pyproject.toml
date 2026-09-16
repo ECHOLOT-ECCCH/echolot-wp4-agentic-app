@@ -65,3 +65,4 @@ testpaths = ["apps/api/tests", "packages/core/tests", "packages/agent/tests", "p
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-q --import-mode=importlib"
+markers = ["docker: needs the Docker daemon and the sandbox image (skipped otherwise)"]

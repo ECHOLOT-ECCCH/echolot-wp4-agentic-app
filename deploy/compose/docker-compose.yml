@@ -133,9 +133,12 @@ services:
     image: elexifier/sandbox-runner:${IMAGE_TAG:-local}
     restart: unless-stopped
     environment:
-      SANDBOX_RUNNER_TOKEN: ${SANDBOX_RUNNER_TOKEN:-dev-runner-token}
-      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-runc}
-    # Milestone 3 adds: volumes: - /var/run/docker.sock:/var/run/docker.sock
+      <<: *api-env
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-elexifier-sandbox:local}
+    # The runner is the only service with the daemon socket; snippets run in sibling containers
+    # created from SANDBOX_IMAGE (build it on the host: `make sandbox-image`).
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   caddy:
     build:

@@ -757,3 +757,30 @@ merged span and to name the headword where the next one starts.
   keep through a rebuild, reuse from the cache), a pipeline unit test for the issue.
 - Not done: acting on a verdict automatically (splitting a merged span at the named headword);
   in the backlog.
+
+## 2026-09-16 M3.1 The sandbox runner executes code
+
+- No bind mounts. The runner builds a tar (`main.py` and `in/` root-owned and read-only, `out/`
+  owned by uid 1000), creates the container with an anonymous volume at `/work` (the rootfs is
+  read-only, so the archive needs a writable mount that exists before the start; tmpfs only
+  appears at start), `put_archive`s the tar, starts, `wait(timeout)`s, kills at the timeout
+  (exit code 137, a `[runner] killed after N s` note in stderr), reads stdout and stderr
+  separately (64 KB each), `get_archive`s `/work/out` (refused beyond `max_output_mb`) and
+  uploads the files to `projects/{project_id}/artifacts/{run_id}/`. This works for a sibling
+  container in Compose and for `make runner` on a laptop alike. Cost: inputs are copied twice
+  (staged on the runner's disk, then into the volume); streaming them is in the backlog.
+- The sandbox image creates `/work` root-owned 755 before switching to the sandbox user:
+  BuildKit's `WORKDIR` after `USER` would make it writable, and then a snippet could write
+  outside `out/` and `/tmp` (the integration test caught it).
+- The runner depends on `elexifier-core` for the storage backends, so its image now holds the
+  workspace (`uv sync --package elexifier-sandbox`); Compose gives it the shared environment and
+  the socket. `SANDBOX_IMAGE` setting; `make sandbox-image`.
+- Limits as in 7.12: `network_mode=none`, `user=1000:1000`, `read_only`, `tmpfs /tmp`
+  (`noexec,nosuid`, 256 MB), `cap_drop ALL`, `no-new-privileges`, `pids_limit`, `mem_limit`
+  with `memswap_limit` equal (no swap), `nano_cpus`, `runtime=runsc` when configured.
+- Tests: unit tests with a fake docker client check the archive layout and ownership, the
+  container options, log truncation, the timeout path and the output cap; integration tests
+  (`pytest -m docker`, skipped without daemon or image) run real containers: hello world with an
+  input and an output round trip, a network attempt fails, a runaway snippet is killed at the
+  timeout, the rootfs and `/work` are not writable. Verified on Docker Desktop 27.5 (arm64,
+  runc): a hello-world run takes 0.12 s wall time inside the container, about 0.5 s end to end.

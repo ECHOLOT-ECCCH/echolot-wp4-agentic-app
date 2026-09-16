@@ -807,6 +807,7 @@ version = "0.1.0"
 source = { editable = "packages/sandbox" }
 dependencies = [
     { name = "docker" },
+    { name = "elexifier-core" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "uvicorn", extra = ["standard"] },
@@ -815,6 +816,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "docker", specifier = ">=7.1" },
+    { name = "elexifier-core", editable = "packages/core" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },

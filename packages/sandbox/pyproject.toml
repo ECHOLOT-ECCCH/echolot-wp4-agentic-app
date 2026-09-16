@@ -5,6 +5,7 @@ description = "Elexifier sandbox runner: executes agent-written code in isolated
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
+    "elexifier-core",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "docker>=7.1",

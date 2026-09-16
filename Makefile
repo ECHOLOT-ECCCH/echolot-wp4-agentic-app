@@ -10,7 +10,7 @@ PROFILE ?=
 WEB := apps/web
 NODE_MIN := 22
 
-.PHONY: help setup check-node dev-infra dev-infra-down api web worker runner check test e2e migration upgrade test-db images up down logs garage-init
+.PHONY: help setup check-node dev-infra dev-infra-down api web worker runner sandbox-image check test e2e migration upgrade test-db images up down logs garage-init
 
 help:
 	@echo "Targets:"
@@ -20,7 +20,8 @@ help:
 	@echo "  api             run FastAPI with reload on :8000"
 	@echo "  web             run Vite on :5173"
 	@echo "  worker          run the procrastinate worker"
-	@echo "  runner          run the sandbox runner on :8010"
+	@echo "  runner          run the sandbox runner on :8010 (needs the sandbox image and Docker)"
+	@echo "  sandbox-image   build the container image snippets run in"
 	@echo "  check           lint, types, unit tests (python + web)"
 	@echo "  test            python tests only"
 	@echo "  e2e             playwright smoke tests"
@@ -63,6 +64,9 @@ worker:
 
 runner:
 	uv run uvicorn elexifier_sandbox.runner.main:app --port 8010
+
+sandbox-image:
+	docker build -t $${SANDBOX_IMAGE:-elexifier-sandbox:local} packages/sandbox/image
 
 test:
 	uv run pytest

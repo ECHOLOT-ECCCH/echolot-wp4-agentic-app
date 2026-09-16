@@ -92,11 +92,27 @@ before restarting the worker.
   `rclone sync garage:elexifier /backups/elexifier-files` using the access key from `.env`.
 - Secrets: keep `.env` safe; without `ELX_SECRET_KEY` stored provider keys cannot be decrypted.
 
-## Sandbox (milestone 3)
+## Sandbox
 
-The sandbox runner is the only container allowed to reach the Docker socket. For production, install
-gVisor and set `SANDBOX_RUNTIME=runsc` so snippets run under a user-space kernel. Snippets have no
-network, read-only inputs and CPU, memory, process and time limits.
+Agent-written snippets run in containers created from the sandbox image, one container per
+run: no network, an unprivileged user, a read-only root filesystem, a size-capped `/tmp`, all
+capabilities dropped, `no-new-privileges`, and limits on processes, memory and CPU; a run is
+killed at its timeout. The runner (`sandbox-runner`) is the only container that reaches the
+Docker socket; it never bind-mounts host paths (inputs go in and outputs come out through the
+daemon's archive API), so it works as a sibling container.
+
+- Build the image on the Docker host before the first run: `make sandbox-image` (or
+  `docker build -t elexifier-sandbox:local packages/sandbox/image`); `SANDBOX_IMAGE` names it.
+  Rebuild it after changing `packages/sandbox/image/Dockerfile` (the libraries snippets may
+  import: lxml, pdfplumber, pypdfium2, jsonschema, xmlschema, saxonche).
+- `GET http://sandbox-runner:8010/healthz` reports whether the daemon answers and the image is
+  present.
+- For production, install gVisor and set `SANDBOX_RUNTIME=runsc` so snippets run under a
+  user-space kernel (the daemon must list `runsc` in its runtimes). With the default `runc`,
+  isolation rests on namespaces, seccomp and the limits above; the socket mount means the
+  runner container is as trusted as the daemon, keep it off public networks.
+- Disk: outputs are refused beyond the run's `max_output_mb`; the work volume is removed with
+  the container.
 
 ## Health
 
