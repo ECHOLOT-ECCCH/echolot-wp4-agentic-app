@@ -18,7 +18,7 @@ def build_app(dsn: str | None = None) -> procrastinate.App:
     settings = get_settings()
     return procrastinate.App(
         connector=procrastinate.PsycopgConnector(conninfo=dsn or settings.database_dsn),
-        import_paths=["elexifier_core.tasks"],
+        import_paths=[m.strip() for m in settings.task_modules.split(",") if m.strip()],
     )
 
 

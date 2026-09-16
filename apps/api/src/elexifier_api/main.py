@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 from collections.abc import AsyncIterator
 
+import procrastinate
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -13,14 +14,16 @@ from sqlalchemy import text
 from elexifier_agent.catalog import ModelCatalog
 from elexifier_agent.runtime import PydanticAIRuntime
 from elexifier_api import __version__
+from elexifier_api import jobs as _jobs  # noqa: F401  # registers tasks on the shared app
 from elexifier_api.auth.oidc import OidcClient
 from elexifier_api.auth.session import SessionStore
-from elexifier_api.routers import auth, chat, credentials, events, files, me, projects
+from elexifier_api.routers import auth, chat, credentials, documents, events, files, me, projects
 from elexifier_api.schemas import HealthOut
 from elexifier_api.state import AppState
 from elexifier_core.crypto import SecretBox
 from elexifier_core.db.session import Database
 from elexifier_core.events import EventBus
+from elexifier_core.jobs import app as jobs_app
 from elexifier_core.logging import configure_logging
 from elexifier_core.settings import Settings, get_settings
 from elexifier_core.storage import StorageError, build_storage
@@ -46,6 +49,7 @@ def build_state(settings: Settings) -> AppState:
         event_bus=EventBus(settings.database_dsn),
         catalog=ModelCatalog(),
         runtime=PydanticAIRuntime(),
+        jobs=jobs_app,
     )
 
 
@@ -57,16 +61,22 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app_state = state or build_state(settings)
         app.state.app = app_state
-        await app_state.event_bus.start()
-        log.info("api.started", version=__version__, environment=settings.environment)
-        try:
-            yield
-        finally:
-            await app_state.runtime.drain()
-            await app_state.event_bus.stop()
-            await app_state.oidc.aclose()
-            await app_state.catalog.aclose()
-            await app_state.db.dispose()
+        # The shared Procrastinate app was created at import time; point it at this process's
+        # database for as long as the API runs, then open its connection pool.
+        connector = procrastinate.PsycopgConnector(conninfo=settings.database_dsn)
+        with app_state.jobs.replace_connector(connector):
+            await app_state.jobs.open_async()
+            await app_state.event_bus.start()
+            log.info("api.started", version=__version__, environment=settings.environment)
+            try:
+                yield
+            finally:
+                await app_state.runtime.drain()
+                await app_state.event_bus.stop()
+                await app_state.jobs.close_async()
+                await app_state.oidc.aclose()
+                await app_state.catalog.aclose()
+                await app_state.db.dispose()
 
     app = FastAPI(
         title="Elexifier API",
@@ -100,6 +110,7 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
     app.include_router(files.router)
     app.include_router(chat.router)
     app.include_router(events.router)
+    app.include_router(documents.router)
     return app
 
 

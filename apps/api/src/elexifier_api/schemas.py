@@ -135,3 +135,54 @@ class ConversationOut(ApiModel):
 
 class MessagesIn(BaseModel):
     messages: list[dict[str, Any]]
+
+
+class DocumentCreate(BaseModel):
+    file_id: uuid.UUID
+    entry_xpath: str | None = Field(default=None, max_length=512)
+    headword_xpath: str | None = Field(default=None, max_length=512)
+
+
+class DocumentReparse(BaseModel):
+    entry_xpath: str | None = Field(default=None, max_length=512)
+    headword_xpath: str | None = Field(default=None, max_length=512)
+
+
+class DocumentOut(ApiModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    source_file_id: uuid.UUID
+    file_name: str
+    type: str
+    status: str
+    entry_xpath: str | None
+    headword_xpath: str | None
+    entry_count: int
+    error: str | None
+    parsed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentDetailOut(DocumentOut):
+    stats: dict[str, Any]
+
+
+class EntryOut(ApiModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    ordinal: int
+    headword: str | None
+    snippet: str
+
+
+class EntryPage(BaseModel):
+    items: list[EntryOut]
+    total: int
+    offset: int
+    limit: int
+
+
+class EntryDetailOut(EntryOut):
+    source_xml: str
+    source_ref: dict[str, Any]

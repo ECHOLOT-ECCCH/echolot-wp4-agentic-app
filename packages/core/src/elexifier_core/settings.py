@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     s3_secret_key: str | None = None
     s3_region: str = "garage"
 
+    # Background jobs: modules that register Procrastinate tasks
+    task_modules: str = "elexifier_core.tasks,elexifier_api.jobs"
+
     # Limits
     max_upload_mb: int = 2048
     max_preview_bytes: int = (

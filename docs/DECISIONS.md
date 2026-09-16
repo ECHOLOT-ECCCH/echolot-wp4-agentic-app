@@ -302,3 +302,22 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   pronunciations. The owner's KKS mapping needs `langCode` instead of `language`, generated sense
   ids, non-empty example fragments and `PartOfSpeech[@value]`; after that only duplicate headwords
   remain, which need homograph numbering (planned for the conversion run).
+
+## 2026-09-16 Document parse job and entry index (M1.4)
+
+- Profiling and indexing use Python's expat parser in two streaming passes: byte offsets from
+  `CurrentByteIndex` give every entry an exact source range, so entries are fetched later with a
+  storage range read (8 ms for entry 88,000 of the KKS export) instead of re-parsing. Empty-element
+  tags need the end resolved from the bytes (expat's end event points past `/>`).
+- Entry candidates are ranked by count, concentration under one parent and depth (root children
+  doubled); the top candidate is used unless the document has an explicit `entry_xpath`. Headwords
+  come from an optional `headword_xpath`, else a headword-like element or attribute, else the first
+  short text.
+- Jobs live in `elexifier_api.jobs` (they need models, storage and the pipeline); the worker loads
+  them through the `task_modules` setting. The Procrastinate app is created at import time, so the
+  API binds it to its runtime database with `replace_connector` for the lifespan (`with_connector` is
+  deprecated and breaks task deferral). Test databases now get the Procrastinate schema too.
+- XML sources uploaded to XML projects are parsed automatically; `POST .../documents` and
+  `.../reparse` cover explicit parsing with other XPaths. Measured on the real KKS file through the
+  API and worker: upload 0.3 s (local storage), parse job 13 s, worker RSS 34 MB after the job,
+  88,575 entries; headword/snippet search 0.34 s (ILIKE; a trigram index is a later optimisation).

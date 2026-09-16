@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import procrastinate
+
 from elexifier_agent.catalog import ModelCatalog
 from elexifier_agent.runtime import AgentRuntime
 from elexifier_api.auth.oidc import OidcClient
@@ -26,3 +28,4 @@ class AppState:
     event_bus: EventBus
     catalog: ModelCatalog
     runtime: AgentRuntime
+    jobs: procrastinate.App

@@ -54,6 +54,13 @@ class RunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class DocumentStatus(StrEnum):
+    QUEUED = "queued"
+    PARSING = "parsing"
+    READY = "ready"
+    ERROR = "error"
+
+
 class ApprovalStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -178,6 +185,53 @@ class File(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     project: Mapped[Project] = relationship(back_populates="files")
+
+
+# --- Documents and entries ----------------------------------------------------------------
+
+
+class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A parsed source file: profile, chosen entry element and the indexed entries."""
+
+    __tablename__ = "documents"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    source_file_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("files.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(8))  # xml | pdf
+    status: Mapped[str] = mapped_column(String(16), default=DocumentStatus.QUEUED.value)
+    entry_xpath: Mapped[str | None] = mapped_column(String(512))
+    headword_xpath: Mapped[str | None] = mapped_column(String(512))
+    entry_count: Mapped[int] = mapped_column(Integer, default=0)
+    stats: Mapped[dict[str, Any]] = mapped_column(default=dict)  # XmlProfile as JSON
+    error: Mapped[str | None] = mapped_column(Text)
+    job_id: Mapped[int | None] = mapped_column(BigInteger)
+    parsed_at: Mapped[datetime | None]
+
+    entries: Mapped[list[Entry]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+
+
+class Entry(UUIDPrimaryKeyMixin, Base):
+    """One indexed entry: where it is in the source file and how it is listed."""
+
+    __tablename__ = "entries"
+    __table_args__ = (
+        UniqueConstraint("document_id", "ordinal"),
+        Index("ix_entries_document_id_headword", "document_id", "headword"),
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    ordinal: Mapped[int] = mapped_column(Integer)
+    headword: Mapped[str | None] = mapped_column(String(300))
+    source_ref: Mapped[dict[str, Any]] = mapped_column(default=dict)  # {"start": int, "end": int}
+    snippet: Mapped[str] = mapped_column(String(400), default="")
+
+    document: Mapped[Document] = relationship(back_populates="entries")
 
 
 # --- Conversations and agent runs ---------------------------------------------------------

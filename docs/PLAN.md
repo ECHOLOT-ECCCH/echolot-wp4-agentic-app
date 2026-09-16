@@ -26,13 +26,13 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 ## 1. Status
 
 - Current milestone: M1 XML end to end (checklist in section 12b).
-- Next task: M1.4
+- Next task: M1.5
 - Blockers: none. `make dev-infra` provides Postgres, Keycloak and Garage; the owner's Anthropic key is
   stored in the app (Settings). CI runs on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M1.3 done)
+- Last update: 2026-09-16 (M1.4 done)
 
 Update this block at the end of every task.
 
@@ -548,7 +548,7 @@ validation report and export; every decision is recorded in the conversion spec.
   `xmlschema.XMLSchema11` (errors with path, reason, entry index), plus `check_consistency(entries)`
   (empty headwords, duplicate ids, senses without content). Acceptance: the Oxford sample converts to
   XML that validates with zero errors; the test asserts it.
-- [ ] M1.4 Document parse job and entry index. Migration 0002 adds `documents`, `entries`
+- [x] M1.4 Document parse job and entry index. Migration 0002 adds `documents`, `entries`
   (see section 8). On XML upload the API creates a document and enqueues `documents.parse`: the
   worker streams the file with `lxml.iterparse`, computes the profile (element stats, namespaces,
   entry candidates: repeated children of the root, or the most frequent repeated element with a

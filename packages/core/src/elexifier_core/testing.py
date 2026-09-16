@@ -57,9 +57,13 @@ def alembic_config_for(url: str) -> Config:
 
 
 def migrate(url: str) -> None:
+    """Fresh application schema plus the Procrastinate tables (idempotent)."""
+    from elexifier_core.jobs import apply_schema
+
     cfg = alembic_config_for(url)
     command.downgrade(cfg, "base")
     command.upgrade(cfg, "head")
+    asyncio.run(apply_schema(to_dsn(url)))
 
 
 async def truncate_all_async(url: str) -> None:
