@@ -664,3 +664,36 @@ Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, 
 - Verified with the rule structurer end to end (130 spans through the worker, cached sample
   reuse, correction, rebuilt export valid). The model path is covered by the scripted-model tests;
   the cost-estimate check within 25% (M2.7 acceptance) waits for credits and the owner's PDF.
+
+## 2026-09-16 The owner's PDF: Šega, Veliki poslovni moderni slovar (M2.8 preparation)
+
+Born-digital (Word to Distiller 2006), 1,267 pages, 8.2 MB, single column, Times 9 pt body,
+headwords in Arial Bold 8 pt, collocation blocks in Times Bold introduced by a pointing-hand
+glyph (Wingdings on most pages, a Times-encoded "F" on others), domain labels in 6 pt small caps,
+English examples in italics with Slovene translations. Findings and fixes, all without a model:
+
+- pdfplumber split words wherever the font *subset* changed, which cut every Slovene letter out
+  of its word ("ve", "č", "jega"): the layout now asks for words split on spaces only and takes
+  each word's font from the majority of its characters, splitting a word only where the font
+  family or size changes inside it (the marker glyph glued to the next bold word, a headword
+  touching its part of speech).
+- The `bold` rule fails here: wrapped lines starting with a bold collocation word looked like
+  entries. The segmenter gained a `font` mode: entries start with a distinct headword font,
+  detected automatically as the font that starts at least 8% of flush-left lines while at least
+  60% of its characters sit at such line starts (the body font and symbol fonts excluded; a
+  minimum average word length rejects marker glyphs). `auto` tries it first; `pdf_analyze`
+  reports the candidate fonts with their shares so the agent can see why. Symbol-font words never
+  start entries. Result: 9,277 spans on 1,267 pages in 4 s, mode font (Arial-BoldMT 8.0), pages
+  1-6, 300, 634 and 1,266-1,267 checked against the images: one span per entry, letter dividers
+  dropped, running entries split only at page breaks.
+- Entries running over a page break (955 here) are now linked: the continuation span carries
+  `payload.continues` and the entry `payload.continued_by`; structuring excludes continuation
+  spans and joins their text to the entry (`full_texts`), unless the continuation was rejected.
+  The page crop shown to the model is the entry's own page.
+- Fixture: `pdfgen` now uses the real Helvetica metrics, so touching glyphs and spaces behave as
+  in real PDFs; the two-column fixture has 52/50/28 entries on three pages.
+- Timings in the dev stack: upload 0.3 s, layout job 137-142 s (about 110 ms per page, 59,914
+  lines, 4.1 M characters), segmentation job 4 s. Size for structuring: 8,322 entries, mean 484
+  and median 189 characters (the longest, "price", 16,005), 836 joined with continuations;
+  estimate text-only about 6.8 M input and 2.8 M output tokens, with page crops about 16 M
+  input. The model runs (profile, sample, full) are the owner's to trigger.

@@ -27,7 +27,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 - Current milestone: M2 PDF end to end (checklist in section 12c). M1 is complete (M1.10 verified
   with claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M2.8 (needs the owner's PDF in `legacy/pdf/` and API credits); M3.1 otherwise
+- Next task: M2.8 model part (owner-run), then M3.1
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -36,7 +36,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M2.7 done; M2.6/M2.7 live checks with the owner's model pending credits)
+- Last update: 2026-09-16 (M2.8 prepared on the owner's PDF; model runs are the owner's)
 
 Update this block at the end of every task.
 
@@ -657,6 +657,10 @@ Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
   estimate.
 - [ ] M2.8 Acceptance on the owner's PDF. Run the whole flow on the ~200-page PDF with the owner's
   model; record timings, costs and prompt adjustments in `docs/DECISIONS.md` under Verification.
+  Status 2026-09-16: the owner's PDF (`legacy/pdf/`, 1,267 pages) is uploaded in the dev stack as
+  project "Šega poslovni slovar"; layout and segmentation are verified without a model (see
+  DECISIONS). The model part (profile, sample, full structuring) is run by the owner, not by
+  Claude (no paid model calls during development).
 
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)
 

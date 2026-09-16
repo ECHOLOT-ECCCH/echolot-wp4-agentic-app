@@ -157,9 +157,7 @@ async def test_pdf_upload_runs_the_layout_job_and_serves_pages(
 
     pages = (await client.get(f"/api/projects/{pid}/documents/{doc['id']}/pages")).json()
     assert [p["page_no"] for p in pages] == [1, 2, 3, 4]
-    assert (
-        pages[0]["width"] == 595.0 and pages[0]["line_count"] > 100 and not pages[0]["is_scanned"]
-    )
+    assert pages[0]["width"] == 595.0 and pages[0]["line_count"] > 80 and not pages[0]["is_scanned"]
     assert pages[3]["is_scanned"] and pages[3]["line_count"] == 0
 
     layout = await client.get(f"/api/projects/{pid}/documents/{doc['id']}/pages/1/layout")

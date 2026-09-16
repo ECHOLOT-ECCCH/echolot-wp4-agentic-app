@@ -18,20 +18,23 @@ async def test_pdf_analyze_and_segment(pdf_fixture: Fixture) -> None:
     analysed = await call_tool(pdf_fixture, "pdf_analyze", {})
     data = analysed["data"]
     assert analysed["summary"].startswith("4 pages (3 with text)")
-    assert data["columns"] == {"1": 1, "2": 2} and data["body_size"] == 9.5
+    assert data["columns"] == {"2": 3} and data["body_size"] == 9.5
     assert data["bold_start_share"] > 0.3 and data["segmentation"] is None
+    assert data["headword_font"] == {"font": "Helvetica-Bold", "size": 9.5}
+    assert data["line_start_fonts"][0]["font"] == "Helvetica-Bold"
+    assert "Headword font: Helvetica-Bold" in analysed["summary"]
     assert data["fonts"][0]["font"] == "Helvetica" and data["sample_lines"][1].startswith("abacus")
     assert data["warnings"] and "no text layer" in data["warnings"][0]
 
     segmented = await call_tool(pdf_fixture, "pdf_segment", {})
     assert segmented["summary"].startswith("130 entry spans on 3 pages with the rule segmenter")
     sdata = segmented["data"]
-    assert sdata["stats"]["mode"] == "bold" and sdata["first_headwords"][:3] == [
+    assert sdata["stats"]["mode"] == "font" and sdata["first_headwords"][:3] == [
         "abacus",
         "abandon",
         "abase",
     ]
-    assert sdata["spans_per_page"] == {"1": 58, "2": 56, "3": 16}
+    assert sdata["spans_per_page"] == {"1": 52, "2": 50, "3": 28}
     async with pdf_fixture.db.session() as db:
         count = (await db.execute(select(func.count()).select_from(Annotation))).scalar()
         assert count == 130
@@ -63,7 +66,7 @@ async def test_pdf_analyze_and_segment(pdf_fixture: Fixture) -> None:
 async def test_pdf_get_page_text_and_image(pdf_fixture: Fixture) -> None:
     whole = await call_tool(pdf_fixture, "pdf_get_page", {"page": 1})
     data = whole["data"]
-    assert whole["summary"].startswith("133 line(s) in page 1")
+    assert whole["summary"].startswith("89 line(s) in page 1")
     assert data["lines"][1]["text"].startswith("abacus n.") and data["lines"][1]["bold_start"]
     assert data["page_size"] == [595.0, 842.0]
 
@@ -168,3 +171,45 @@ async def test_structure_sample_with_rule_and_scripted_llm(pdf_fixture: Fixture)
         assert rows[1].confidence == 0.55 and rows[1].notes == ["low confidence"]
         usage = (await db.execute(sa_select(UsageRecord))).scalars().all()
         assert [u.purpose for u in usage] == ["structure"] and usage[0].model == "scripted"
+
+
+async def test_page_continuations_are_joined_to_their_entry(pdf_fixture: Fixture) -> None:
+    """A synthetic continuation: the first span of page 2 is marked as continuing the last span
+    of page 1; structuring sees one text and skips the continuation itself."""
+    from sqlalchemy import select as sa_select
+
+    from elexifier_agent.structuring import full_texts, usable_spans
+    from elexifier_core.db.models import Annotation, Document
+
+    await call_tool(pdf_fixture, "pdf_segment", {})
+    async with pdf_fixture.db.session() as db:
+        document = await db.get(Document, pdf_fixture.document_id)
+        assert document is not None
+        rows = (
+            (
+                await db.execute(
+                    sa_select(Annotation).order_by(Annotation.page_no, Annotation.position)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        last_p1 = [r for r in rows if r.page_no == 1][-1]
+        first_p2 = next(r for r in rows if r.page_no == 2)
+        first_p2.payload = {
+            **first_p2.payload,
+            "continuation": True,
+            "continues": str(last_p1.id),
+            "text": "tail of the entry",
+        }
+        last_p1.payload = {**last_p1.payload, "continued_by": str(first_p2.id)}
+        await db.commit()
+        spans = await usable_spans(db, document)
+        assert first_p2.id not in {s.id for s in spans} and len(spans) == 129
+        texts = await full_texts(db, spans)
+        assert texts[last_p1.id].endswith("tail of the entry")
+        # a rejected continuation is not joined
+        first_p2.status = "rejected"
+        await db.commit()
+        texts = await full_texts(db, spans)
+        assert not texts[last_p1.id].endswith("tail of the entry")

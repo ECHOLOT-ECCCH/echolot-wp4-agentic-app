@@ -26,6 +26,7 @@ from elexifier_agent.pdf_service import (
 from elexifier_agent.structuring import (
     StructuringError,
     estimate_for,
+    full_texts,
     pick_spans,
     queue_full_structuring,
     structure_sample,
@@ -92,6 +93,13 @@ async def pdf_analyze(ctx: RunContext[AgentDeps], document_id: str | None = None
         f"body size {profile['body_size']}, {profile['bold_start_share']:.0%} of lines start "
         f"with a bold word, {profile['lines_per_page']} lines per page."
         + (
+            f" Headword font: {profile['headword_font']['font']} "
+            f"{profile['headword_font']['size']} (starts flush-left lines and appears almost "
+            "nowhere else)."
+            if profile.get("headword_font")
+            else " No distinct headword font found."
+        )
+        + (
             f" Segmented: {segmentation['stats']['spans']} spans "
             f"({segmentation['segmenter']}, mode {segmentation['stats']['mode']})."
             if segmentation
@@ -123,9 +131,11 @@ async def pdf_segment(
 ) -> ToolReturn:
     """Split the pages into entry spans and show them as boxes on the pages for review.
     Replaces the previous proposals (decisions the lexicographer already made are kept).
-    Rule segmenter parameters: mode ("auto" | "bold" | "size" | "indent"),
-    headword_size_delta (points above the body size), indent_tolerance, skip_margin_share,
-    max_headword_words. Run pdf_analyze first, then adjust when the counts look wrong.
+    Rule segmenter parameters: mode ("auto" | "font" | "bold" | "size" | "indent"),
+    headword_font and headword_size (font mode: the font that starts entries, e.g. "Arial-BoldMT"
+    8.0; auto picks it when pdf_analyze reports one), headword_size_delta (points above the body
+    size), indent_tolerance, skip_margin_share, max_headword_words. Run pdf_analyze first, then
+    adjust when the counts look wrong.
 
     Args:
         document_id: The PDF document. Omit when the project has one.
@@ -350,6 +360,7 @@ async def pdf_estimate_cost(
         except ToolInputError as exc:
             return error_result(str(exc))
         spans = await usable_spans(db, document)
+        texts = await full_texts(db, spans)
         doc_id = str(document.id)
     info = deps.model_info
     images = with_images if with_images is not None else bool(info and info.supports_vision)
@@ -358,6 +369,7 @@ async def pdf_estimate_cost(
         with_images=images,
         price_in_per_m=info.price_in_per_m if info else None,
         price_out_per_m=info.price_out_per_m if info else None,
+        texts=texts,
     )
     reviewed = sum(1 for s in spans if s.status in ("accepted", "edited"))
     model_label = (deps.model_spec or {}).get("model_id") or (info.id if info else "the model")

@@ -14,9 +14,11 @@ def column_pages():
     return list(PdfplumberLayout().extract(COLUMNS_PDF))
 
 
-def test_bold_headwords_give_one_span_per_entry(column_pages) -> None:
+def test_headword_font_gives_one_span_per_entry(column_pages) -> None:
     spans, stats = RuleSegmenter().segment(column_pages)
-    assert stats.mode == "bold" and stats.spans == 130 and stats.continuations == 0
+    # auto mode finds the headword font (bold Helvetica only at line starts)
+    assert stats.mode == "font" and stats.headword_font == "Helvetica-Bold"
+    assert stats.spans == 130 and stats.continuations == 0
     assert stats.pages == 3 and stats.lines_skipped == 3  # running heads
     assert stats.warnings == []
     assert [s.headword_guess for s in spans[:4]] == ["abacus", "abandon", "abase", "abbey"]
@@ -37,10 +39,21 @@ def test_wrong_mode_is_visible_as_merged_spans(column_pages) -> None:
     assert any("entry starts are probably not recognised" in w for w in stats.warnings)
 
 
-def test_indent_mode_and_params_validation(column_pages) -> None:
+def test_bold_indent_and_font_modes(column_pages) -> None:
+    spans, stats = RuleSegmenter({"mode": "bold"}).segment(column_pages)
+    assert stats.spans == 130 and stats.mode == "bold"
     spans, stats = RuleSegmenter({"mode": "indent"}).segment(column_pages)
     assert stats.spans == 130 and stats.mode == "indent"
     assert spans[0].confidence < 0.7  # weaker evidence than typography
+    spans, stats = RuleSegmenter({"mode": "font", "headword_font": "Helvetica-Bold"}).segment(
+        column_pages
+    )
+    assert stats.spans == 130 and spans[0].headword_guess == "abacus"
+    # an unknown font finds no entries at all: one continuation span per page and a warning
+    spans, stats = RuleSegmenter({"mode": "font", "headword_font": "Courier"}).segment(
+        column_pages[:1]
+    )
+    assert stats.spans == 1 and spans[0].continuation and stats.warnings
     with pytest.raises(ValueError):
         RuleParams(mode="magic")
     with pytest.raises(ValueError):

@@ -22,7 +22,7 @@ from elexifier_agent.structuring import (
     cache_key,
     cached_results,
     extract,
-    span_text,
+    full_texts,
     usable_spans,
 )
 from elexifier_api.jobs.conversions import _store_output
@@ -295,14 +295,23 @@ async def run_full_structuring(run_id: str | uuid.UUID) -> dict[str, Any]:
     try:
         for start in range(0, len(spans), BATCH):
             batch = spans[start : start + BATCH]
-            keys = [cache_key(model_spec, structurer_name, profile, span_text(a)) for a in batch]
             async with db.session() as session:
+                texts = await full_texts(session, batch)
+                keys = [
+                    cache_key(model_spec, structurer_name, profile, texts.get(a.id, ""))
+                    for a in batch
+                ]
                 reuse = await cached_results(session, project_id, keys)
                 fresh = [(a, k) for a, k in zip(batch, keys, strict=True) if k not in reuse]
                 results: dict[str, StructuredEntry] = {}
                 if fresh:
                     extracted = await extract(
-                        storage, document, file, [a for a, _k in fresh], with_images=with_images
+                        storage,
+                        document,
+                        file,
+                        [a for a, _k in fresh],
+                        with_images=with_images,
+                        texts=texts,
                     )
                     async for result in structurer.structure(extracted):
                         results[result.span_id] = result

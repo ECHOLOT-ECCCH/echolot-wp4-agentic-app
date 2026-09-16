@@ -7,13 +7,13 @@ that exercise the layout extraction and the segmenter without a PDF library at t
 from __future__ import annotations
 
 import zlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 FONTS = {"regular": "Helvetica", "bold": "Helvetica-Bold", "italic": "Helvetica-Oblique"}
 _FONT_IDS = {"regular": "F1", "bold": "F2", "italic": "F3"}
-# rough Helvetica advance widths (per 1 pt of font size) for wrapping
-_AVG_WIDTH = 0.52
+_AVG_WIDTH = 0.52  # fallback advance width per point when a glyph is unknown
 
 
 @dataclass
@@ -41,8 +41,17 @@ class PageSpec:
         self.items.append(Placed(x, self.height - top - size * 0.8, size, list(runs)))
 
 
-def text_width(text: str, size: float) -> float:
-    return len(text) * size * _AVG_WIDTH
+def _metrics(style: str) -> Mapping[str, float]:
+    from pdfminer.fontmetrics import FONT_METRICS
+
+    return FONT_METRICS[FONTS[style]][1]
+
+
+def text_width(text: str, size: float, style: str = "regular") -> float:
+    """Advance width from the standard-font metrics so runs sit exactly where a typesetter
+    would put them (touching glyphs and spaces come out as in real PDFs)."""
+    widths = _metrics(style)
+    return sum(widths.get(char, _AVG_WIDTH * 1000) * size / 1000 for char in text)
 
 
 def _escape(text: str) -> str:
@@ -60,7 +69,7 @@ def _content(page: PageSpec) -> bytes:
                 f"/{font} {item.size:.1f} Tf 1 0 0 1 {x:.2f} {item.baseline:.2f} Tm "
                 f"({_escape(run.text)}) Tj"
             )
-            x += text_width(run.text, item.size)
+            x += text_width(run.text, item.size, run.style)
     parts.append("ET")
     return "\n".join(parts).encode("cp1252", errors="replace")
 
@@ -192,7 +201,7 @@ def dictionary_pages(
     *,
     columns: int = 2,
     body_size: float = 9.5,
-    per_page_lines: int = 58,
+    per_page_lines: int = 45,
     scanned_last_page: bool = True,
 ) -> list[PageSpec]:
     """Two-column dictionary pages: bold headword, italic part of speech, wrapped definition
@@ -225,7 +234,9 @@ def dictionary_pages(
         x0 = margin + column * (column_width + gutter)
         lines: list[list[TextRun]] = []
         first = [TextRun(headword + " ", "bold"), TextRun(pos + " ", "italic")]
-        used = text_width(headword + " ", body_size) + text_width(pos + " ", body_size)
+        used = text_width(headword + " ", body_size, "bold") + text_width(
+            pos + " ", body_size, "italic"
+        )
         current = first
         max_width = column_width
         for word in words:

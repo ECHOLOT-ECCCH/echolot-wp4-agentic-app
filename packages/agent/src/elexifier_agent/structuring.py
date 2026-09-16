@@ -78,10 +78,48 @@ async def usable_spans(
         .scalars()
         .all()
     )
+    rows = [r for r in rows if not (r.payload or {}).get("continuation")]  # joined to entries
     reviewed = [r for r in rows if r.status in USABLE_STATUSES]
     if reviewed or not include_proposed:
         return reviewed
     return rows
+
+
+async def full_texts(db: AsyncSession, spans: Sequence[Annotation]) -> dict[uuid.UUID, str]:
+    """The text of each span followed by the continuation spans linked to it (entries that run
+    over a page break), unless the continuation was rejected."""
+    texts: dict[uuid.UUID, str] = {}
+    pending: dict[uuid.UUID, str] = {}
+    for span in spans:
+        texts[span.id] = span_text(span)
+        follow = (span.payload or {}).get("continued_by")
+        if follow:
+            pending[span.id] = str(follow)
+    seen: set[str] = set()
+    while pending:
+        wanted = {uuid.UUID(v) for v in pending.values() if v not in seen}
+        if not wanted:
+            break
+        rows = {
+            r.id: r
+            for r in (
+                await db.execute(select(Annotation).where(Annotation.id.in_(list(wanted))))
+            ).scalars()
+        }
+        next_pending: dict[uuid.UUID, str] = {}
+        for owner, follow in pending.items():
+            seen.add(follow)
+            row = rows.get(uuid.UUID(follow))
+            if row is None or row.status == AnnotationStatus.REJECTED.value:
+                continue
+            extra = span_text(row)
+            if extra:
+                texts[owner] = f"{texts[owner]} {extra}".strip()
+            again = (row.payload or {}).get("continued_by")
+            if again and str(again) not in seen:
+                next_pending[owner] = str(again)
+        pending = next_pending
+    return texts
 
 
 def pick_spans(spans: Sequence[Annotation], n: int, strategy: str = "spread") -> list[Annotation]:
@@ -146,9 +184,11 @@ async def extract(
     spans: Sequence[Annotation],
     *,
     with_images: bool,
+    texts: dict[uuid.UUID, str] | None = None,
 ) -> list[ExtractedEntry]:
     out: list[ExtractedEntry] = []
     pages: dict[int, bytes] = {}
+    texts = texts or {}
     for annotation in spans:
         image = None
         if with_images:
@@ -163,7 +203,7 @@ async def extract(
                 span_id=str(annotation.id),
                 page=annotation.page_no,
                 bbox=tuple(annotation.bbox),  # type: ignore[arg-type]
-                text=span_text(annotation),
+                text=texts.get(annotation.id) or span_text(annotation),
                 page_image_png=image,
             )
         )
@@ -176,8 +216,10 @@ def estimate_for(
     with_images: bool,
     price_in_per_m: float | None,
     price_out_per_m: float | None,
+    texts: dict[uuid.UUID, str] | None = None,
 ) -> CostEstimate:
-    lengths = [len(span_text(a)) for a in spans] or [0]
+    texts = texts or {}
+    lengths = [len(texts.get(a.id) or span_text(a)) for a in spans] or [0]
     return estimate_cost(
         len(spans),
         int(statistics.fmean(lengths)),
@@ -217,7 +259,8 @@ async def structure_sample(
         structurer = RuleStructurer(profile)
     else:
         raise StructuringError(f"unknown structurer {structurer_name!r} (rule | llm)")
-    extracted = await extract(storage, document, file, spans, with_images=with_images)
+    texts = await full_texts(db, spans)
+    extracted = await extract(storage, document, file, spans, with_images=with_images, texts=texts)
     results: list[StructuredEntry] = [r async for r in structurer.structure(extracted)]
     entries = [r.entry for r in results if r.entry]
     validation = validate_entries(
@@ -271,7 +314,7 @@ async def structure_sample(
             run_id=run.id,
             entry_id=None,
             annotation_id=annotation.id,
-            cache_key=cache_key(model_spec, structurer_name, profile, span_text(annotation)),
+            cache_key=cache_key(model_spec, structurer_name, profile, texts.get(annotation.id, "")),
             position=position,
             ordinal=annotation.position,
             headword=(

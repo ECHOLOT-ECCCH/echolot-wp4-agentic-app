@@ -7,10 +7,12 @@ not known yet: they are found by segmentation and confirmed by the lexicographer
 - pdf_get_page: the text lines of a page or a region (with boxes) and, for models that see
   images, a rendering. The lexicographer can also select a region or text on the page and send
   it with a message: it arrives as a quoted context block with the page and box.
-- pdf_segment: propose entry boxes with the rule segmenter. Modes: bold (headwords in bold),
-  size (headwords larger than the body text), indent (entries start flush left, continuation
-  lines are indented), auto (decides from the bold share). Every proposal replaces the previous
-  one; the lexicographer's accept/reject decisions and their own boxes stay.
+- pdf_segment: propose entry boxes with the rule segmenter. Modes: font (entries start with a
+  distinct headword font, e.g. Arial Bold among Times text; pdf_analyze reports it), bold
+  (headwords in bold), size (headwords larger than the body text), indent (entries start flush
+  left, continuation lines are indented), auto (font when one is found, else bold, size,
+  indent). Every proposal replaces the previous one; the lexicographer's accept/reject
+  decisions and their own boxes stay.
 
 - pdf_estimate_cost: tokens and cost of structuring every reviewed span with the current model.
 - pdf_structure: turn spans into DMLex entries with the model (kind="sample", up to 20 at a

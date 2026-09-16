@@ -22,6 +22,7 @@ from elexifier_core.storage import NotFoundError, Storage, make_key
 from elexifier_pipeline import registry
 from elexifier_pipeline.pdf.layout import PdfplumberLayout
 from elexifier_pipeline.pdf.models import BBox, EntrySpan, Line, PageLayout, SegmentationStats
+from elexifier_pipeline.pdf.segmenters import RuleSegmenter
 
 SYNC_SEGMENT_MAX_PAGES = 400
 LAYOUT_CONCURRENCY = 8
@@ -73,6 +74,9 @@ def profile_layouts(pages: list[PageLayout]) -> dict[str, Any]:
     bold_starts = sum(1 for line in lines if line.words and line.words[0].bold)
     body_sizes = [p.body_size for p in text_pages if p.body_size]
     body = Counter(body_sizes).most_common(1)[0][0] if body_sizes else None
+    segmenter = RuleSegmenter()
+    start_fonts = segmenter.line_start_fonts(text_pages, segmenter.params)
+    detected = segmenter.detect_headword_font(text_pages)
     return {
         "pages": len(pages),
         "text_pages": len(text_pages),
@@ -81,6 +85,20 @@ def profile_layouts(pages: list[PageLayout]) -> dict[str, Any]:
         "body_size": body,
         "lines_per_page": round(len(lines) / max(1, len(text_pages)), 1),
         "bold_start_share": round(bold_starts / max(1, len(lines)), 3),
+        "headword_font": (
+            {"font": detected["font"], "size": detected["size"]} if detected else None
+        ),
+        "line_start_fonts": [
+            {
+                "font": e["font"],
+                "size": e["size"],
+                "bold": e["bold"],
+                "flush_start_share": e["flush_start_share"],
+                "start_concentration": e["start_concentration"],
+                "samples": e["samples"],
+            }
+            for e in start_fonts[:6]
+        ],
         "fonts": [
             {
                 "font": f,
@@ -139,29 +157,38 @@ async def run_segmentation(
             Annotation.status == AnnotationStatus.PROPOSED.value,
         )
     )
+    # a span that continues an entry from the previous page is linked to it both ways, so that
+    # structuring can put the pieces back together
+    rows: list[Annotation] = []
     for position, span in enumerate(spans):
-        db.add(
-            Annotation(
-                document_id=document.id,
-                page_no=span.page,
-                bbox=list(span.bbox),
-                label="entry",
-                entry_span_id=span.id,
-                source=span.source,
-                status=AnnotationStatus.PROPOSED.value,
-                payload={
-                    "bboxes": [list(b) for b in span.bboxes],
-                    "line_ids": span.line_ids,
-                    "headword_guess": span.headword_guess,
-                    "confidence": span.confidence,
-                    "continuation": span.continuation,
-                    "text": span.text,
-                },
-                set_id=set_id,
-                position=position,
-                created_by=created_by,
-            )
+        payload: dict[str, Any] = {
+            "bboxes": [list(b) for b in span.bboxes],
+            "line_ids": span.line_ids,
+            "headword_guess": span.headword_guess,
+            "confidence": span.confidence,
+            "continuation": span.continuation,
+            "text": span.text,
+        }
+        row = Annotation(
+            id=uuid.uuid4(),
+            document_id=document.id,
+            page_no=span.page,
+            bbox=list(span.bbox),
+            label="entry",
+            entry_span_id=span.id,
+            source=span.source,
+            status=AnnotationStatus.PROPOSED.value,
+            payload=payload,
+            set_id=set_id,
+            position=position,
+            created_by=created_by,
         )
+        if span.continuation and rows and rows[-1].page_no < span.page:
+            previous = rows[-1]
+            payload["continues"] = str(previous.id)
+            previous.payload = {**previous.payload, "continued_by": str(row.id)}
+        rows.append(row)
+        db.add(row)
     await db.flush()
     counts = await annotation_counts(db, document.id)
     document.stats = {

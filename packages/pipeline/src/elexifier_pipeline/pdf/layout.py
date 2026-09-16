@@ -27,19 +27,71 @@ def _style(fontname: str) -> tuple[bool, bool]:
     return any(m in lowered for m in BOLD_MARKERS), any(m in lowered for m in ITALIC_MARKERS)
 
 
-def _word(raw: dict[str, Any]) -> Word:
-    bold, italic = _style(str(raw.get("fontname", "")))
+def _family(fontname: str) -> str:
+    return fontname.split("+", 1)[-1]
+
+
+def _word_from_chars(chars: list[dict[str, Any]]) -> Word:
+    counts: Counter[tuple[str, float]] = Counter()
+    for char in chars:
+        if str(char.get("text", "")).strip():
+            counts[(str(char.get("fontname", "")), round(float(char.get("size", 0.0)), 2))] += 1
+    if counts:
+        (fontname, size), _n = counts.most_common(1)[0]
+    else:
+        fontname = str(chars[0].get("fontname", ""))
+        size = round(float(chars[0].get("size", 0.0)), 2)
+    bold, italic = _style(fontname)
     return Word(
-        text=str(raw["text"]),
-        x0=float(raw["x0"]),
-        top=float(raw["top"]),
-        x1=float(raw["x1"]),
-        bottom=float(raw["bottom"]),
-        font=str(raw.get("fontname", "")),
-        size=round(float(raw.get("size", 0.0)), 2),
+        text="".join(str(c.get("text", "")) for c in chars),
+        x0=min(float(c["x0"]) for c in chars),
+        top=min(float(c["top"]) for c in chars),
+        x1=max(float(c["x1"]) for c in chars),
+        bottom=max(float(c["bottom"]) for c in chars),
+        font=fontname,
+        size=size,
         bold=bold,
         italic=italic,
     )
+
+
+def _words(raw: dict[str, Any]) -> list[Word]:
+    """Words of one pdfplumber word. pdfplumber splits on spaces; a change of font family or
+    size inside a word (a marker glyph glued to the next word, a bold headword touching its
+    part of speech) splits it here. Subset changes of the same family do not: accented letters
+    often come from a second subset ("ve" + "č" + "jega" is one word)."""
+    chars = [c for c in (raw.get("chars") or []) if str(c.get("text", "")) != ""]
+    if not chars:
+        bold, italic = _style(str(raw.get("fontname", "")))
+        return [
+            Word(
+                text=str(raw["text"]),
+                x0=float(raw["x0"]),
+                top=float(raw["top"]),
+                x1=float(raw["x1"]),
+                bottom=float(raw["bottom"]),
+                font=str(raw.get("fontname", "")),
+                size=round(float(raw.get("size", 0.0)), 2),
+                bold=bold,
+                italic=italic,
+            )
+        ]
+    groups: list[list[dict[str, Any]]] = [[chars[0]]]
+    for char in chars[1:]:
+        previous = groups[-1][-1]
+        same = (
+            _family(str(char.get("fontname", ""))) == _family(str(previous.get("fontname", "")))
+            and abs(float(char.get("size", 0.0)) - float(previous.get("size", 0.0))) < 0.3
+        )
+        if same:
+            groups[-1].append(char)
+        else:
+            groups.append([char])
+    return [
+        _word_from_chars(group)
+        for group in groups
+        if "".join(str(c.get("text", "")) for c in group).strip()
+    ]
 
 
 def _rows(words: list[Word], tolerance: float) -> list[list[Word]]:
@@ -95,9 +147,9 @@ def _column_of(x0: float, edges: list[float]) -> int:
 def build_page_layout(page: Any, number: int) -> PageLayout:
     """Layout of one pdfplumber page (1-based ``number``)."""
     raw_words = page.extract_words(
-        extra_attrs=["fontname", "size"], keep_blank_chars=False, x_tolerance=1.5, y_tolerance=2
+        keep_blank_chars=False, x_tolerance=2, y_tolerance=2, return_chars=True
     )
-    words = [_word(w) for w in raw_words if str(w["text"]).strip()]
+    words = [word for raw in raw_words if str(raw["text"]).strip() for word in _words(raw)]
     width, height = float(page.width), float(page.height)
     rotation = int(getattr(page, "rotation", 0) or 0)
     text_chars = sum(len(w.text) for w in words)

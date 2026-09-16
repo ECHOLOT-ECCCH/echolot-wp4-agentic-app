@@ -104,7 +104,8 @@ class SegmentationStats(BaseModel):
     lines: int = 0
     lines_skipped: int = 0  # running heads, page numbers
     bold_start_share: float = 0.0  # share of text lines starting with a bold word
-    mode: str = "auto"  # bold | size | indent, as resolved
+    mode: str = "auto"  # font | bold | size | indent, as resolved
+    headword_font: str | None = None  # font mode: the font that starts entries
     warnings: list[str] = Field(default_factory=list)
     confidence_mean: float = 0.0
 

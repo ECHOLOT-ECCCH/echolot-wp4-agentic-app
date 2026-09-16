@@ -16,7 +16,7 @@ def test_columns_fixture_layout() -> None:
     first = pages[0]
     assert (first.width, first.height, first.rotation) == (595.0, 842.0, 0)
     assert len(first.columns) == 2 and first.columns[0] < 60 < 300 < first.columns[1]
-    assert first.body_size == 9.5 and first.text_chars > 3000 and not first.is_scanned
+    assert first.body_size == 9.5 and first.text_chars > 2500 and not first.is_scanned
     # reading order: column 0 top to bottom, then column 1
     columns = [line.column for line in first.lines]
     assert columns == sorted(columns)
@@ -38,7 +38,7 @@ def test_columns_fixture_layout() -> None:
     assert last.is_scanned and last.lines == [] and last.text_chars == 0
     # page selection
     only = list(layout.extract(COLUMNS_PDF, pages=[3]))
-    assert len(only) == 1 and only[0].page == 3 and len(only[0].columns) == 1
+    assert len(only) == 1 and only[0].page == 3 and len(only[0].columns) == 2
 
 
 def test_sample_pdf_and_rendering(tmp_path: Path) -> None:

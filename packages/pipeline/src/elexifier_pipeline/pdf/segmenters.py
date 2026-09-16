@@ -15,18 +15,31 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from elexifier_pipeline.pdf.models import BBox, EntrySpan, Line, PageLayout, SegmentationStats
+from elexifier_pipeline.pdf.models import (
+    BBox,
+    EntrySpan,
+    Line,
+    PageLayout,
+    SegmentationStats,
+    Word,
+)
 
 TRAILING_PUNCTUATION = ",.;:!?)]}»\"'"
 
 
+SYMBOL_FONTS = ("wingdings", "webdings", "symbol", "dingbat", "zapf")
+
+
 class RuleParams(BaseModel):
-    """Parameters of the rule segmenter. ``mode`` "auto" picks bold when enough lines start with
-    a bold word, else size, else indent."""
+    """Parameters of the rule segmenter. ``mode`` "auto" looks for a headword font first (a font
+    used almost only at the start of flush-left lines, like Arial Bold headwords among Times
+    text), then bold, then size, then indent."""
 
     model_config = {"extra": "forbid"}
 
-    mode: str = Field(default="auto", pattern="^(auto|bold|size|indent)$")
+    mode: str = Field(default="auto", pattern="^(auto|font|bold|size|indent)$")
+    headword_font: str | None = None  # font mode: substring of the font name, e.g. "Arial-Bold"
+    headword_size: float | None = None  # font mode: size of the headword font (±0.6 pt)
     headword_size_delta: float = 0.75  # points above the body size that count as "larger"
     bold_share_min: float = 0.03  # auto: minimum share of bold-start lines to trust bold
     bold_share_max: float = 0.7  # auto: above this bold is body text, not headwords
@@ -46,11 +59,36 @@ class _Candidate:
     confidence: float
 
 
-def _headword_from(line: Line, mode: str, max_words: int) -> str | None:
+def font_family(fontname: str) -> str:
+    """Font name without the subset prefix ("ABCDEF+Arial-BoldMT" -> "Arial-BoldMT")."""
+    return fontname.split("+", 1)[-1]
+
+
+def is_symbol_font(fontname: str) -> bool:
+    lowered = fontname.lower()
+    return any(marker in lowered for marker in SYMBOL_FONTS)
+
+
+def _matches_font(word: Word, font: str, size: float | None) -> bool:
+    if font.lower() not in word.font.lower():
+        return False
+    return size is None or abs(word.size - size) <= 0.6
+
+
+def _headword_from(
+    line: Line, mode: str, max_words: int, params: RuleParams | None = None
+) -> str | None:
     words = line.words
     if not words:
         return None
-    if mode == "bold" and words[0].bold:
+    if mode == "font" and params is not None and params.headword_font:
+        picked = []
+        for word in words[:max_words]:
+            if not _matches_font(word, params.headword_font, params.headword_size):
+                break
+            picked.append(word.text)
+        text = " ".join(picked)
+    elif mode == "bold" and words[0].bold:
         picked = []
         for word in words[:max_words]:
             if not word.bold:
@@ -100,12 +138,98 @@ class RuleSegmenter:
             return 0.0
         return sum(1 for line in starts if line.words[0].bold) / len(starts)
 
+    @staticmethod
+    def line_start_fonts(pages: Sequence[PageLayout], params: RuleParams) -> list[dict[str, Any]]:
+        """How fonts are used at the start of flush-left lines versus elsewhere: the headword
+        font of a dictionary starts many flush-left lines and hardly appears anywhere else."""
+        usage: dict[tuple[str, float], dict[str, Any]] = {}
+        total_flush = 0
+        for page in pages:
+            lines, _ = RuleSegmenter._body_lines(page, params)
+            edges = page.columns or ([min(line.x0 for line in lines)] if lines else [0.0])
+            for line in lines:
+                if not line.words:
+                    continue
+                edge = edges[line.column] if line.column < len(edges) else edges[-1]
+                flush = abs(line.x0 - edge) <= params.indent_tolerance
+                total_flush += int(flush)
+                for index, word in enumerate(line.words):
+                    key = (font_family(word.font), round(word.size * 2) / 2)
+                    entry = usage.setdefault(
+                        key,
+                        {
+                            "font": key[0],
+                            "size": key[1],
+                            "bold": word.bold,
+                            "chars": 0,
+                            "flush_starts": 0,
+                            "start_chars": 0,
+                            "word_lengths": 0,
+                            "samples": [],
+                        },
+                    )
+                    entry["chars"] += len(word.text)
+                    if index == 0 and flush:
+                        entry["flush_starts"] += 1
+                        entry["start_chars"] += len(word.text)
+                        entry["word_lengths"] += len(word.text)
+                        if len(entry["samples"]) < 5:
+                            entry["samples"].append(word.text)
+        out = []
+        for entry in usage.values():
+            starts = entry["flush_starts"]
+            out.append(
+                {
+                    **entry,
+                    "flush_start_share": round(starts / total_flush, 3) if total_flush else 0.0,
+                    "start_concentration": round(entry["start_chars"] / entry["chars"], 3)
+                    if entry["chars"]
+                    else 0.0,
+                    "avg_start_word": round(entry["word_lengths"] / starts, 1) if starts else 0.0,
+                    "symbol": is_symbol_font(entry["font"]),
+                }
+            )
+        out.sort(key=lambda e: (-e["flush_starts"], -e["chars"]))
+        return out
+
+    def detect_headword_font(self, pages: Sequence[PageLayout]) -> dict[str, Any] | None:
+        """A font that starts a good share of flush-left lines, is used almost nowhere else, and
+        is not the body font or a symbol font."""
+        stats = self.line_start_fonts(pages, self.params)
+        if not stats:
+            return None
+        body = max(stats, key=lambda e: e["chars"])
+        candidates = [
+            e
+            for e in stats
+            if e["flush_starts"] >= 3
+            and e["flush_start_share"] >= 0.08
+            and e["start_concentration"] >= 0.6
+            and e["avg_start_word"] >= 2
+            and not e["symbol"]
+            and (e["font"], e["size"]) != (body["font"], body["size"])
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda e: (e["flush_starts"], e["start_concentration"]))
+
     def resolve_mode(self, pages: Sequence[PageLayout]) -> tuple[str, float]:
         params = self.params
         lines = [line for page in pages for line in self._body_lines(page, params)[0]]
         share = self._bold_share(lines)
+        if params.mode == "font" and not params.headword_font:
+            found = self.detect_headword_font(pages)
+            if found is None:
+                raise ValueError("font mode needs headword_font (no headword font detected)")
+            params.headword_font = found["font"]
+            params.headword_size = found["size"]
         if params.mode != "auto":
             return params.mode, share
+        found = self.detect_headword_font(pages)
+        if found is not None:
+            params.headword_font = found["font"]
+            params.headword_size = found["size"]
+            return "font", share
         if params.bold_share_min <= share <= params.bold_share_max:
             return "bold", share
         body = statistics.median([p.body_size for p in pages if p.body_size]) if pages else None
@@ -126,6 +250,14 @@ class RuleSegmenter:
             return _Candidate(line, False, "empty", 0.0)
         first = line.words[0]
         flush = abs(line.x0 - column_edge) <= params.indent_tolerance
+        if is_symbol_font(first.font):
+            return _Candidate(line, False, "symbol", 0.0)  # a marker glyph, never a headword
+        if mode == "font":
+            if params.headword_font and _matches_font(
+                first, params.headword_font, params.headword_size
+            ):
+                return _Candidate(line, True, "font", 0.95 if flush else 0.85)
+            return _Candidate(line, False, "regular", 0.0)
         if mode == "bold":
             if first.bold:
                 return _Candidate(line, True, "bold", 0.95 if flush else 0.8)
@@ -184,7 +316,7 @@ class RuleSegmenter:
                 close()
                 current = [line]
                 current_conf = candidate.confidence
-                current_head = _headword_from(line, mode, params.max_headword_words)
+                current_head = _headword_from(line, mode, params.max_headword_words, params)
                 continue
             if not current:
                 # text before the first start on this page or column: a continuation
@@ -218,6 +350,7 @@ class RuleSegmenter:
         stats = SegmentationStats(
             pages=len(text_pages),
             spans=len(spans),
+            headword_font=self.params.headword_font if mode == "font" else None,
             continuations=sum(1 for s in spans if s.continuation),
             lines=sum(len(p.lines) for p in text_pages),
             lines_skipped=skipped_total,

@@ -211,7 +211,7 @@ test.describe('workspace smoke', () => {
     await expect(page.getByText(/130 entry spans proposed/)).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText('130 spans')).toBeVisible()
     const overlay = page.locator('[data-testid="overlay-layer"]').first()
-    await expect(overlay.locator('g[data-status="proposed"]')).toHaveCount(58)
+    await expect(overlay.locator('g[data-status="proposed"]')).toHaveCount(52)
 
     // keyboard review: select the first span, accept it, reject the next one
     await page.getByRole('button', { name: /^p1 abacus proposed$/ }).click()
@@ -236,9 +236,9 @@ test.describe('workspace smoke', () => {
     await page.getByRole('button', { name: 'All' }).click()
     await expect(page.getByText('130 spans')).toBeVisible()
     await page.getByRole('button', { name: 'Edit boxes' }).click()
-    await page.getByRole('button', { name: /^p1 abase proposed$/ }).click()
+    await page.getByRole('button', { name: /^p1 abbey proposed$/ }).click()
     const abase = page.locator('[data-testid="overlay-layer"] g[data-annotation]').filter({
-      has: page.locator('title', { hasText: /^abase ·/ }),
+      has: page.locator('title', { hasText: /^abbey ·/ }),
     })
     await expect(abase).toHaveCount(1)
     // selecting a row scrolls the viewer; wait until the box stops moving
@@ -256,7 +256,7 @@ test.describe('workspace smoke', () => {
     await expect(page.getByText('131 spans')).toBeVisible()
     await page.getByRole('button', { name: 'Merge with next' }).click()
     await expect(page.getByText('130 spans')).toBeVisible()
-    await expect(page.getByRole('button', { name: /^p1 abase yours$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^p1 abbey yours$/ })).toBeVisible()
 
     await page.getByRole('button', { name: 'Draw' }).click()
     const overlayBox = await overlay.boundingBox()

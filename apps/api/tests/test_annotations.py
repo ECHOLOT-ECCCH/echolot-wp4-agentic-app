@@ -52,17 +52,17 @@ async def test_segment_review_and_edit_annotations(
     body = segmented.json()
     assert body["queued"] is False and body["stats"]["spans"] == 130 and body["set_id"]
     doc = (await client.get(base)).json()
-    assert doc["entry_count"] == 130 and doc["stats"]["segmentation"]["stats"]["mode"] == "bold"
+    assert doc["entry_count"] == 130 and doc["stats"]["segmentation"]["stats"]["mode"] == "font"
 
     page1 = (await client.get(f"{base}/annotations", params={"page_no": 1})).json()
-    assert page1["total"] == 58
+    assert page1["total"] == 52
     first = page1["items"][0]
     assert first["status"] == "proposed" and first["payload"]["headword_guess"] == "abacus"
     assert len(first["bbox"]) == 4 and first["source"] == "rule"
 
     # review: accept the whole first page, reject one span, edit another's box
     bulk = await client.post(f"{base}/annotations/bulk", json={"status": "accepted", "page_no": 1})
-    assert bulk.json()["updated"] == 58 and bulk.json()["accepted"] == 58
+    assert bulk.json()["updated"] == 52 and bulk.json()["accepted"] == 52
     rejected = await client.patch(
         f"/api/projects/{pid}/annotations/{page1['items'][1]['id']}", json={"status": "rejected"}
     )
@@ -93,12 +93,12 @@ async def test_segment_review_and_edit_annotations(
     by_status: dict[str, int] = {}
     for item in statuses["items"]:
         by_status[item["status"]] = by_status.get(item["status"], 0) + 1
-    # 58 accepted on page 1, one of them rejected and one edited afterwards, plus the user's box
-    assert by_status == {"accepted": 56 + 1, "rejected": 1, "edited": 1, "proposed": 3}
+    # 52 accepted on page 1, one of them rejected and one edited afterwards, plus the user's box
+    assert by_status == {"accepted": 50 + 1, "rejected": 1, "edited": 1, "proposed": 3}
     only_accepted = (
         await client.get(f"{base}/annotations", params={"status": "accepted,edited"})
     ).json()
-    assert only_accepted["total"] == 58
+    assert only_accepted["total"] == 52
 
     deleted = await client.delete(f"/api/projects/{pid}/annotations/{own['id']}")
     assert deleted.status_code == 204
@@ -137,25 +137,25 @@ async def test_split_and_merge_spans(
     base = f"/api/projects/{pid}/documents/{doc_id}"
     await client.post(f"{base}/segment", json={})
     page1 = (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["items"]
-    abase = next(a for a in page1 if a["payload"]["headword_guess"] == "abase")
-    assert len(abase["payload"]["line_ids"]) == 3
+    abacus = next(a for a in page1 if a["payload"]["headword_guess"] == "abacus")
+    assert len(abacus["payload"]["line_ids"]) == 2
 
-    # split before the last line (the first two segments share a baseline in this fixture)
+    # split before the second line
     layout = (await client.get(f"{base}/pages/1/layout")).json()
     lines = {line["id"]: line for line in layout["lines"]}
-    last_line = lines[abase["payload"]["line_ids"][2]]
+    last_line = lines[abacus["payload"]["line_ids"][1]]
     split = await client.post(
-        f"/api/projects/{pid}/annotations/{abase['id']}/split", json={"y": last_line["top"]}
+        f"/api/projects/{pid}/annotations/{abacus['id']}/split", json={"y": last_line["top"]}
     )
     assert split.status_code == 200, split.text
     halves = split.json()
-    assert [len(h["payload"]["line_ids"]) for h in halves] == [2, 1]
+    assert [len(h["payload"]["line_ids"]) for h in halves] == [1, 1]
     assert all(h["source"] == "user" and h["status"] == "accepted" for h in halves)
-    assert halves[0]["payload"]["headword_guess"] == "abase"
+    assert halves[0]["payload"]["headword_guess"] == "abacus"
     assert halves[0]["bbox"][3] <= halves[1]["bbox"][1] + 0.5
     gone = await client.get(f"{base}/annotations", params={"page_no": 1})
-    assert all(a["id"] != abase["id"] for a in gone.json()["items"])
-    assert gone.json()["total"] == 59  # one span became two
+    assert all(a["id"] != abacus["id"] for a in gone.json()["items"])
+    assert gone.json()["total"] == 53  # one span became two
 
     # merging the halves restores one span with all three lines
     merged = await client.post(
@@ -164,9 +164,9 @@ async def test_split_and_merge_spans(
     )
     assert merged.status_code == 200, merged.text
     body = merged.json()
-    assert len(body["payload"]["line_ids"]) == 3 and body["payload"]["headword_guess"] == "abase"
+    assert len(body["payload"]["line_ids"]) == 2 and body["payload"]["headword_guess"] == "abacus"
     assert body["payload"]["merged_from"] == [halves[0]["id"], halves[1]["id"]]
-    assert (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["total"] == 58
+    assert (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["total"] == 52
 
     # a user-drawn box on a page without text splits geometrically; bad points are refused
     drawn = (
@@ -250,15 +250,15 @@ async def test_full_structuring_job_with_cache_overrides_and_rebuild(
     queued = await client.post(f"{base}/structure", json={"kind": "full", "structurer": "rule"})
     assert queued.status_code == 200, queued.text
     run = queued.json()
-    assert run["kind"] == "full" and run["status"] == "queued" and run["scope"]["spans"] == 58
-    assert run["scope"]["estimate"]["entries"] == 58
+    assert run["kind"] == "full" and run["status"] == "queued" and run["scope"]["spans"] == 52
+    assert run["scope"]["estimate"]["entries"] == 52
     again = await client.post(f"{base}/structure", json={"kind": "full", "structurer": "rule"})
     assert again.status_code == 422 and "already queued" in again.text
 
     result = await jobs_structuring.run_full_structuring(run["id"])
-    assert result["spans"] == 58 and result["cached"] == 5 and result["failed"] == 0
+    assert result["spans"] == 52 and result["cached"] == 5 and result["failed"] == 0
     detail = (await client.get(f"/api/projects/{pid}/runs/{run['id']}")).json()
-    assert detail["status"] == "done" and detail["stats"]["converted"] == 58
+    assert detail["status"] == "done" and detail["stats"]["converted"] == 52
     assert detail["stats"]["cached"] == 5 and detail["stats"]["cost_check"]["actual_tokens"] == 0
     assert [f["format"] for f in detail["stats"]["output_files"]] == ["xml", "json"]
     assert detail["validation_report"]["valid"] is True, detail["validation_report"]["errors"][:3]
@@ -269,7 +269,7 @@ async def test_full_structuring_job_with_cache_overrides_and_rebuild(
     review = (
         await client.get(f"/api/projects/{pid}/runs/{run['id']}/entries", params={"review": True})
     ).json()
-    assert review["total"] == 58
+    assert review["total"] == 52
     first = review["items"][0]
     assert first["notes"][-1] == "reused from an earlier run"
 
