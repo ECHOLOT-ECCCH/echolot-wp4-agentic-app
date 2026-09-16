@@ -101,8 +101,67 @@ export interface Conversation {
   updated_at: string
 }
 
+export type DocumentStatus = 'queued' | 'parsing' | 'ready' | 'error'
+
+export interface EntryCandidate {
+  xpath: string
+  tag: string
+  count: number
+  depth: number
+  score: number
+  reason: string
+}
+
+export interface DocumentRecord {
+  id: string
+  project_id: string
+  source_file_id: string
+  file_name: string
+  type: 'xml' | 'pdf'
+  status: DocumentStatus
+  entry_xpath: string | null
+  headword_xpath: string | null
+  entry_count: number
+  error: string | null
+  parsed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DocumentDetail extends DocumentRecord {
+  stats: {
+    size_bytes?: number
+    root_tag?: string
+    namespaces?: Record<string, string>
+    total_elements?: number
+    entry_candidates?: EntryCandidate[]
+    element_stats?: { tag: string; count: number; depth: number; has_text: boolean }[]
+  }
+}
+
+export interface EntryListItem {
+  id: string
+  document_id: string
+  ordinal: number
+  headword: string | null
+  snippet: string
+}
+
+export interface EntryPage {
+  items: EntryListItem[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export interface EntryDetail extends EntryListItem {
+  source_xml: string
+  source_ref: { start: number; end: number }
+}
+
 export type UiActionType =
   | 'open_file'
+  | 'open_document'
   | 'open_entry'
   | 'open_page'
   | 'show_overlay'

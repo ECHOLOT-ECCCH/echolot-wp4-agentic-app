@@ -15,6 +15,7 @@ from pydantic_ai.ui.vercel_ai.response_types import DataChunk
 
 UiActionType = Literal[
     "open_file",
+    "open_document",
     "open_entry",
     "open_page",
     "show_overlay",

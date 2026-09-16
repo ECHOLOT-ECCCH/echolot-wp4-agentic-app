@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { DocumentList } from '@/features/entries/DocumentList'
 import { FileList } from '@/features/files/FileList'
 import { UploadDropzone } from '@/features/files/UploadDropzone'
 import { keys, useFiles, useMembers } from '@/lib/queries'
@@ -51,6 +52,8 @@ export function LeftPane({ project }: { project: Project }) {
           {files.isPending && <p className="text-muted-foreground text-xs">Loading files…</p>}
           {files.data && <FileList projectId={project.id} files={files.data} canEdit={canEdit} />}
         </section>
+
+        <DocumentList projectId={project.id} />
 
         <section className="flex flex-col gap-1">
           <h2 className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">

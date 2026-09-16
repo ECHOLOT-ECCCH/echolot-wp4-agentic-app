@@ -46,15 +46,28 @@ test.describe('workspace smoke', () => {
         path.join(SAMPLES, 'sample-dictionary.xml'),
         path.join(SAMPLES, 'sample-dictionary.pdf'),
       ])
-    const xmlButton = page.getByRole('button', { name: /^sample-dictionary\.xml/ })
-    const pdfButton = page.getByRole('button', { name: /^sample-dictionary\.pdf/ })
+    const xmlButton = page.getByRole('button', { name: /^sample-dictionary\.xml \d+ B$/ })
+    const pdfButton = page.getByRole('button', { name: /^sample-dictionary\.pdf [\d.]+ KB$/ })
     await expect(xmlButton).toBeVisible()
     await expect(pdfButton).toBeVisible()
 
-    // XML preview in CodeMirror
-    await xmlButton.click()
+    // the XML upload is analysed by the worker: the document appears and becomes browsable
+    const document = page.getByRole('button', { name: /^sample-dictionary\.xml.*entries$/ })
+    await expect(document, 'document did not become ready; is `make worker` running?').toBeVisible({
+      timeout: 90_000,
+    })
+    await document.click()
+    await expect(page.locator('p', { hasText: /^2 entries$/ })).toBeVisible()
+    await page.getByRole('button', { name: /hiša/ }).click()
     await expect(page.locator('.cm-editor')).toBeVisible()
-    await expect(page.getByText('razpoznavati znake pisave')).toBeVisible()
+    await expect(page.locator('.cm-content')).toContainText('stavba, v kateri ljudje prebivajo')
+    await page.getByLabel('Search entries').fill('brati')
+    await page.getByRole('button', { name: /brati/ }).click()
+    await expect(page.locator('.cm-content')).toContainText('razpoznavati znake pisave')
+
+    // clicking the analysed file opens the same entry browser
+    await xmlButton.click()
+    await expect(page.locator('p', { hasText: /^2 entries$/ })).toBeVisible()
 
     // PDF preview renders a page and the page indicator
     await pdfButton.click()

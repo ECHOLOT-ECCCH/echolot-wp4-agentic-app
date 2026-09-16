@@ -4,7 +4,8 @@ import type { UiAction } from '@/lib/types'
 
 export type PreviewTarget =
   | { kind: 'file'; fileId: string; page?: number; bbox?: [number, number, number, number] }
-  | { kind: 'entry'; entryId: string }
+  | { kind: 'document'; documentId: string }
+  | { kind: 'entry'; entryId: string; documentId?: string }
   | { kind: 'run'; runId: string }
   | { kind: 'mapping'; version?: number }
   | { kind: 'spec' }
@@ -19,6 +20,8 @@ interface PreviewState {
     page?: number,
     bbox?: PreviewTarget extends { bbox?: infer B } ? B : never,
   ) => void
+  openDocument: (documentId: string) => void
+  openEntry: (entryId: string, documentId?: string) => void
   apply: (action: UiAction) => void
   clear: () => void
 }
@@ -28,6 +31,10 @@ export const usePreview = create<PreviewState>((set) => ({
   revision: 0,
   openFile: (fileId, page, bbox) =>
     set((s) => ({ target: { kind: 'file', fileId, page, bbox }, revision: s.revision + 1 })),
+  openDocument: (documentId) =>
+    set((s) => ({ target: { kind: 'document', documentId }, revision: s.revision + 1 })),
+  openEntry: (entryId, documentId) =>
+    set((s) => ({ target: { kind: 'entry', entryId, documentId }, revision: s.revision + 1 })),
   apply: (action) =>
     set((s) => {
       const next = targetFor(action)
@@ -45,8 +52,12 @@ export function targetFor(action: UiAction): PreviewTarget | null {
       return action.file_id
         ? { kind: 'file', fileId: action.file_id, page: action.page, bbox: action.bbox }
         : null
+    case 'open_document':
+      return action.document_id ? { kind: 'document', documentId: action.document_id } : null
     case 'open_entry':
-      return action.entry_id ? { kind: 'entry', entryId: action.entry_id } : null
+      return action.entry_id
+        ? { kind: 'entry', entryId: action.entry_id, documentId: action.document_id }
+        : null
     case 'open_run':
       return action.run_id ? { kind: 'run', runId: action.run_id } : null
     case 'open_mapping':

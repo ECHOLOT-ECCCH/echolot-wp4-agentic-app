@@ -11,7 +11,7 @@ Plan and status: docs/PLAN.md. Decisions log: docs/DECISIONS.md. Ideas: docs/BAC
 make dev-infra    # postgres + keycloak (add PROFILE=s3 for garage)
 make api          # FastAPI with reload on :8000
 make web          # Vite on :5173, proxies /api /auth /events to :8000
-make worker       # procrastinate worker
+make worker       # procrastinate worker (needed for document parsing and conversions; e2e expects it running)
 make check        # ruff, pyright, pytest, eslint, tsc, vitest. Must pass before every commit.
 make e2e          # playwright smoke
 make migration m="msg" / make upgrade

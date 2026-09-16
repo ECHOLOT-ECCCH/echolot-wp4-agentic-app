@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { DownloadIcon, FileSearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { DocumentPanel } from '@/features/entries/DocumentPanel'
 import { PdfViewer } from '@/features/preview/PdfViewer'
 import { TextPreview } from '@/features/preview/TextPreview'
 import { ApiError, api, fileContentUrl, fileDownloadUrl } from '@/lib/api'
 import { formatBytes, isPdf } from '@/lib/format'
-import { useFiles } from '@/lib/queries'
+import { useDocuments, useFiles } from '@/lib/queries'
 import { usePreview } from '@/lib/uiActions'
 
 const PREVIEW_LIMIT = 5 * 1024 * 1024
@@ -15,6 +16,7 @@ export function PreviewHost({ projectId }: { projectId: string }) {
   const target = usePreview((s) => s.target)
   const revision = usePreview((s) => s.revision)
   const files = useFiles(projectId)
+  const documents = useDocuments(projectId)
 
   if (target.kind === 'none') {
     return (
@@ -23,6 +25,17 @@ export function PreviewHost({ projectId }: { projectId: string }) {
         body="Pick a file on the left, or ask the agent to show you something. Entries, mappings and reports will open here."
       />
     )
+  }
+  if (target.kind === 'document') {
+    return <DocumentPanel projectId={projectId} documentId={target.documentId} entryId={null} />
+  }
+  if (target.kind === 'entry') {
+    const documentId =
+      target.documentId ?? documents.data?.find((d) => d.status === 'ready')?.id ?? null
+    if (!documentId) {
+      return <Empty title="Entry" body="The document of this entry is not available." />
+    }
+    return <DocumentPanel projectId={projectId} documentId={documentId} entryId={target.entryId} />
   }
   if (target.kind !== 'file') {
     return (
@@ -37,6 +50,10 @@ export function PreviewHost({ projectId }: { projectId: string }) {
     return files.isPending ? null : (
       <Empty title="File not found" body="It may have been deleted." />
     )
+  }
+  const parsed = documents.data?.find((d) => d.source_file_id === file.id && d.status === 'ready')
+  if (parsed && !isPdf(file)) {
+    return <DocumentPanel projectId={projectId} documentId={parsed.id} entryId={null} />
   }
   return (
     <div className="flex h-full flex-col">
@@ -67,7 +84,7 @@ export function PreviewHost({ projectId }: { projectId: string }) {
         ) : file.size > PREVIEW_LIMIT ? (
           <Empty
             title="Too large for a whole-file preview"
-            body="Files above 5 MB are browsed entry by entry once the document has been analysed (milestone 1)."
+            body="Files above 5 MB are browsed entry by entry once the document has been analysed."
           />
         ) : (
           <TextFile projectId={projectId} file={file} />

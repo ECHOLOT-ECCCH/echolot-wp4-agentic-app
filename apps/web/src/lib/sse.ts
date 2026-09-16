@@ -16,6 +16,7 @@ const EVENT_TYPES = [
   'job.finished',
   'run.finished',
   'document.ready',
+  'document.error',
   'annotations.changed',
   'ui_action',
 ] as const
@@ -36,9 +37,18 @@ export function useProjectEvents(projectId: string, onEvent?: (event: ProjectEve
       }
       switch (event.type) {
         case 'document.ready':
+        case 'document.error':
+          void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+          break
         case 'job.finished':
         case 'run.finished':
           void queryClient.invalidateQueries({ queryKey: keys.files(projectId) })
+          void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+          break
+        case 'job.progress':
+          if (event.data.kind === 'documents.parse') {
+            void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+          }
           break
         case 'ui_action':
           if (isUiAction(event.data)) apply(event.data)

@@ -4,6 +4,10 @@ import { api } from '@/lib/api'
 import type {
   Conversation,
   Credential,
+  DocumentDetail,
+  DocumentRecord,
+  EntryDetail,
+  EntryPage,
   FileRecord,
   Member,
   ModelInfo,
@@ -20,6 +24,13 @@ export const keys = {
   projects: ['projects'] as const,
   project: (id: string) => ['projects', id] as const,
   files: (projectId: string) => ['projects', projectId, 'files'] as const,
+  documents: (projectId: string) => ['projects', projectId, 'documents'] as const,
+  document: (projectId: string, documentId: string) =>
+    ['projects', projectId, 'documents', documentId] as const,
+  entries: (projectId: string, documentId: string, offset: number, limit: number, q: string) =>
+    ['projects', projectId, 'documents', documentId, 'entries', { offset, limit, q }] as const,
+  entry: (projectId: string, entryId: string) =>
+    ['projects', projectId, 'entries', entryId] as const,
   members: (projectId: string) => ['projects', projectId, 'members'] as const,
   conversations: (projectId: string) => ['projects', projectId, 'conversations'] as const,
   messages: (projectId: string, conversationId: string) =>
@@ -84,6 +95,71 @@ export function useDeleteFile(projectId: string) {
     mutationFn: (fileId: string) =>
       api<void>(`/api/projects/${projectId}/files/${fileId}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.files(projectId) }),
+  })
+}
+
+export function useDocuments(projectId: string) {
+  return useQuery({
+    queryKey: keys.documents(projectId),
+    queryFn: () => api<DocumentRecord[]>(`/api/projects/${projectId}/documents`),
+    refetchInterval: (query) =>
+      query.state.data?.some((d) => d.status === 'queued' || d.status === 'parsing') ? 3000 : false,
+  })
+}
+
+export function useDocument(projectId: string, documentId: string | null) {
+  return useQuery({
+    queryKey: keys.document(projectId, documentId ?? ''),
+    queryFn: () => api<DocumentDetail>(`/api/projects/${projectId}/documents/${documentId}`),
+    enabled: Boolean(documentId),
+  })
+}
+
+export function useEntries(
+  projectId: string,
+  documentId: string | null,
+  params: { offset: number; limit: number; q: string },
+) {
+  const search = new URLSearchParams({
+    offset: String(params.offset),
+    limit: String(params.limit),
+  })
+  if (params.q) search.set('q', params.q)
+  return useQuery({
+    queryKey: keys.entries(projectId, documentId ?? '', params.offset, params.limit, params.q),
+    queryFn: () =>
+      api<EntryPage>(`/api/projects/${projectId}/documents/${documentId}/entries?${search}`),
+    enabled: Boolean(documentId),
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useEntry(projectId: string, entryId: string | null) {
+  return useQuery({
+    queryKey: keys.entry(projectId, entryId ?? ''),
+    queryFn: () => api<EntryDetail>(`/api/projects/${projectId}/entries/${entryId}`),
+    enabled: Boolean(entryId),
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useReparseDocument(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      entry_xpath,
+      headword_xpath,
+    }: {
+      documentId: string
+      entry_xpath?: string | null
+      headword_xpath?: string | null
+    }) =>
+      api<DocumentRecord>(`/api/projects/${projectId}/documents/${documentId}/reparse`, {
+        method: 'POST',
+        json: { entry_xpath, headword_xpath },
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.documents(projectId) }),
   })
 }
 

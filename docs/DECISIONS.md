@@ -321,3 +321,15 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   `.../reparse` cover explicit parsing with other XPaths. Measured on the real KKS file through the
   API and worker: upload 0.3 s (local storage), parse job 13 s, worker RSS 34 MB after the job,
   88,575 entries; headword/snippet search 0.34 s (ILIKE; a trigram index is a later optimisation).
+
+## 2026-09-16 Entry browser (M1.5)
+
+- Middle pane: `DocumentPanel` = `EntryNavigator` (search with debounce, 50 per page, ordinal
+  numbers, snippets) + `EntryView` (source XML in CodeMirror). Preview targets gained
+  `document` and `entry` (with the document id); ui-action `open_document` was added to the
+  contract next to `open_entry`.
+- Clicking an analysed XML file opens the entry browser rather than the raw file; small files that
+  have no document still preview as text. The left pane lists documents with status and counts,
+  refreshed by SSE (`document.ready`, `document.error`, parse progress) and by polling while parsing.
+- The browser smoke test now depends on a running worker (document must become ready); CI starts
+  one before Playwright, developers run `make worker`.
