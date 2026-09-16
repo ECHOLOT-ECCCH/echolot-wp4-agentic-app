@@ -11,6 +11,7 @@ import { FileList } from '@/features/files/FileList'
 import { UploadDropzone } from '@/features/files/UploadDropzone'
 import { ConversionLinks } from '@/features/mapping/ConversionLinks'
 import { RunList } from '@/features/runs/RunList'
+import { StepList } from '@/features/steps/StepList'
 import { keys, useFiles, useMembers } from '@/lib/queries'
 import type { Project } from '@/lib/types'
 
@@ -58,6 +59,8 @@ export function LeftPane({ project }: { project: Project }) {
         <DocumentList projectId={project.id} />
 
         <ConversionLinks projectId={project.id} />
+
+        <StepList projectId={project.id} canEdit={canEdit} />
 
         <RunList projectId={project.id} />
 

@@ -23,4 +23,7 @@ export const TOOL_LABELS: Record<string, string> = {
   pdf_estimate_cost: 'Estimating the structuring cost',
   pdf_structure: 'Structuring entries',
   run_code: 'Running a snippet in the sandbox',
+  save_as_step: 'Saving a conversion step',
+  list_steps: 'Listing the conversion steps',
+  remove_step: 'Removing a conversion step',
 }

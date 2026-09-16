@@ -28,6 +28,7 @@ import type {
   RunRecord,
   ReviewOut,
   SegmentResult,
+  StepRecord,
   SourceType,
   SpecRecord,
   User,
@@ -66,6 +67,7 @@ export const keys = {
   mapping: (projectId: string, version: string) =>
     ['projects', projectId, 'mappings', version] as const,
   spec: (projectId: string) => ['projects', projectId, 'spec'] as const,
+  steps: (projectId: string) => ['projects', projectId, 'steps'] as const,
   members: (projectId: string) => ['projects', projectId, 'members'] as const,
   conversations: (projectId: string) => ['projects', projectId, 'conversations'] as const,
   messages: (projectId: string, conversationId: string) =>
@@ -283,6 +285,38 @@ export function useMappings(projectId: string) {
     queryKey: keys.mappings(projectId),
     queryFn: () => api<MappingSummary[]>(`/api/projects/${projectId}/mappings`),
   })
+}
+
+export function useSteps(projectId: string) {
+  return useQuery({
+    queryKey: keys.steps(projectId),
+    queryFn: () => api<StepRecord[]>(`/api/projects/${projectId}/steps`),
+  })
+}
+
+/** Rename, switch on or off, reorder and delete the custom steps of the pipeline. */
+export function useEditSteps(projectId: string) {
+  const queryClient = useQueryClient()
+  const done = () => void queryClient.invalidateQueries({ queryKey: keys.steps(projectId) })
+  const update = useMutation({
+    mutationFn: ({ id, ...body }: { id: string; name?: string; enabled?: boolean }) =>
+      api<StepRecord>(`/api/projects/${projectId}/steps/${id}`, { method: 'PATCH', json: body }),
+    onSuccess: done,
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/api/projects/${projectId}/steps/${id}`, { method: 'DELETE' }),
+    onSuccess: done,
+  })
+  const reorder = useMutation({
+    mutationFn: (ids: string[]) =>
+      api<StepRecord[]>(`/api/projects/${projectId}/steps/reorder`, {
+        method: 'POST',
+        json: { ids },
+      }),
+    onSuccess: done,
+  })
+  return { update, remove, reorder }
 }
 
 /** One mapping version, or the latest; null data when the project has none yet. */

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -208,3 +209,70 @@ async def test_killed_and_failed_runs_are_reported(fixture: Fixture) -> None:
     assert result["data"]["killed"] is True and result["data"]["exit_code"] == 137
     assert [a["kind"] for a in result["artifacts"]] == ["code", "log"]
     assert "ui_actions" not in result  # nothing to open: no outputs
+
+
+async def test_save_as_step_lists_and_removes(fixture: Fixture) -> None:
+    from elexifier_core.db.models import PipelineStep
+
+    from .test_xml_tools import call_tool
+
+    async def behaviour(body: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "exit_code": 0,
+            "stdout": "ok\n",
+            "stderr": "",
+            "truncated": False,
+            "duration_s": 0.1,
+            "outputs": [],
+            "killed": False,
+        }
+
+    fixture.deps.runner = fake_runner(behaviour)
+    run = await approved_call(
+        fixture,
+        "run_code",
+        {
+            "code": "import json\n# entries in, entries out",
+            "purpose": "Trim definitions",
+            "inputs": ["source"],
+        },
+    )
+    code_run_id = run["data"]["code_run_id"]
+
+    nothing = await call_tool(fixture, "list_steps", {})
+    assert nothing["summary"].startswith("No custom steps")
+    bad = await call_tool(fixture, "save_as_step", {"code_run_id": str(uuid.uuid4()), "name": "x"})
+    assert bad["summary"].startswith("Error: no such code run")
+
+    saved = await call_tool(
+        fixture, "save_as_step", {"code_run_id": code_run_id, "name": "Trim definitions"}
+    )
+    assert saved["summary"].startswith("Saved step 1 'Trim definitions' (enabled)")
+    step = saved["data"]["step"]
+    assert step["position"] == 0 and step["purpose"] == "Trim definitions"
+    assert step["code_file_id"] == run["data"]["code_file_id"]
+    again = await call_tool(fixture, "save_as_step", {"code_run_id": code_run_id, "name": "Twice"})
+    assert again["summary"].startswith("Error: this snippet is already step 1")
+
+    listed = await call_tool(fixture, "list_steps", {})
+    assert listed["summary"] == "1 step(s), 1 enabled: 1. Trim definitions"
+    async with fixture.db.session() as db:
+        row = await db.get(PipelineStep, uuid.UUID(step["step_id"]))
+        assert row is not None and row.config["inputs"] == ["in/oxford.xml"]
+        assert row.config["code_sha256"] and row.config["code_run_id"] == code_run_id
+        assert row.enabled and row.kind == "custom_code"
+
+    removed = await approved_call(fixture, "remove_step", {"step_id": step["step_id"]})
+    assert removed["summary"] == "Removed step 'Trim definitions'."
+    async with fixture.db.session() as db:
+        assert await db.get(PipelineStep, uuid.UUID(step["step_id"])) is None
+        audit = (
+            (
+                await db.execute(
+                    select(AuditLog).where(AuditLog.action.in_(["step.created", "step.deleted"]))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert sorted(a.action for a in audit) == ["step.created", "step.deleted"]

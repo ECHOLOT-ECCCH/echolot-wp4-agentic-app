@@ -831,3 +831,27 @@ merged span and to name the headword where the next one starts.
   file list shows a code run's purpose in the tooltip of its artifacts (`meta.purpose`).
 - Not done: a per-run grouping of artifacts in the left pane; artifacts of a code run share
   `meta.code_run`, so a grouping can be added when the list grows long (backlog).
+
+## 2026-09-16 M3.4 Custom steps stored
+
+- Migration 0009 `pipeline_steps` (project, position, kind builtin | custom_code, name, config,
+  code_artifact_id, enabled, created_by, timestamps). `config` holds `stage` ("entries"),
+  `purpose`, `code_run_id`, `code_sha256` (the snippet's hash at save time, recorded in run
+  snapshots later) and the `inputs` the snippet was tried with.
+- API: `GET/POST /api/projects/{id}/steps`, `PATCH/DELETE .../steps/{id}`, `POST
+  .../steps/reorder` (every id once, in the new order). A step points at a Python artifact of
+  the project (the `code-<id>.py` that `run_code` keeps); editors only; audit rows
+  `step.created` / `step.deleted`; a `steps.changed` event refreshes the left pane.
+- Tools: `save_as_step(code_run_id, name)` finds the run's artifacts by `meta.code_run`, refuses
+  a snippet that is already a step, and records purpose and inputs from the run; `list_steps`;
+  `remove_step` (approval, a delete). The prompt says a step is proposed only after the
+  lexicographer agreed with the snippet's result on a sample, and describes the
+  `entries.jsonl` contract.
+- Web: a "Steps" section in the left pane (checkbox on/off, move up/down, delete with a
+  confirmation, click opens the code in the middle pane; the purpose in the tooltip). The
+  section is hidden while a project has no steps.
+- The request-scoped session commits on exit; routers that return a freshly written row refresh
+  it first (server-side timestamps), instead of committing themselves. Tests: API CRUD and
+  reorder, agent save/list/remove through the scripted model.
+- M3.5 makes the steps run inside conversions; until then a saved step is stored and shown but
+  not applied.

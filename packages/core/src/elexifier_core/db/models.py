@@ -313,6 +313,34 @@ class Mapping(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     source: Mapped[str] = mapped_column(String(16), default="agent")  # agent | user | import
 
 
+class StepKind(StrEnum):
+    BUILTIN = "builtin"
+    CUSTOM_CODE = "custom_code"
+
+
+class PipelineStep(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """A step of the project's conversion pipeline (PLAN 8): custom code saved from a sandbox
+    run, applied to the entry stream of every sample and full conversion (M3)."""
+
+    __tablename__ = "pipeline_steps"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16), default=StepKind.CUSTOM_CODE.value)
+    name: Mapped[str] = mapped_column(String(200))
+    # stage ("entries"), purpose, code_run_id, code_sha256, inputs
+    config: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    code_artifact_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("files.id", ondelete="SET NULL")
+    )
+    enabled: Mapped[bool] = mapped_column(default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+
 class ConversionSpec(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """Plain-language record of every conversion decision, versioned like the mapping."""
 

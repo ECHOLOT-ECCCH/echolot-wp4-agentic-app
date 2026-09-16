@@ -54,6 +54,9 @@ export function useProjectEvents(projectId: string, onEvent?: (event: ProjectEve
             void queryClient.invalidateQueries({ queryKey: keys.runs(projectId) })
           }
           break
+        case 'steps.changed':
+          void queryClient.invalidateQueries({ queryKey: keys.steps(projectId) })
+          break
         case 'annotations.changed':
           void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
           if (typeof event.data.document_id === 'string') {

@@ -29,6 +29,7 @@ from elexifier_api.routers import (
     me,
     projects,
     runs,
+    steps,
 )
 from elexifier_api.schemas import HealthOut
 from elexifier_api.state import AppState
@@ -126,6 +127,7 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
     app.include_router(runs.router)
     app.include_router(mappings.router)
     app.include_router(annotations.router)
+    app.include_router(steps.router)
     return app
 
 

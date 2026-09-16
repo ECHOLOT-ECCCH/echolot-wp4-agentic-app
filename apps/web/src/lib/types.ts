@@ -427,6 +427,21 @@ export interface UiAction {
   run_id?: string
 }
 
+/** A custom step of the conversion pipeline: a saved sandbox snippet (M3.4). */
+export interface StepRecord {
+  id: string
+  project_id: string
+  position: number
+  kind: 'builtin' | 'custom_code'
+  name: string
+  config: { stage?: string; purpose?: string | null; code_run_id?: string; inputs?: string[] }
+  code_artifact_id: string | null
+  enabled: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ToolResultPayload {
   summary?: string
   data?: Record<string, unknown>

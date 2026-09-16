@@ -299,6 +299,37 @@ class MappingIn(BaseModel):
     note: str = Field(default="", max_length=2000)
 
 
+class StepIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    code_artifact_id: uuid.UUID
+    config: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+
+
+class StepUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    enabled: bool | None = None
+    config: dict[str, Any] | None = None
+
+
+class StepReorder(BaseModel):
+    ids: list[uuid.UUID]  # every step of the project, in the new order
+
+
+class StepOut(ApiModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    position: int
+    kind: str
+    name: str
+    config: dict[str, Any]
+    code_artifact_id: uuid.UUID | None
+    enabled: bool
+    created_by: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class MappingCheckOut(BaseModel):
     ok: bool
     issues: list[MappingIssueOut]

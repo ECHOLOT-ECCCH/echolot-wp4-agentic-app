@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic_ai import RunContext, ToolReturn
 from pydantic_ai.toolsets import FunctionToolset
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from elexifier_agent.contracts import (
@@ -27,7 +27,8 @@ from elexifier_agent.contracts import (
 )
 from elexifier_agent.deps import AgentDeps
 from elexifier_agent.sandbox import RunnerError
-from elexifier_core.db.models import AuditLog, Document, File, FileKind
+from elexifier_core.db.models import AuditLog, Document, File, FileKind, PipelineStep
+from elexifier_core.events import publish
 from elexifier_core.sandbox_contract import RunInput, RunLimits, RunRequest, RunResponse
 from elexifier_core.storage import Storage, make_key, safe_filename
 
@@ -424,4 +425,198 @@ async def _register_run(
     return outputs, artifacts, ui_actions
 
 
-__all__ = ["run_code", "sandbox_toolset", "store_artifact"]
+# --- steps: snippets that run inside every conversion ------------------------------------------
+
+
+def _step_item(step: PipelineStep) -> dict[str, Any]:
+    return {
+        "step_id": str(step.id),
+        "position": step.position,
+        "name": step.name,
+        "enabled": step.enabled,
+        "purpose": step.config.get("purpose"),
+        "stage": step.config.get("stage", "entries"),
+        "code_file_id": str(step.code_artifact_id) if step.code_artifact_id else None,
+        "code_run_id": step.config.get("code_run_id"),
+    }
+
+
+async def project_steps(db: AsyncSession, project_id: uuid.UUID) -> list[PipelineStep]:
+    return list(
+        (
+            await db.execute(
+                select(PipelineStep)
+                .where(PipelineStep.project_id == project_id)
+                .order_by(PipelineStep.position, PipelineStep.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+@sandbox_toolset.tool
+async def save_as_step(ctx: RunContext[AgentDeps], code_run_id: str, name: str) -> ToolReturn:
+    """Register the snippet of an earlier run_code run as a step of the conversion pipeline: from
+    then on it runs, in order with the other steps, on the entry stream of every sample and
+    full conversion (in/entries.jsonl in, out/entries.jsonl out). Save only a snippet written
+    for that contract, after the lexicographer agreed with its result on a sample.
+
+    Args:
+        code_run_id: The code_run_id from the run_code result.
+        name: A short name for the step, e.g. "Split sense numbers off definitions".
+    """
+    deps = ctx.deps
+    name = name.strip()
+    if not name:
+        return error_result("name is required")
+    try:
+        run_uuid = uuid.UUID(code_run_id)
+    except ValueError:
+        return error_result("code_run_id is not a valid id", code_run_id=code_run_id)
+    async with deps.session() as db:
+        rows = (
+            (
+                await db.execute(
+                    select(File).where(
+                        File.project_id == deps.project.id,
+                        File.kind == FileKind.ARTIFACT.value,
+                        File.meta["code_run"].astext == str(run_uuid),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        code = next((f for f in rows if f.meta.get("role") == "code"), None)
+        if code is None:
+            return error_result("no such code run in this project", code_run_id=code_run_id)
+        existing = (
+            await db.execute(
+                select(PipelineStep).where(
+                    PipelineStep.project_id == deps.project.id,
+                    PipelineStep.code_artifact_id == code.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return error_result(
+                f"this snippet is already step {existing.position + 1} ({existing.name!r})",
+                step_id=str(existing.id),
+            )
+        highest = (
+            await db.execute(
+                select(func.max(PipelineStep.position)).where(
+                    PipelineStep.project_id == deps.project.id
+                )
+            )
+        ).scalar_one()
+        step_meta = next((f for f in rows if f.meta.get("role") == "step"), None)
+        inputs: list[str] = []
+        if step_meta is not None:
+            raw = b"".join([c async for c in deps.storage.open(step_meta.s3_key)])
+            try:
+                inputs = [
+                    str(i.get("mount_path") or "")
+                    for i in json.loads(raw.decode("utf-8")).get("inputs", [])
+                ]
+            except (ValueError, AttributeError):
+                inputs = []
+        step = PipelineStep(
+            project_id=deps.project.id,
+            position=0 if highest is None else int(highest) + 1,
+            name=name[:200],
+            config={
+                "stage": "entries",
+                "purpose": code.meta.get("purpose"),
+                "code_run_id": str(run_uuid),
+                "code_sha256": code.sha256,
+                "inputs": inputs,
+            },
+            code_artifact_id=code.id,
+            enabled=True,
+            created_by=deps.user.id,
+        )
+        db.add(step)
+        await db.flush()
+        db.add(
+            AuditLog(
+                user_id=deps.user.id,
+                action="step.created",
+                target=str(step.id),
+                meta={"project": str(deps.project.id), "name": step.name, "by": "agent"},
+            )
+        )
+        await publish(
+            db, deps.project.id, "steps.changed", {"step_id": str(step.id), "action": "created"}
+        )
+        await db.commit()
+        item = _step_item(step)
+    return to_tool_return(
+        ToolResult(
+            summary=(
+                f"Saved step {item['position'] + 1} {name!r} (enabled). It runs on the entry "
+                "stream of every sample and full conversion from now on; the lexicographer sees "
+                "it under Steps in the left pane."
+            ),
+            data={"step": item},
+            artifacts=[ArtifactRef(file_id=str(code.id), name=code.name, kind="code")],
+        )
+    )
+
+
+@sandbox_toolset.tool
+async def list_steps(ctx: RunContext[AgentDeps]) -> ToolReturn:
+    """The project's conversion steps in order, with their purpose and whether they are on."""
+    async with ctx.deps.session() as db:
+        steps = [_step_item(s) for s in await project_steps(db, ctx.deps.project.id)]
+    if not steps:
+        summary = "No custom steps: conversions run the mapping alone."
+    else:
+        on = sum(1 for s in steps if s["enabled"])
+        summary = f"{len(steps)} step(s), {on} enabled: " + "; ".join(
+            f"{s['position'] + 1}. {s['name']}" + ("" if s["enabled"] else " (off)") for s in steps
+        )
+    return to_tool_return(ToolResult(summary=summary[:500], data={"steps": steps}))
+
+
+@sandbox_toolset.tool(requires_approval=True)
+async def remove_step(ctx: RunContext[AgentDeps], step_id: str) -> ToolReturn:
+    """Delete a conversion step (the lexicographer approves; the snippet stays as an artifact).
+
+    Args:
+        step_id: From list_steps.
+    """
+    try:
+        sid = uuid.UUID(step_id)
+    except ValueError:
+        return error_result("step_id is not a valid id", step_id=step_id)
+    async with ctx.deps.session() as db:
+        step = await db.get(PipelineStep, sid)
+        if step is None or step.project_id != ctx.deps.project.id:
+            return error_result("no such step in this project", step_id=step_id)
+        name = step.name
+        db.add(
+            AuditLog(
+                user_id=ctx.deps.user.id,
+                action="step.deleted",
+                target=str(step.id),
+                meta={"project": str(ctx.deps.project.id), "name": name, "by": "agent"},
+            )
+        )
+        await db.delete(step)
+        await publish(
+            db, ctx.deps.project.id, "steps.changed", {"step_id": step_id, "action": "deleted"}
+        )
+        await db.commit()
+    return to_tool_return(ToolResult(summary=f"Removed step {name!r}.", data={"step_id": step_id}))
+
+
+__all__ = [
+    "list_steps",
+    "remove_step",
+    "run_code",
+    "sandbox_toolset",
+    "save_as_step",
+    "store_artifact",
+]

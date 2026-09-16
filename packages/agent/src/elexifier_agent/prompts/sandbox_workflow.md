@@ -17,3 +17,7 @@ a statistic. Prefer the fixed tools whenever they suffice; a snippet costs an ap
 - A snippet that transforms converted entries reads in/entries.jsonl (one normalized DMLex
   entry per line, the shape run_conversion samples show) and writes out/entries.jsonl in the
   same shape and order; write it that way so it can become a conversion step.
+- Steps: save_as_step registers such a snippet (by its code_run_id) as a step of the pipeline;
+  steps run in order inside every sample and full conversion, and a failing step stops the
+  conversion with its error. list_steps shows them; remove_step deletes one (approval). Propose
+  a step only after the lexicographer agreed with the snippet's result on a sample.
