@@ -367,3 +367,14 @@ class SegmentOut(BaseModel):
     job_id: int | None = None
     set_id: uuid.UUID | None = None
     stats: dict[str, Any] | None = None
+
+
+class AnnotationSplit(BaseModel):
+    """Split a span at a vertical position (PDF points from the top of the page): the line under
+    that position and everything below it go to the second span."""
+
+    y: float
+
+
+class AnnotationMerge(BaseModel):
+    with_id: uuid.UUID

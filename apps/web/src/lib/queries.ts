@@ -370,6 +370,65 @@ export function useBulkDecide(projectId: string, documentId: string) {
   })
 }
 
+export function useEditAnnotations(projectId: string, documentId: string) {
+  const queryClient = useQueryClient()
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
+    void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+  }
+  const create = useMutation({
+    mutationFn: (body: {
+      page_no: number
+      bbox: [number, number, number, number]
+      label?: string
+      payload?: Record<string, unknown>
+    }) =>
+      api<AnnotationRecord>(`/api/projects/${projectId}/documents/${documentId}/annotations`, {
+        method: 'POST',
+        json: body,
+      }),
+    onSuccess: refresh,
+  })
+  const update = useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      bbox?: [number, number, number, number]
+      label?: string
+      status?: AnnotationStatus
+    }) =>
+      api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${id}`, {
+        method: 'PATCH',
+        json: body,
+      }),
+    onSuccess: refresh,
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/api/projects/${projectId}/annotations/${id}`, { method: 'DELETE' }),
+    onSuccess: refresh,
+  })
+  const split = useMutation({
+    mutationFn: ({ id, y }: { id: string; y: number }) =>
+      api<AnnotationRecord[]>(`/api/projects/${projectId}/annotations/${id}/split`, {
+        method: 'POST',
+        json: { y },
+      }),
+    onSuccess: refresh,
+  })
+  const merge = useMutation({
+    mutationFn: ({ id, withId }: { id: string; withId: string }) =>
+      api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${id}/merge`, {
+        method: 'POST',
+        json: { with_id: withId },
+      }),
+    onSuccess: refresh,
+  })
+  return { create, update, remove, split, merge }
+}
+
 export function useSegmentDocument(projectId: string, documentId: string) {
   const queryClient = useQueryClient()
   return useMutation({

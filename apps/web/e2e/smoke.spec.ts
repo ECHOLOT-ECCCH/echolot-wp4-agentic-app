@@ -231,6 +231,44 @@ test.describe('workspace smoke', () => {
     await page.getByRole('button', { name: 'Accepted' }).click()
     await expect(page.getByRole('button', { name: /^p1 abacus accepted$/ })).toBeVisible()
     await expect(page.getByText('1 spans')).toBeVisible()
+
+    // edit mode: split a span at its last line, merge it back, draw a box, delete it
+    await page.getByRole('button', { name: 'All' }).click()
+    await expect(page.getByText('130 spans')).toBeVisible()
+    await page.getByRole('button', { name: 'Edit boxes' }).click()
+    await page.getByRole('button', { name: /^p1 abase proposed$/ }).click()
+    const abase = page.locator('[data-testid="overlay-layer"] g[data-annotation]').filter({
+      has: page.locator('title', { hasText: /^abase ·/ }),
+    })
+    await expect(abase).toHaveCount(1)
+    // selecting a row scrolls the viewer; wait until the box stops moving
+    const rect = abase.locator('rect').first()
+    let box = await rect.boundingBox()
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(150)
+      const again = await rect.boundingBox()
+      if (box && again && Math.abs(again.y - box.y) < 0.5) break
+      box = again
+    }
+    if (!box) throw new Error('no box for abase')
+    await page.getByRole('button', { name: 'Split' }).click()
+    await page.mouse.click(box.x + 10, box.y + box.height * 0.85)
+    await expect(page.getByText('131 spans')).toBeVisible()
+    await page.getByRole('button', { name: 'Merge with next' }).click()
+    await expect(page.getByText('130 spans')).toBeVisible()
+    await expect(page.getByRole('button', { name: /^p1 abase yours$/ })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Draw' }).click()
+    const overlayBox = await overlay.boundingBox()
+    if (!overlayBox) throw new Error('no overlay box')
+    const drawTop = overlayBox.y + overlayBox.height * 0.955 // below the text, above the foot
+    await page.mouse.move(overlayBox.x + overlayBox.width * 0.1, drawTop)
+    await page.mouse.down()
+    await page.mouse.move(overlayBox.x + overlayBox.width * 0.4, drawTop + 12, { steps: 4 })
+    await page.mouse.up()
+    await expect(page.getByText('131 spans')).toBeVisible()
+    await page.getByRole('button', { name: 'Delete box' }).click()
+    await expect(page.getByText('130 spans')).toBeVisible()
   })
 
   test('deny keeps the gated tool from running', async ({ page }) => {

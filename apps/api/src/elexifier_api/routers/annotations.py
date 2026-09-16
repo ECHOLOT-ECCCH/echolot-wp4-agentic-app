@@ -15,6 +15,7 @@ from elexifier_agent.pdf_service import (
     SYNC_SEGMENT_MAX_PAGES,
     PdfServiceError,
     annotation_counts,
+    load_layout,
     page_rows,
     run_segmentation,
 )
@@ -24,8 +25,10 @@ from elexifier_api.deps import CurrentStorage, CurrentUser, DbSession, State
 from elexifier_api.schemas import (
     AnnotationBulk,
     AnnotationCreate,
+    AnnotationMerge,
     AnnotationOut,
     AnnotationPage,
+    AnnotationSplit,
     AnnotationUpdate,
     SegmentOut,
     SegmentRequest,
@@ -261,3 +264,195 @@ async def segment_document(
     await db.flush()
     payload: dict[str, Any] = stats.model_dump()
     return SegmentOut(document_id=document.id, queued=False, set_id=set_id, stats=payload)
+
+
+def _bbox_of(boxes: list[list[float]]) -> list[float]:
+    return [
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    ]
+
+
+async def _lines_of(
+    storage: Any, db: AsyncSession, document: Document, annotation: Annotation
+) -> list[dict[str, Any]]:
+    """The layout lines inside a span (by id when the segmenter recorded them, else by box)."""
+    pages = {p.page_no: p for p in await page_rows(db, document.id)}
+    page = pages.get(annotation.page_no)
+    if page is None:
+        return []
+    layout = await load_layout(storage, page)
+    wanted = set((annotation.payload or {}).get("line_ids") or [])
+    lines = []
+    for line in layout.lines:
+        inside = line.id in wanted
+        if not wanted:
+            x0, top, x1, bottom = annotation.bbox
+            inside = (
+                line.top >= top - 1 and line.bottom <= bottom + 1 and line.x0 < x1 and line.x1 > x0
+            )
+        if inside:
+            lines.append(
+                {
+                    "id": line.id,
+                    "x0": line.x0,
+                    "top": line.top,
+                    "x1": line.x1,
+                    "bottom": line.bottom,
+                    "column": line.column,
+                    "text": line.text,
+                }
+            )
+    return lines
+
+
+def _span_payload(lines: list[dict[str, Any]], headword: str | None) -> dict[str, Any]:
+    boxes: list[list[float]] = []
+    group: list[dict[str, Any]] = []
+    for line in lines:
+        if group and line["column"] != group[-1]["column"]:
+            boxes.append(_bbox_of([[g["x0"], g["top"], g["x1"], g["bottom"]] for g in group]))
+            group = []
+        group.append(line)
+    if group:
+        boxes.append(_bbox_of([[g["x0"], g["top"], g["x1"], g["bottom"]] for g in group]))
+    return {
+        "bboxes": boxes,
+        "line_ids": [line["id"] for line in lines],
+        "headword_guess": headword,
+        "text": " ".join(line["text"] for line in lines)[:2000],
+        "confidence": 1.0,
+    }
+
+
+@router.post("/annotations/{annotation_id}/split", response_model=list[AnnotationOut])
+async def split_annotation(
+    project_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    body: AnnotationSplit,
+    db: DbSession,
+    user: CurrentUser,
+    storage: CurrentStorage,
+) -> list[AnnotationOut]:
+    """Split one span into two at a vertical position; both halves become the lexicographer's."""
+    await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
+    annotation = await db.get(Annotation, annotation_id)
+    document = await db.get(Document, annotation.document_id) if annotation else None
+    if annotation is None or document is None or document.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Annotation not found")
+    lines = await _lines_of(storage, db, document, annotation)
+    x0, top, x1, bottom = annotation.bbox
+    if lines:
+        # the line under the click point starts the second half
+        first = [line for line in lines if line["bottom"] <= body.y]
+        second = [line for line in lines if line["bottom"] > body.y]
+        if not first or not second:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "Split point leaves one half empty"
+            )
+        halves = [
+            (
+                _bbox_of([[ln["x0"], ln["top"], ln["x1"], ln["bottom"]] for ln in first]),
+                _span_payload(first, (annotation.payload or {}).get("headword_guess")),
+            ),
+            (
+                _bbox_of([[ln["x0"], ln["top"], ln["x1"], ln["bottom"]] for ln in second]),
+                _span_payload(
+                    second, second[0]["text"].split(" ")[0] if second[0]["text"] else None
+                ),
+            ),
+        ]
+    else:
+        if not (top + 2 < body.y < bottom - 2):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "Split point outside the box"
+            )
+        halves = [
+            ([x0, top, x1, body.y], {"bboxes": [[x0, top, x1, body.y]]}),
+            ([x0, body.y, x1, bottom], {"bboxes": [[x0, body.y, x1, bottom]]}),
+        ]
+    created: list[Annotation] = []
+    for offset, (bbox, payload) in enumerate(halves):
+        row = Annotation(
+            document_id=document.id,
+            page_no=annotation.page_no,
+            bbox=bbox,
+            label=annotation.label,
+            entry_span_id=f"u{uuid.uuid4().hex[:8]}",
+            source="user",
+            status=AnnotationStatus.ACCEPTED.value,
+            payload={**payload, "split_from": str(annotation.id)},
+            set_id=annotation.set_id,
+            position=annotation.position * 2 + offset,
+            created_by=user.id,
+        )
+        db.add(row)
+        created.append(row)
+    await db.delete(annotation)
+    await db.flush()
+    await _refresh_entry_count(db, document)
+    audit.record(db, user.id, "annotation.split", annotation_id, document=str(document.id))
+    await db.flush()
+    for row in created:
+        await db.refresh(row)
+    return [AnnotationOut.model_validate(r) for r in created]
+
+
+@router.post("/annotations/{annotation_id}/merge", response_model=AnnotationOut)
+async def merge_annotation(
+    project_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    body: AnnotationMerge,
+    db: DbSession,
+    user: CurrentUser,
+    storage: CurrentStorage,
+) -> AnnotationOut:
+    """Merge two spans on the same page into one (the lexicographer's, accepted)."""
+    await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
+    first = await db.get(Annotation, annotation_id)
+    second = await db.get(Annotation, body.with_id)
+    document = await db.get(Document, first.document_id) if first else None
+    if (
+        first is None
+        or second is None
+        or document is None
+        or document.project_id != project_id
+        or second.document_id != first.document_id
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Annotation not found")
+    if first.page_no != second.page_no:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Spans must be on the same page")
+    a, b = sorted([first, second], key=lambda r: (r.position, r.bbox[1]))
+    lines = await _lines_of(storage, db, document, a) + await _lines_of(storage, db, document, b)
+    if lines:
+        payload = _span_payload(lines, (a.payload or {}).get("headword_guess"))
+    else:
+        boxes = [
+            *((a.payload or {}).get("bboxes") or [a.bbox]),
+            *((b.payload or {}).get("bboxes") or [b.bbox]),
+        ]
+        payload = {"bboxes": boxes, "headword_guess": (a.payload or {}).get("headword_guess")}
+    merged = Annotation(
+        document_id=document.id,
+        page_no=a.page_no,
+        bbox=_bbox_of([list(box) for box in payload["bboxes"]]),
+        label=a.label,
+        entry_span_id=f"u{uuid.uuid4().hex[:8]}",
+        source="user",
+        status=AnnotationStatus.ACCEPTED.value,
+        payload={**payload, "merged_from": [str(a.id), str(b.id)]},
+        set_id=a.set_id,
+        position=a.position,
+        created_by=user.id,
+    )
+    db.add(merged)
+    await db.delete(a)
+    await db.delete(b)
+    await db.flush()
+    await _refresh_entry_count(db, document)
+    audit.record(db, user.id, "annotation.merge", merged.id, document=str(document.id))
+    await db.flush()
+    await db.refresh(merged)
+    return AnnotationOut.model_validate(merged)

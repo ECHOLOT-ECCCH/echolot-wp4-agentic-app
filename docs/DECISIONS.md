@@ -561,3 +561,21 @@ Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, 
   `annotations.changed` events refresh both. Reload keeps the decisions (all server-side).
 - The e2e smoke covers segment from the panel, 58 boxes on page 1, accept/reject by keyboard,
   the filters and a reload.
+
+## 2026-09-16 Edit mode for entry spans (M2.4)
+
+- "Edit boxes" in the PDF panel switches the overlay to editing with three tools: Select (drag a
+  box to move it, drag one of eight handles to resize; the box becomes `edited`, the original
+  geometry stays in `payload.original_bbox`), Draw (drag on the page creates a `user` box,
+  accepted), Split (click inside a box). Merge with the next span on the page, relabel
+  (entry, heading, note, other) and delete act on the selection. Gestures convert pixels to
+  points with the page scale, which is exact for unrotated pages.
+- Split and merge are server-side (`POST .../annotations/{id}/split`, `.../merge`) because
+  they need the page layout: a split puts the line under the click point and everything below
+  into the second span (or splits the geometry when the box has no lines); a merge joins the
+  lines of both spans in reading order. Both produce the lexicographer's own spans (`user`,
+  accepted) and delete the originals, with `split_from` / `merged_from` kept in the payload.
+- Scrolling the viewer to a selected box measures against the scroll container, not
+  `offsetTop` (whose offset parent is the resizable panel); the earlier version hid the box
+  under the toolbars at small viewports.
+- The e2e smoke covers split, merge, draw and delete on the two-column fixture.

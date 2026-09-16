@@ -126,3 +126,61 @@ async def test_annotations_need_a_pdf_document(
     doc = (await client.get(f"/api/projects/{pid}/documents")).json()[0]
     resp = await client.get(f"/api/projects/{pid}/documents/{doc['id']}/annotations")
     assert resp.status_code == 422
+
+
+async def test_split_and_merge_spans(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    logged_in.apply(client)
+    pid, doc_id = await _pdf_project(client)
+    base = f"/api/projects/{pid}/documents/{doc_id}"
+    await client.post(f"{base}/segment", json={})
+    page1 = (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["items"]
+    abase = next(a for a in page1 if a["payload"]["headword_guess"] == "abase")
+    assert len(abase["payload"]["line_ids"]) == 3
+
+    # split before the last line (the first two segments share a baseline in this fixture)
+    layout = (await client.get(f"{base}/pages/1/layout")).json()
+    lines = {line["id"]: line for line in layout["lines"]}
+    last_line = lines[abase["payload"]["line_ids"][2]]
+    split = await client.post(
+        f"/api/projects/{pid}/annotations/{abase['id']}/split", json={"y": last_line["top"]}
+    )
+    assert split.status_code == 200, split.text
+    halves = split.json()
+    assert [len(h["payload"]["line_ids"]) for h in halves] == [2, 1]
+    assert all(h["source"] == "user" and h["status"] == "accepted" for h in halves)
+    assert halves[0]["payload"]["headword_guess"] == "abase"
+    assert halves[0]["bbox"][3] <= halves[1]["bbox"][1] + 0.5
+    gone = await client.get(f"{base}/annotations", params={"page_no": 1})
+    assert all(a["id"] != abase["id"] for a in gone.json()["items"])
+    assert gone.json()["total"] == 59  # one span became two
+
+    # merging the halves restores one span with all three lines
+    merged = await client.post(
+        f"/api/projects/{pid}/annotations/{halves[0]['id']}/merge",
+        json={"with_id": halves[1]["id"]},
+    )
+    assert merged.status_code == 200, merged.text
+    body = merged.json()
+    assert len(body["payload"]["line_ids"]) == 3 and body["payload"]["headword_guess"] == "abase"
+    assert body["payload"]["merged_from"] == [halves[0]["id"], halves[1]["id"]]
+    assert (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["total"] == 58
+
+    # a user-drawn box on a page without text splits geometrically; bad points are refused
+    drawn = (
+        await client.post(f"{base}/annotations", json={"page_no": 4, "bbox": [50, 700, 280, 760]})
+    ).json()
+    geometric = await client.post(
+        f"/api/projects/{pid}/annotations/{drawn['id']}/split", json={"y": 730}
+    )
+    assert [h["bbox"][1] for h in geometric.json()] == [700, 730]
+    refused = await client.post(
+        f"/api/projects/{pid}/annotations/{geometric.json()[0]['id']}/split", json={"y": 5}
+    )
+    assert refused.status_code == 422
+    cross_page = await client.post(
+        f"/api/projects/{pid}/annotations/{geometric.json()[0]['id']}/merge",
+        json={"with_id": body["id"]},
+    )
+    assert cross_page.status_code == 422

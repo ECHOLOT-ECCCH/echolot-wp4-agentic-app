@@ -1,13 +1,24 @@
-import { AlertTriangleIcon } from 'lucide-react'
+import {
+  AlertTriangleIcon,
+  MergeIcon,
+  MousePointer2Icon,
+  ScissorsLineDashedIcon,
+  SquareDashedIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { toast } from 'sonner'
 
-import { OverlayLayer } from '@/features/pdf/OverlayLayer'
+import { Button } from '@/components/ui/button'
+import { type EditTool, OverlayLayer } from '@/features/pdf/OverlayLayer'
 import { ReviewPanel } from '@/features/pdf/ReviewPanel'
 import { PdfViewer } from '@/features/preview/PdfViewer'
-import { fileDownloadUrl } from '@/lib/api'
-import { useAnnotations, usePages, useProject } from '@/lib/queries'
+import { ApiError, fileDownloadUrl } from '@/lib/api'
+import { useAnnotations, useEditAnnotations, usePages, useProject } from '@/lib/queries'
 import type { AnnotationRecord, DocumentDetail } from '@/lib/types'
 import { usePreview } from '@/lib/uiActions'
+
+const LABELS = ['entry', 'heading', 'note', 'other']
 
 /** A PDF document once its layout is extracted: page facts on top, the viewer with entry-span
  *  overlays, and the review list on the right. */
@@ -33,6 +44,11 @@ export function PdfDocumentPanel({
   const [selected, setSelected] = useState<AnnotationRecord | null>(null)
   const [currentPage, setCurrentPage] = useState(page ?? focus?.page ?? 1)
   const [showRejected, setShowRejected] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [tool, setTool] = useState<EditTool>('select')
+  const edits = useEditAnnotations(projectId, document.id)
+  const fail = (error: unknown) =>
+    toast.error(error instanceof ApiError ? error.detail : String(error))
   // a selection in the list scrolls the viewer; a newer ui-action (page + revision) wins again
   const externalKey = `${page ?? focus?.page ?? ''}:${revision}`
   const [focusRequest, setFocusRequest] = useState<{
@@ -60,6 +76,18 @@ export function PdfDocumentPanel({
   ]
   const annotationsFor = (pageNo: number): AnnotationRecord[] =>
     loaded.find((entry) => entry.page === pageNo)?.items ?? []
+  // the current selection, refreshed from the loaded page data after edits
+  const live = selected
+    ? (annotationsFor(selected.page_no).find((a) => a.id === selected.id) ?? selected)
+    : null
+  const nextOnPage = live
+    ? (annotationsFor(live.page_no)
+        .filter((a) => a.status !== 'rejected')
+        .sort((a, b) => a.position - b.position || a.bbox[1] - b.bbox[1])
+        .find(
+          (a) => a.position > live.position || (a.position === live.position && a.id > live.id),
+        ) ?? null)
+    : null
 
   const select = useCallback(
     (annotation: AnnotationRecord | null) => {
@@ -101,7 +129,110 @@ export function PdfDocumentPanel({
           />
           show rejected
         </label>
+        {canEdit && (
+          <Button
+            variant={editing ? 'default' : 'outline'}
+            size="xs"
+            onClick={() => {
+              setEditing((v) => !v)
+              setTool('select')
+            }}
+            aria-pressed={editing}
+          >
+            {editing ? 'Done editing' : 'Edit boxes'}
+          </Button>
+        )}
       </div>
+      {editing && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b px-3 py-1 text-xs">
+          <Button
+            variant={tool === 'select' ? 'secondary' : 'ghost'}
+            size="xs"
+            onClick={() => setTool('select')}
+            title="Select, move and resize boxes"
+          >
+            <MousePointer2Icon /> Select
+          </Button>
+          <Button
+            variant={tool === 'draw' ? 'secondary' : 'ghost'}
+            size="xs"
+            onClick={() => setTool('draw')}
+            title="Drag on the page to draw a new entry box"
+          >
+            <SquareDashedIcon /> Draw
+          </Button>
+          <Button
+            variant={tool === 'split' ? 'secondary' : 'ghost'}
+            size="xs"
+            onClick={() => setTool('split')}
+            title="Click inside a box to split it at that line"
+          >
+            <ScissorsLineDashedIcon /> Split
+          </Button>
+          <span className="bg-border mx-1 h-4 w-px" />
+          {live ? (
+            <>
+              <span className="text-muted-foreground">
+                {live.payload.headword_guess ?? live.label} (p{live.page_no})
+              </span>
+              <select
+                aria-label="Label"
+                className="bg-background rounded border px-1 py-0.5"
+                value={live.label}
+                onChange={(e) =>
+                  edits.update.mutate({ id: live.id, label: e.target.value }, { onError: fail })
+                }
+              >
+                {[...new Set([...LABELS, live.label])].map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="ghost"
+                size="xs"
+                disabled={!nextOnPage || edits.merge.isPending}
+                title="Merge with the next span on this page"
+                onClick={() =>
+                  nextOnPage &&
+                  edits.merge.mutate(
+                    { id: live.id, withId: nextOnPage.id },
+                    {
+                      onSuccess: (merged) => setSelected(merged),
+                      onError: fail,
+                    },
+                  )
+                }
+              >
+                <MergeIcon /> Merge with next
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="text-destructive"
+                disabled={edits.remove.isPending}
+                onClick={() =>
+                  edits.remove.mutate(live.id, {
+                    onSuccess: () => setSelected(null),
+                    onError: fail,
+                  })
+                }
+              >
+                <Trash2Icon /> Delete box
+              </Button>
+            </>
+          ) : (
+            <span className="text-muted-foreground">
+              {tool === 'draw'
+                ? 'Drag on the page to draw a box.'
+                : tool === 'split'
+                  ? 'Click inside a box to split it there.'
+                  : 'Click a box to select it; drag it or its handles.'}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">
           <PdfViewer
@@ -122,6 +253,33 @@ export function PdfDocumentPanel({
                 onSelect={(id) => {
                   const found = annotationsFor(pageNumber).find((a) => a.id === id) ?? null
                   setSelected(found)
+                }}
+                editable={editing && canEdit}
+                tool={tool}
+                edits={{
+                  onCreate: (bbox) =>
+                    edits.create.mutate(
+                      { page_no: pageNumber, bbox },
+                      {
+                        onSuccess: (created) => {
+                          setSelected(created)
+                          setTool('select')
+                        },
+                        onError: fail,
+                      },
+                    ),
+                  onChangeBox: (id, bbox) => edits.update.mutate({ id, bbox }, { onError: fail }),
+                  onSplit: (id, y) =>
+                    edits.split.mutate(
+                      { id, y },
+                      {
+                        onSuccess: (halves) => {
+                          setSelected(halves[0] ?? null)
+                          setTool('select')
+                        },
+                        onError: fail,
+                      },
+                    ),
                 }}
               />
             )}

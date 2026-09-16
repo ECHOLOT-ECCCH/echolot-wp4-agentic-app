@@ -132,8 +132,10 @@ export function PdfViewer({
       element.scrollIntoView({ block: 'start' })
       return
     }
-    const top = element.offsetTop + offsetPoints - root.clientHeight / 4
-    root.scrollTo({ top: Math.max(0, top) })
+    // offsets relative to the scroll container (offsetTop would use another positioned parent)
+    const pageTop =
+      element.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
+    root.scrollTo({ top: Math.max(0, pageTop + offsetPoints - root.clientHeight / 4) })
   }, [])
 
   // A ui-action may re-open the same page; the revision makes the request distinct.
