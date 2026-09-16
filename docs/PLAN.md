@@ -27,8 +27,11 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 - Current milestone: M1 XML end to end (checklist in section 12b).
 - Next task: M1.10
-- Blockers: none. `make dev-infra` provides Postgres, Keycloak and Garage; the owner's Anthropic key is
-  stored in the app (Settings). CI runs on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
+- Blockers: M1.10 needs the owner's Anthropic account to have API credits; on 2026-09-16 the API
+  answered "credit balance is too low" (the monthly spend limit was raised, but prepaid credits or
+  auto-reload are what the API checks). `make dev-infra` provides Postgres, Keycloak and Garage; the
+  owner's Anthropic key is stored in the app (Settings, user dev@example.com). CI runs on the private
+  GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
