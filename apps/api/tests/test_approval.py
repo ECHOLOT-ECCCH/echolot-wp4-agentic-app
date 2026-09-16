@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from typing import Any
 
@@ -137,3 +138,58 @@ async def test_non_boolean_approval_is_rejected(
     )
     assert resp.status_code == 422
     assert "Approved and performed" not in resp.text
+
+
+async def test_conversation_continues_after_an_approval(
+    client: httpx.AsyncClient, logged_in: LoggedIn
+) -> None:
+    """The browser keeps the approved part in state approval-responded; the next turn must not
+    treat it as a pending decision (regression: 'no unprocessed tool calls')."""
+    logged_in.apply(client)
+    pid, cid, parts = await _first_turn(client)
+    responded = _respond(parts, approved=True)
+    approve = await client.post(
+        f"/api/projects/{pid}/conversations/{cid}/chat",
+        json=_chat_body(
+            _user_message("Please run the demo action"),
+            {"id": "m2", "role": "assistant", "parts": responded},
+        ),
+    )
+    assert approve.status_code == 200
+    assert any(c["type"] == "tool-output-available" for c in _parse_stream(approve.text))
+
+    # persistence is asynchronous; wait until the server appended the continuation
+    stored: list[dict[str, Any]] = []
+    for _ in range(100):
+        stored = (await client.get(f"/api/projects/{pid}/conversations/{cid}/messages")).json()
+        if any(
+            p.get("state") == "output-available"
+            for m in stored
+            for p in m["parts"]
+            if p.get("type") == "tool-demo_requires_approval"
+        ):
+            break
+        await asyncio.sleep(0.05)
+    demo_parts = [
+        p for m in stored for p in m["parts"] if p.get("type") == "tool-demo_requires_approval"
+    ]
+    assert [p["state"] for p in demo_parts] == ["output-available"]  # merged, not duplicated
+    assert demo_parts[0]["approval"]["approved"] is True
+
+    # a third turn as the browser would send it: its own stale copy of m2 plus the new question
+    follow_up = await client.post(
+        f"/api/projects/{pid}/conversations/{cid}/chat",
+        json=_chat_body(
+            _user_message("Please run the demo action"),
+            {"id": "m2", "role": "assistant", "parts": responded},
+            _user_message("And what files do I have?", "m3"),
+        ),
+    )
+    assert follow_up.status_code == 200, follow_up.text
+    chunks = _parse_stream(follow_up.text)
+    assert chunks[-1]["type"] == "finish"
+    assert not any(c["type"] == "error" for c in chunks), [
+        c for c in chunks if c["type"] == "error"
+    ]
+    # the test model answers from the history (it already called every tool)
+    assert any(c["type"] == "text-delta" for c in chunks)

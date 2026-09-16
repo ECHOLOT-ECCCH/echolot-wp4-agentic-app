@@ -16,3 +16,5 @@ Move an item into docs/PLAN.md when it is scheduled.
 - Faster full-run validation: xmlschema (XSD 1.1) needs ~2.3 ms per entry and the whole output in memory; validate structure per entry during conversion and keep only the document-wide identity constraints for the end.
 - Append a job-result message to the conversation when a full run finishes so the agent reports without being asked (PLAN section 4 flow).
 - Cancel a running full run from the UI and the chat.
+- Converter option to insert a space at element boundaries in innerTextRec (the Oxford run-together "o otrokučebljanje" when an inline indicator is folded into the translation).
+- Show cache read/write tokens and an estimated cost per turn in the UI (usage_records already store tokens).

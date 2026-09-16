@@ -25,18 +25,18 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M2 PDF end to end (checklist in section 12c); M1.10 (live-model acceptance) stays
-  open until the owner's API credits are available, then it is run first.
-- Next task: M2.2 (M1.10 as soon as the API accepts calls)
-- Blockers: M1.10 needs the owner's Anthropic account to have API credits; on 2026-09-16 the API
-  answered "credit balance is too low" (the monthly spend limit was raised, but prepaid credits or
-  auto-reload are what the API checks). `make dev-infra` provides Postgres, Keycloak and Garage; the
-  owner's Anthropic key is stored in the app (Settings, user dev@example.com). CI runs on the private
-  GitHub repository `andrazrepar/elexifier-agentic-app`.
+- Current milestone: M2 PDF end to end (checklist in section 12c). M1 is complete (M1.10 verified
+  with claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
+- Next task: M2.2
+- Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
+  balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
+  balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
+  and Garage; the owner's Anthropic key is stored in the app (Settings, user dev@example.com). CI runs
+  on the private GitHub repository `andrazrepar/elexifier-agentic-app`.
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M2.1 done; M1.10 blocked on API credits)
+- Last update: 2026-09-16 (M1.10 and M2.1 done)
 
 Update this block at the end of every task.
 
@@ -590,7 +590,7 @@ validation report and export; every decision is recorded in the conversion spec.
   validation and a tree summary (source path -> DMLex element), saving a new version; `SpecEditor`
   (Markdown) for the conversion spec. Approval-gated overwrite of exports. Acceptance: edit the
   mapping in the UI, re-run a sample, see the change.
-- [ ] M1.10 Acceptance with a real model. Run the whole flow on `oxford.xml` with the owner's Claude
+- [x] M1.10 Acceptance with a real model. Run the whole flow on `oxford.xml` with the owner's Claude
   model and on one more legacy export if provided; record results and prompt adjustments in
   `docs/DECISIONS.md` under Verification.
 

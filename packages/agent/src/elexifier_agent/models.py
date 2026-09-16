@@ -7,7 +7,7 @@ from typing import Literal, get_args
 
 from pydantic import BaseModel
 from pydantic_ai.models import Model
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.models.openrouter import OpenRouterModel
@@ -107,7 +107,17 @@ def build_model(
         case "openai":
             return OpenAIResponsesModel(model_id, provider=OpenAIProvider(api_key=api_key))
         case "anthropic":
-            return AnthropicModel(model_id, provider=AnthropicProvider(api_key=api_key))
+            # Long tool-heavy conversations resend the whole history every request; prompt
+            # caching (system prompt, tool definitions, moving breakpoint) cuts that cost.
+            return AnthropicModel(
+                model_id,
+                provider=AnthropicProvider(api_key=api_key),
+                settings=AnthropicModelSettings(
+                    anthropic_cache=True,
+                    anthropic_cache_instructions=True,
+                    anthropic_cache_tool_definitions=True,
+                ),
+            )
         case "google":
             return GoogleModel(model_id, provider=GoogleProvider(api_key=api_key))
         case "deepseek":

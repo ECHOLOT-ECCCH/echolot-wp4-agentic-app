@@ -472,3 +472,39 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   (rendered once per resolution and kept in storage; meant for the model and thumbnails, the
   browser renders with PDF.js). Web: PDF documents show page counts; opening one shows page facts
   and the scan warning above the existing viewer. Overlays follow in M2.2/M2.3.
+
+## 2026-09-16 Verification: M1 acceptance with claude-opus-5 (M1.10)
+
+Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, owner's key,
+`claude-opus-5`, conversation "Acceptance 2" of the project "Oxford acceptance M1.6".
+
+- Turn 1 (profile, samples, distinct values, XPath tests, mapping v1, spec v1), turn 2
+  (corrections: hidden entries skipped, langCode on explanations; v2), a sample run of 10 entries
+  (38 output entries, 2 hidden skipped), then, after the mapping had been edited in the UI (v3):
+  the agent noticed the outside edit, found through the sample that translations after an inline
+  label were dropped by its own selector, stored v4, re-sampled to 0 issues, ran `diff_runs`
+  (15 of 38 entries changed, issues -8) and updated the spec. Next turn: v5 (tag reverted on
+  request), approval card, full run (119 entries, 1 error: duplicate sense indicator, 4 empty
+  senses), a correct diagnosis of `<ic>` as a mid-translation discriminator with two options
+  offered. Final turn: v6 with both agreed fixes, a clean sample, approval, full run:
+  **119 entries, 0 errors, 0 warnings, schema-valid DMLex XML and JSON**, downloadable, spec v4
+  with the dropped cross-reference pointers recorded. Independent validation of the export:
+  valid (8 uniqueness checks the validator cannot evaluate, the known multi-POS limitation).
+- Defects found and fixed during the run: (1) after an approval round trip the browser keeps the
+  approved tool part in state `approval-responded`; the adapter treated it as a pending decision
+  on every later turn ("Tool call results were provided, but the message history does not contain
+  any unprocessed tool calls"). The server now normalises incoming messages against the outputs
+  it recorded (`elexifier_agent.ui_messages`), folds the continuation's output into the stored
+  part, and keeps the approved call's return when dumping a continuation (`dump_messages` drops
+  orphan tool returns). (2) The output-token cap, entry-selector predicates and the langCode check
+  (M1.6 entry).
+- Cost: 7 completed agent runs, 55 tool calls, 4.35 M input tokens and 77 k output tokens, with
+  no prompt caching: each request resends the whole history and the tool results (samples carry
+  entry XML). Prompt caching is now on for the Anthropic provider (`anthropic_cache`,
+  `anthropic_cache_instructions`, `anthropic_cache_tool_definitions`); cache read/write tokens are
+  recorded in `agent_runs.usage`. Not yet measured live: the owner's credits ran out again before
+  the check. Conversation compaction (M4) remains the structural answer for long sessions.
+- Prompt adjustments recorded: none needed beyond the M1.6 workflow additions; the model followed
+  the sample-fix-sample loop, asked before destructive choices and kept the spec current.
+- Not done: a second legacy export with a real model (the KKS mapping was only run as-is in the
+  scale check); to be picked up when credits allow.

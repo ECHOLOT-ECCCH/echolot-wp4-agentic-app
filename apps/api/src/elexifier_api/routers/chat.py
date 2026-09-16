@@ -10,11 +10,12 @@ from typing import Any
 import structlog
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import ValidationError
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from elexifier_agent.deps import AgentDeps, ProjectContext, UserContext
 from elexifier_agent.runtime import RunSummary
+from elexifier_agent.ui_messages import collect_tool_outputs, normalize_ui_messages
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
 from elexifier_api.deps import CurrentSecretBox, CurrentSettings, CurrentUser, DbSession, State
@@ -91,12 +92,7 @@ async def delete_conversation(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{conversation_id}/messages")
-async def get_messages(
-    project_id: uuid.UUID, conversation_id: uuid.UUID, db: DbSession, user: CurrentUser
-) -> list[dict[str, Any]]:
-    await get_project_or_404(db, project_id, user)
-    await _conversation(db, project_id, conversation_id)
+async def load_messages(db: AsyncSession, conversation_id: uuid.UUID) -> list[dict[str, Any]]:
     rows = (
         await db.execute(
             select(Message.ui_message)
@@ -105,6 +101,15 @@ async def get_messages(
         )
     ).scalars()
     return list(rows)
+
+
+@router.get("/{conversation_id}/messages")
+async def get_messages(
+    project_id: uuid.UUID, conversation_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> list[dict[str, Any]]:
+    await get_project_or_404(db, project_id, user)
+    await _conversation(db, project_id, conversation_id)
+    return await load_messages(db, conversation_id)
 
 
 async def replace_messages(
@@ -126,18 +131,15 @@ async def replace_messages(
 async def append_messages(
     db: AsyncSession, conversation_id: uuid.UUID, messages: list[dict[str, Any]]
 ) -> None:
+    """Append the server-side messages of a turn and fold tool outputs into the parts the
+    browser stored for the same tool calls (approval round trips)."""
     if not messages:
         return
-    start = (
-        await db.execute(
-            select(func.coalesce(func.max(Message.position), -1)).where(
-                Message.conversation_id == conversation_id
-            )
-        )
-    ).scalar_one()
+    combined = normalize_ui_messages([*await load_messages(db, conversation_id), *messages])
+    await db.execute(delete(Message).where(Message.conversation_id == conversation_id))
     db.add_all(
-        Message(conversation_id=conversation_id, position=start + 1 + i, ui_message=m)
-        for i, m in enumerate(messages)
+        Message(conversation_id=conversation_id, position=i, ui_message=m)
+        for i, m in enumerate(combined)
     )
     await db.flush()
 
@@ -191,6 +193,10 @@ async def chat(
     spec, model = await resolve_model(
         db, user=user, project=project, requested=body.get("model"), box=box, settings=settings
     )
+    # tool outputs recorded by earlier turns resolve approval parts the browser still holds
+    stored = await load_messages(db, conversation.id)
+    messages = normalize_ui_messages(messages, known_outputs=collect_tool_outputs(stored))
+    body = {**body, "messages": messages}
     await replace_messages(db, conversation, messages)
     run = AgentRun(
         conversation_id=conversation.id,
@@ -250,7 +256,12 @@ async def chat(
 
     try:
         return await state.runtime.dispatch_chat(
-            request, deps=deps, model=model, on_complete=on_complete, on_cancel=on_cancel
+            request,
+            deps=deps,
+            model=model,
+            on_complete=on_complete,
+            on_cancel=on_cancel,
+            body=body,
         )
     except ValidationError as exc:
         await on_cancel("error: malformed chat request")

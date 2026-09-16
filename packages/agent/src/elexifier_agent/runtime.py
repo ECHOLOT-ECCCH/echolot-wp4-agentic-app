@@ -7,13 +7,20 @@ swapped (another Pydantic AI configuration, DeepSeek Harness, ...) without touch
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, Protocol, cast
 
 import structlog
 from pydantic_ai import DeferredToolResults
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.models import Model
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter
 from pydantic_ai.ui.vercel_ai.response_types import BaseChunk
@@ -50,6 +57,7 @@ class AgentRuntime(Protocol):
         on_cancel: Callable[[str], Any] | None = None,
         message_history: list[ModelMessage] | None = None,
         deferred_tool_results: DeferredToolResults | None = None,
+        body: dict[str, Any] | None = None,
     ) -> Response: ...
 
 
@@ -76,7 +84,9 @@ class PydanticAIRuntime:
         on_cancel: Callable[[str], Any] | None = None,
         message_history: list[ModelMessage] | None = None,
         deferred_tool_results: DeferredToolResults | None = None,
+        body: dict[str, Any] | None = None,
     ) -> Response:
+        """Run a turn. ``body`` replaces the request's JSON when the caller has normalised it."""
         agent = self.build(deps, model)
         completed = False
 
@@ -94,13 +104,16 @@ class PydanticAIRuntime:
                 return None
             usage = run_result.usage
             ui_messages = VercelAIAdapter.dump_messages(
-                run_result.new_messages(), sdk_version=self.sdk_version
+                with_orphan_tool_calls(run_result.new_messages(), run_result.all_messages()),
+                sdk_version=self.sdk_version,
             )
             summary = RunSummary(
                 messages_json=run_result.all_messages_json(),
                 usage={
                     "input_tokens": usage.input_tokens,
                     "output_tokens": usage.output_tokens,
+                    "cache_read_tokens": getattr(usage, "cache_read_tokens", 0),
+                    "cache_write_tokens": getattr(usage, "cache_write_tokens", 0),
                     "requests": usage.requests,
                     "tool_calls": usage.tool_calls,
                 },
@@ -116,9 +129,18 @@ class PydanticAIRuntime:
                 await outcome
             return None
 
-        adapter: VercelAIAdapter[AgentDeps, Any] = await VercelAIAdapter.from_request(
-            request, agent=cast(Any, agent), sdk_version=self.sdk_version
-        )
+        adapter: VercelAIAdapter[AgentDeps, Any]
+        if body is not None:
+            adapter = VercelAIAdapter(
+                agent=cast(Any, agent),
+                run_input=VercelAIAdapter.build_run_input(json.dumps(body).encode("utf-8")),
+                accept=request.headers.get("accept"),
+                sdk_version=self.sdk_version,
+            )
+        else:
+            adapter = await VercelAIAdapter.from_request(
+                request, agent=cast(Any, agent), sdk_version=self.sdk_version
+            )
         events = adapter.run_stream(
             deps=deps,
             message_history=message_history,
@@ -170,3 +192,36 @@ class PydanticAIRuntime:
 
 
 __all__ = ["AgentRuntime", "BaseChunk", "PydanticAIRuntime", "RunSummary"]
+
+
+def with_orphan_tool_calls(
+    new_messages: list[ModelMessage], all_messages: list[ModelMessage]
+) -> list[ModelMessage]:
+    """A continuation after an approval starts with the tool's return; its call sits in the
+    history. ``dump_messages`` drops such returns, so put the matching calls in front."""
+    if not new_messages or not isinstance(new_messages[0], ModelRequest):
+        return new_messages
+    returns = [p for p in new_messages[0].parts if isinstance(p, ToolReturnPart)]
+    if not returns:
+        return new_messages
+    wanted = {r.tool_call_id for r in returns}
+    known_calls = {
+        p.tool_call_id
+        for m in new_messages
+        if isinstance(m, ModelResponse)
+        for p in m.parts
+        if isinstance(p, ToolCallPart)
+    }
+    missing = wanted - known_calls
+    if not missing:
+        return new_messages
+    calls: list[ToolCallPart] = []
+    for message in all_messages:
+        if message in new_messages or not isinstance(message, ModelResponse):
+            continue
+        calls.extend(
+            p for p in message.parts if isinstance(p, ToolCallPart) and p.tool_call_id in missing
+        )
+    if not calls:
+        return new_messages
+    return [ModelResponse(parts=list(calls)), *new_messages]
