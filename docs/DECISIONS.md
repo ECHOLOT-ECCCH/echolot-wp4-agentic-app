@@ -540,3 +540,24 @@ Run on `oxford.xml` (102 entries) in the browser and through the chat endpoint, 
 - API: `GET/POST .../documents/{id}/annotations`, `PATCH/DELETE .../annotations/{id}` (a moved
   box keeps `original_bbox` and becomes `edited`), `POST .../annotations/bulk` (accept/reject by
   ids, page or document, filtered by current status), `POST .../documents/{id}/segment`.
+
+## 2026-09-16 Overlays and review mode (M2.3)
+
+- `OverlayLayer` draws every span's per-column boxes as SVG rects over the rendered page,
+  coloured by status (proposed blue, accepted green, rejected red dashed and hidden unless
+  "show rejected", edited violet, the lexicographer's own teal); the selected span gets a thick
+  border and its headword guess. `PdfViewer` gained `renderOverlay` (per page, with the PDF.js
+  viewport), `onCurrentPageChange`, scrolling to a box, and a fit-to-width initial zoom.
+- Coordinates: PDF.js 6 no longer has `convertToViewportRectangle` (PLAN 7.10 names it), so
+  `boxToViewport` converts the two corners with `convertToViewportPoint` for unrotated pages and
+  scales directly otherwise. pdfplumber's coordinates for pages with /Rotate are already in
+  reading orientation, so the double rotation must not be applied; rotated pages are untested
+  (no fixture) and on the backlog.
+- `ReviewPanel`: filters (to review, accepted, rejected, all), per-row accept/reject, "Accept
+  page n" (bulk, proposed only), Segment/Re-segment with default parameters, paging by 200. The
+  keys j/k/a/r/u are a window listener that ignores inputs, textareas and contenteditable
+  (the chat composer), so they work while looking at the page. Overlays are fetched per page
+  for the page in view and its neighbours; the list is one paged query per filter.
+  `annotations.changed` events refresh both. Reload keeps the decisions (all server-side).
+- The e2e smoke covers segment from the panel, 58 boxes on page 1, accept/reject by keyboard,
+  the filters and a reload.

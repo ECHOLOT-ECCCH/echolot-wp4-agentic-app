@@ -18,3 +18,4 @@ Move an item into docs/PLAN.md when it is scheduled.
 - Cancel a running full run from the UI and the chat.
 - Converter option to insert a space at element boundaries in innerTextRec (the Oxford run-together "o otrokučebljanje" when an inline indicator is folded into the translation).
 - Show cache read/write tokens and an estimated cost per turn in the UI (usage_records already store tokens).
+- PDF viewer: a rotated-page fixture (/Rotate 90) to verify the overlay geometry, and text-layer highlighting of the selected span's words.

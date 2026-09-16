@@ -1,5 +1,6 @@
 import { ChevronLeftIcon, ChevronRightIcon, ZoomInIcon, ZoomOutIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { PageViewport } from 'pdfjs-dist'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 // oxlint-disable-next-line import/default -- Vite's ?url import yields the asset URL as default export
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { Document, Page, pdfjs } from 'react-pdf'
@@ -13,22 +14,44 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
+export interface PageRenderContext {
+  pageNumber: number
+  scale: number
+  viewport: PageViewport | null
+  pageHeight: number
+}
+
 export interface PdfViewerProps {
   url: string
   /** 1-based page to scroll to (from a ui-action). */
   page?: number
   bbox?: [number, number, number, number]
   revision?: number
+  /** Draw the amber highlight for `bbox` (off when an overlay already marks the selection). */
+  highlightBbox?: boolean
+  /** Extra content drawn over each rendered page (overlays); gets the page's viewport. */
+  renderOverlay?: (context: PageRenderContext) => ReactNode
+  /** Called when the visible page changes (for review panels that follow the reader). */
+  onCurrentPageChange?: (page: number) => void
 }
 
 /**
  * PDF viewer with lazily mounted pages: only pages near the viewport render, the rest keep an
  * estimated height. Bounding boxes use the pdfplumber convention (points, origin top-left).
  */
-export function PdfViewer({ url, page, bbox, revision }: PdfViewerProps) {
+export function PdfViewer({
+  url,
+  page,
+  bbox,
+  revision,
+  highlightBbox = true,
+  renderOverlay,
+  onCurrentPageChange,
+}: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0)
   const [zoom, setZoom] = useState(1)
   const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null)
+  const [viewports, setViewports] = useState<Map<number, PageViewport>>(() => new Map())
   const [visible, setVisible] = useState<Set<number>>(() => new Set([1, 2]))
   const [current, setCurrent] = useState(1)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -77,11 +100,14 @@ export function PdfViewer({ url, page, bbox, revision }: PdfViewerProps) {
     const threshold = rootTop + root.clientHeight / 3
     for (const [index, element] of [...pageRefs.current.entries()].sort((a, b) => a[0] - b[0])) {
       if (element.getBoundingClientRect().bottom >= threshold) {
-        setCurrent(index)
+        setCurrent((previous) => {
+          if (previous !== index) onCurrentPageChange?.(index)
+          return index
+        })
         return
       }
     }
-  }, [])
+  }, [onCurrentPageChange])
 
   useEffect(() => {
     const root = containerRef.current
@@ -98,25 +124,37 @@ export function PdfViewer({ url, page, bbox, revision }: PdfViewerProps) {
     }
   }, [updateCurrent])
 
-  const scrollTo = useCallback((target: number) => {
+  const scrollTo = useCallback((target: number, offsetPoints?: number) => {
     const element = pageRefs.current.get(target)
-    element?.scrollIntoView({ block: 'start' })
+    const root = containerRef.current
+    if (!element || !root) return
+    if (offsetPoints === undefined) {
+      element.scrollIntoView({ block: 'start' })
+      return
+    }
+    const top = element.offsetTop + offsetPoints - root.clientHeight / 4
+    root.scrollTo({ top: Math.max(0, top) })
   }, [])
 
   // A ui-action may re-open the same page; the revision makes the request distinct.
-  const navigation = page && numPages ? `${page}:${revision ?? 0}` : null
+  const navigation = page && numPages ? `${page}:${bbox ? bbox[1] : ''}:${revision ?? 0}` : null
   useEffect(() => {
     if (!navigation) return
     const target = Number(navigation.split(':')[0])
     const frame = requestAnimationFrame(() => {
       setVisible((prev) => (prev.has(target) ? prev : new Set([...prev, target, target + 1])))
-      requestAnimationFrame(() => scrollTo(target))
+      requestAnimationFrame(() => scrollTo(target, bbox ? bbox[1] * zoom : undefined))
     })
     return () => cancelAnimationFrame(frame)
+    // bbox and zoom are folded into `navigation` on purpose: re-run only on a new request
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [navigation, scrollTo])
 
   const scale = zoom
   const estimatedHeight = pageSize ? pageSize.height * scale : 1100 * scale
+  useEffect(() => {
+    setViewports(new Map())
+  }, [scale])
 
   return (
     <div className="flex h-full flex-col">
@@ -145,7 +183,9 @@ export function PdfViewer({ url, page, bbox, revision }: PdfViewerProps) {
             variant="ghost"
             size="icon-xs"
             aria-label="Zoom out"
-            onClick={() => setZoom((z) => ZOOMS[Math.max(0, ZOOMS.indexOf(z) - 1)] ?? z)}
+            onClick={() =>
+              setZoom((z) => [...ZOOMS].reverse().find((step) => step < z - 0.001) ?? z)
+            }
           >
             <ZoomOutIcon />
           </Button>
@@ -154,9 +194,7 @@ export function PdfViewer({ url, page, bbox, revision }: PdfViewerProps) {
             variant="ghost"
             size="icon-xs"
             aria-label="Zoom in"
-            onClick={() =>
-              setZoom((z) => ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(z) + 1)] ?? z)
-            }
+            onClick={() => setZoom((z) => ZOOMS.find((step) => step > z + 0.001) ?? z)}
           >
             <ZoomInIcon />
           </Button>
@@ -170,6 +208,11 @@ export function PdfViewer({ url, page, bbox, revision }: PdfViewerProps) {
             void doc.getPage(1).then((first) => {
               const viewport = first.getViewport({ scale: 1 })
               setPageSize({ width: viewport.width, height: viewport.height })
+              // start at fit-to-width so wide pages are not cropped in narrow panes
+              const available = (containerRef.current?.clientWidth ?? 0) - 32
+              if (available > 100 && viewport.width > available) {
+                setZoom(Math.max(0.3, Math.floor((available / viewport.width) * 100) / 100))
+              }
             })
           }}
           loading={<p className="text-muted-foreground text-sm">Loading PDF…</p>}
@@ -193,8 +236,22 @@ export function PdfViewer({ url, page, bbox, revision }: PdfViewerProps) {
                   scale={scale}
                   renderAnnotationLayer={false}
                   renderTextLayer
+                  onLoadSuccess={(loaded) => {
+                    const viewport = loaded.getViewport({ scale })
+                    setViewports((prev) => {
+                      const next = new Map(prev)
+                      next.set(index, viewport)
+                      return next
+                    })
+                  }}
                 >
-                  {bbox && page === index && pageSize && (
+                  {renderOverlay?.({
+                    pageNumber: index,
+                    scale,
+                    viewport: viewports.get(index) ?? null,
+                    pageHeight: pageSize?.height ?? 0,
+                  })}
+                  {highlightBbox && bbox && page === index && pageSize && (
                     <div
                       className="pointer-events-none absolute border-2 border-amber-500 bg-amber-300/20"
                       style={{

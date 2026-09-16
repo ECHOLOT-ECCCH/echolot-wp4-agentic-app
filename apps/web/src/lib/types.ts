@@ -158,6 +158,48 @@ export interface DocumentDetail extends DocumentRecord {
   }
 }
 
+export type AnnotationStatus = 'proposed' | 'accepted' | 'rejected' | 'edited'
+
+export interface AnnotationRecord {
+  id: string
+  document_id: string
+  page_no: number
+  bbox: [number, number, number, number]
+  label: string
+  entry_span_id: string | null
+  source: 'rule' | 'ml' | 'user'
+  status: AnnotationStatus
+  payload: {
+    bboxes?: [number, number, number, number][]
+    line_ids?: string[]
+    headword_guess?: string | null
+    confidence?: number
+    continuation?: boolean
+    text?: string
+    original_bbox?: [number, number, number, number]
+  }
+  set_id: string | null
+  position: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AnnotationPage {
+  items: AnnotationRecord[]
+  total: number
+  offset: number
+  limit: number
+}
+
+export interface SegmentResult {
+  document_id: string
+  queued: boolean
+  job_id: number | null
+  set_id: string | null
+  stats: { spans: number; mode: string; warnings: string[] } | null
+}
+
 export interface PdfPageRecord {
   id: string
   document_id: string

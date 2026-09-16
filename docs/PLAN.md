@@ -27,7 +27,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 - Current milestone: M2 PDF end to end (checklist in section 12c). M1 is complete (M1.10 verified
   with claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M2.3
+- Next task: M2.4
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -36,7 +36,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M2.2 done)
+- Last update: 2026-09-16 (M2.3 done)
 
 Update this block at the end of every task.
 
@@ -625,7 +625,7 @@ Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
   (pages, fonts, columns, density, scan warning) and `pdf_segment(document_id, params)` with a
   `show_overlay` ui-action. Acceptance: the sample PDF yields one span per entry; a wrong threshold
   is visible as merged or split spans.
-- [ ] M2.3 Overlays and review mode. `OverlayLayer` (SVG over react-pdf pages using the 7.10
+- [x] M2.3 Overlays and review mode. `OverlayLayer` (SVG over react-pdf pages using the 7.10
   conversion through the PDF.js viewport), spans coloured by status, a review list with keyboard
   j/k (next/previous), a (accept), r (reject), bulk accept page; `show_overlay` and `open_page`
   ui-actions focus a span; PDF documents get an entry navigator built from accepted spans

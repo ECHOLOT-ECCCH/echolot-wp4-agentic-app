@@ -205,6 +205,32 @@ test.describe('workspace smoke', () => {
     await expect(page.getByText(/1 page without a text layer/)).toBeVisible()
     await expect(page.locator('.react-pdf__Page').first()).toBeVisible()
     await expect(page.getByText('1 / 4')).toBeVisible()
+
+    // segment from the review panel: boxes appear on page 1, the list fills
+    await page.getByRole('button', { name: /^Segment$/ }).click()
+    await expect(page.getByText(/130 entry spans proposed/)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('130 spans')).toBeVisible()
+    const overlay = page.locator('[data-testid="overlay-layer"]').first()
+    await expect(overlay.locator('g[data-status="proposed"]')).toHaveCount(58)
+
+    // keyboard review: select the first span, accept it, reject the next one
+    await page.getByRole('button', { name: /^p1 abacus proposed$/ }).click()
+    await page.keyboard.press('a')
+    await expect(page.getByText('129 spans')).toBeVisible()
+    await page.keyboard.press('r')
+    await expect(page.getByText('128 spans')).toBeVisible()
+    await expect(overlay.locator('g[data-status="accepted"]')).toHaveCount(1)
+    await page.getByRole('button', { name: 'Accepted' }).click()
+    await expect(page.getByRole('button', { name: /^p1 abacus accepted$/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Rejected' }).click()
+    await expect(page.getByRole('button', { name: /^p1 abandon rejected$/ })).toBeVisible()
+
+    // decisions survive a reload
+    await page.reload()
+    await page.getByRole('button', { name: /^columns-dictionary\.pdf.*pages/ }).click()
+    await page.getByRole('button', { name: 'Accepted' }).click()
+    await expect(page.getByRole('button', { name: /^p1 abacus accepted$/ })).toBeVisible()
+    await expect(page.getByText('1 spans')).toBeVisible()
   })
 
   test('deny keeps the gated tool from running', async ({ page }) => {

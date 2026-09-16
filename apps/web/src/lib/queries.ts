@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { ApiError, api } from '@/lib/api'
 import type {
+  AnnotationPage,
+  AnnotationRecord,
+  AnnotationStatus,
   Conversation,
   ConvertedEntryDetail,
   ConvertedEntryPage,
@@ -23,6 +26,7 @@ import type {
   Provider,
   RunDetail,
   RunRecord,
+  SegmentResult,
   SourceType,
   SpecRecord,
   User,
@@ -42,6 +46,13 @@ export const keys = {
     ['projects', projectId, 'entries', entryId] as const,
   pages: (projectId: string, documentId: string) =>
     ['projects', projectId, 'documents', documentId, 'pages'] as const,
+  annotations: (projectId: string, documentId: string) =>
+    ['projects', projectId, 'documents', documentId, 'annotations'] as const,
+  annotationsQuery: (
+    projectId: string,
+    documentId: string,
+    params: { page_no?: number; status?: string; offset?: number; limit?: number },
+  ) => ['projects', projectId, 'documents', documentId, 'annotations', params] as const,
   runs: (projectId: string) => ['projects', projectId, 'runs'] as const,
   run: (projectId: string, runId: string) => ['projects', projectId, 'runs', runId] as const,
   runEntries: (projectId: string, runId: string, offset: number, limit: number, issues: boolean) =>
@@ -300,6 +311,78 @@ export function usePages(projectId: string, documentId: string | null) {
     queryFn: () => api<PdfPageRecord[]>(`/api/projects/${projectId}/documents/${documentId}/pages`),
     enabled: Boolean(documentId),
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useAnnotations(
+  projectId: string,
+  documentId: string | null,
+  params: { page_no?: number; status?: string; offset?: number; limit?: number },
+) {
+  const search = new URLSearchParams()
+  if (params.page_no !== undefined) search.set('page_no', String(params.page_no))
+  if (params.status) search.set('status', params.status)
+  search.set('offset', String(params.offset ?? 0))
+  search.set('limit', String(params.limit ?? 500))
+  return useQuery({
+    queryKey: keys.annotationsQuery(projectId, documentId ?? '', params),
+    queryFn: () =>
+      api<AnnotationPage>(
+        `/api/projects/${projectId}/documents/${documentId}/annotations?${search}`,
+      ),
+    enabled: Boolean(documentId),
+    placeholderData: (previous) => previous,
+  })
+}
+
+export function useDecideAnnotation(projectId: string, documentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: AnnotationStatus }) =>
+      api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${id}`, {
+        method: 'PATCH',
+        json: { status },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
+      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+    },
+  })
+}
+
+export function useBulkDecide(projectId: string, documentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      status: 'accepted' | 'rejected' | 'proposed'
+      ids?: string[]
+      page_no?: number
+      only_status?: AnnotationStatus | null
+    }) =>
+      api<Record<string, number>>(
+        `/api/projects/${projectId}/documents/${documentId}/annotations/bulk`,
+        { method: 'POST', json: body },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
+      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+    },
+  })
+}
+
+export function useSegmentDocument(projectId: string, documentId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { segmenter?: string; params?: Record<string, unknown> }) =>
+      api<SegmentResult>(`/api/projects/${projectId}/documents/${documentId}/segment`, {
+        method: 'POST',
+        json: { segmenter: body.segmenter ?? 'rule', params: body.params ?? {} },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
+      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
+      void queryClient.invalidateQueries({ queryKey: keys.document(projectId, documentId) })
+    },
   })
 }
 
