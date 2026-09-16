@@ -67,14 +67,19 @@ export function ProfileBody({ data }: BodyProps) {
 }
 
 export function MappingWriteBody({ data }: BodyProps) {
+  const openMapping = usePreview((s) => s.openMapping)
   const issues = arr<MappingIssue>(data.issues)
   const stored = data.stored === true
+  const version = typeof data.version === 'number' ? data.version : undefined
   return (
     <div className="flex flex-col gap-1 text-xs">
       <p>
         {stored ? (
           <>
-            Stored as <strong>version {str(data.version)}</strong>.
+            Stored as <strong>version {str(data.version)}</strong>.{' '}
+            <button type="button" className="underline" onClick={() => openMapping(version)}>
+              Open mapping
+            </button>
           </>
         ) : (
           <span className="text-destructive">Not stored: the mapping has errors.</span>

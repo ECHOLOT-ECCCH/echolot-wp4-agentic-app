@@ -3,12 +3,14 @@ import { DownloadIcon, FileSearchIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { DocumentPanel } from '@/features/entries/DocumentPanel'
+import { MappingEditor } from '@/features/mapping/MappingEditor'
 import { RunPanel } from '@/features/runs/RunPanel'
+import { SpecEditor } from '@/features/spec/SpecEditor'
 import { PdfViewer } from '@/features/preview/PdfViewer'
 import { TextPreview } from '@/features/preview/TextPreview'
 import { ApiError, api, fileContentUrl, fileDownloadUrl } from '@/lib/api'
 import { formatBytes, isPdf } from '@/lib/format'
-import { useDocuments, useFiles } from '@/lib/queries'
+import { useDocuments, useFiles, useProject } from '@/lib/queries'
 import { usePreview } from '@/lib/uiActions'
 
 const PREVIEW_LIMIT = 5 * 1024 * 1024
@@ -18,6 +20,8 @@ export function PreviewHost({ projectId }: { projectId: string }) {
   const revision = usePreview((s) => s.revision)
   const files = useFiles(projectId)
   const documents = useDocuments(projectId)
+  const project = useProject(projectId)
+  const canEdit = project.data?.my_role !== 'viewer'
 
   if (target.kind === 'none') {
     return (
@@ -55,13 +59,11 @@ export function PreviewHost({ projectId }: { projectId: string }) {
   if (target.kind === 'run') {
     return <RunPanel projectId={projectId} runId={target.runId} />
   }
-  if (target.kind !== 'file') {
-    return (
-      <Empty
-        title="Coming in a later milestone"
-        body={`Preview of ${target.kind} is not available yet.`}
-      />
-    )
+  if (target.kind === 'mapping') {
+    return <MappingEditor projectId={projectId} version={target.version} canEdit={canEdit} />
+  }
+  if (target.kind === 'spec') {
+    return <SpecEditor projectId={projectId} canEdit={canEdit} />
   }
   const file = files.data?.find((f) => f.id === target.fileId)
   if (!file) {

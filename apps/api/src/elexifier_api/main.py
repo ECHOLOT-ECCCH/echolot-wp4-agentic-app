@@ -24,6 +24,7 @@ from elexifier_api.routers import (
     documents,
     events,
     files,
+    mappings,
     me,
     projects,
     runs,
@@ -122,6 +123,7 @@ def create_app(settings: Settings | None = None, state: AppState | None = None) 
     app.include_router(events.router)
     app.include_router(documents.router)
     app.include_router(runs.router)
+    app.include_router(mappings.router)
     return app
 
 

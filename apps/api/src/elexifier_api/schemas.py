@@ -246,3 +246,50 @@ class RunCreate(BaseModel):
     query: str | None = None
     # full-run options
     number_homographs: bool = True
+
+
+# --- mappings and conversion spec -----------------------------------------------------------
+
+
+class MappingIssueOut(BaseModel):
+    severity: str
+    path: str
+    message: str
+
+
+class MappingSummaryOut(ApiModel):
+    id: uuid.UUID
+    version: int
+    note: str
+    source: str
+    created_by: uuid.UUID | None
+    created_at: datetime
+    issue_count: int = 0
+
+
+class MappingOut(MappingSummaryOut):
+    spec: dict[str, Any]
+    issues: list[MappingIssueOut]
+    summary: str
+
+
+class MappingIn(BaseModel):
+    spec: dict[str, Any]
+    note: str = Field(default="", max_length=2000)
+
+
+class MappingCheckOut(BaseModel):
+    ok: bool
+    issues: list[MappingIssueOut]
+    summary: str | None = None
+
+
+class SpecOut(ApiModel):
+    version: int
+    markdown: str
+    updated_by: uuid.UUID | None
+    created_at: datetime
+
+
+class SpecIn(BaseModel):
+    markdown: str = Field(max_length=200_000)

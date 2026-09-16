@@ -240,6 +240,41 @@ export interface ConvertedEntryDetail extends ConvertedEntryItem {
   run_created_at: string
 }
 
+export interface MappingIssue {
+  severity: 'error' | 'warning' | 'info'
+  path: string
+  message: string
+}
+
+export interface MappingSummary {
+  id: string
+  version: number
+  note: string
+  source: string
+  created_by: string | null
+  created_at: string
+  issue_count: number
+}
+
+export interface MappingRecord extends MappingSummary {
+  spec: Record<string, unknown>
+  issues: MappingIssue[]
+  summary: string
+}
+
+export interface MappingCheck {
+  ok: boolean
+  issues: MappingIssue[]
+  summary: string | null
+}
+
+export interface SpecRecord {
+  version: number
+  markdown: string
+  updated_by: string | null
+  created_at: string
+}
+
 export type UiActionType =
   | 'open_file'
   | 'open_document'

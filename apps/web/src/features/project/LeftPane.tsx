@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { DocumentList } from '@/features/entries/DocumentList'
 import { FileList } from '@/features/files/FileList'
 import { UploadDropzone } from '@/features/files/UploadDropzone'
+import { ConversionLinks } from '@/features/mapping/ConversionLinks'
 import { RunList } from '@/features/runs/RunList'
 import { keys, useFiles, useMembers } from '@/lib/queries'
 import type { Project } from '@/lib/types'
@@ -55,6 +56,8 @@ export function LeftPane({ project }: { project: Project }) {
         </section>
 
         <DocumentList projectId={project.id} />
+
+        <ConversionLinks projectId={project.id} />
 
         <RunList projectId={project.id} />
 

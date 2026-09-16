@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
+import { ApiError, api } from '@/lib/api'
 import type {
   Conversation,
   ConvertedEntryDetail,
@@ -11,6 +11,9 @@ import type {
   EntryDetail,
   EntryPage,
   FileRecord,
+  MappingCheck,
+  MappingRecord,
+  MappingSummary,
   Member,
   ModelInfo,
   ModelSpec,
@@ -20,6 +23,7 @@ import type {
   RunDetail,
   RunRecord,
   SourceType,
+  SpecRecord,
   User,
 } from '@/lib/types'
 
@@ -41,6 +45,10 @@ export const keys = {
     ['projects', projectId, 'runs', runId, 'entries', { offset, limit, issues }] as const,
   converted: (projectId: string, entryId: string, runId: string | null) =>
     ['projects', projectId, 'entries', entryId, 'converted', runId ?? 'latest'] as const,
+  mappings: (projectId: string) => ['projects', projectId, 'mappings'] as const,
+  mapping: (projectId: string, version: string) =>
+    ['projects', projectId, 'mappings', version] as const,
+  spec: (projectId: string) => ['projects', projectId, 'spec'] as const,
   members: (projectId: string) => ['projects', projectId, 'members'] as const,
   conversations: (projectId: string) => ['projects', projectId, 'conversations'] as const,
   messages: (projectId: string, conversationId: string) =>
@@ -201,6 +209,85 @@ export function useConvertedEntry(projectId: string, entryId: string | null, run
         `/api/projects/${projectId}/entries/${entryId}/converted${search}`,
       ),
     enabled: Boolean(entryId),
+  })
+}
+
+export function useMappings(projectId: string) {
+  return useQuery({
+    queryKey: keys.mappings(projectId),
+    queryFn: () => api<MappingSummary[]>(`/api/projects/${projectId}/mappings`),
+  })
+}
+
+/** One mapping version, or the latest; null data when the project has none yet. */
+export function useMapping(projectId: string, version: number | 'latest') {
+  return useQuery({
+    queryKey: keys.mapping(projectId, String(version)),
+    queryFn: async () => {
+      try {
+        return await api<MappingRecord>(`/api/projects/${projectId}/mappings/${version}`)
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
+      }
+    },
+  })
+}
+
+export function useCheckMapping(projectId: string) {
+  return useMutation({
+    mutationFn: (spec: Record<string, unknown>) =>
+      api<MappingCheck>(`/api/projects/${projectId}/mappings/check`, {
+        method: 'POST',
+        json: { spec },
+      }),
+  })
+}
+
+export function useSaveMapping(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { spec: Record<string, unknown>; note: string }) =>
+      api<MappingRecord>(`/api/projects/${projectId}/mappings`, { method: 'POST', json: body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.mappings(projectId) }),
+  })
+}
+
+export function useSpec(projectId: string) {
+  return useQuery({
+    queryKey: keys.spec(projectId),
+    queryFn: async () => {
+      try {
+        return await api<SpecRecord>(`/api/projects/${projectId}/spec`)
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null
+        throw error
+      }
+    },
+  })
+}
+
+export function useSaveSpec(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (markdown: string) =>
+      api<SpecRecord>(`/api/projects/${projectId}/spec`, { method: 'PUT', json: { markdown } }),
+    onSuccess: (spec) => queryClient.setQueryData(keys.spec(projectId), spec),
+  })
+}
+
+export function useCreateRun(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      kind: 'sample' | 'full'
+      mapping_version?: number
+      n?: number
+      ordinals?: number[]
+      strategy?: 'first' | 'spread' | 'random'
+      document_id?: string
+    }) => api<RunDetail>(`/api/projects/${projectId}/runs`, { method: 'POST', json: body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.runs(projectId) }),
   })
 }
 

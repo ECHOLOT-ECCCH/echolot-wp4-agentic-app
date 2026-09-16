@@ -23,6 +23,8 @@ interface PreviewState {
   openDocument: (documentId: string) => void
   openEntry: (entryId: string, documentId?: string, runId?: string) => void
   openRun: (runId: string) => void
+  openMapping: (version?: number) => void
+  openSpec: () => void
   apply: (action: UiAction) => void
   clear: () => void
 }
@@ -40,6 +42,9 @@ export const usePreview = create<PreviewState>((set) => ({
       revision: s.revision + 1,
     })),
   openRun: (runId) => set((s) => ({ target: { kind: 'run', runId }, revision: s.revision + 1 })),
+  openMapping: (version) =>
+    set((s) => ({ target: { kind: 'mapping', version }, revision: s.revision + 1 })),
+  openSpec: () => set((s) => ({ target: { kind: 'spec' }, revision: s.revision + 1 })),
   apply: (action) =>
     set((s) => {
       const next = targetFor(action)

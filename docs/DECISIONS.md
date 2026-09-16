@@ -430,3 +430,24 @@ Python code blocks inside Markdown, so `docs` and `*.md` are excluded from ruff.
   Faster validation (a first pass with lxml against a generated XSD 1.0 subset, or validating
   in the conversion pass per entry and keeping only identity constraints for the end) is on the
   backlog.
+
+## 2026-09-16 Mapping and spec editors (M1.9)
+
+- Routes: `GET/POST /mappings`, `POST /mappings/check`, `GET /mappings/{version|latest}`,
+  `GET/PUT /spec`. Saving always creates a new version (`source="user"`); a mapping with errors
+  is refused with the structured issues (422). The editor runs `check` 600 ms after each change,
+  so validation is the same code the agent's `mapping_write` uses (Pydantic shape + XSD-derived
+  checks) instead of a CodeMirror JSON-schema plugin, which would only cover the shape.
+- `MappingEditor`: version selector, note, CodeMirror JSON, issues, and a source-to-DMLex tree
+  computed from the JSON being edited; "Run sample" creates a sample run with the selected
+  version through `POST /runs`. `SpecEditor`: Markdown with versioned save. Both are read-only
+  for viewers. The left pane got a "Conversion" section (mapping, specification).
+- JSONB storage sorts object keys by length, so stored mappings come back with `children` before
+  `inSelector`; the editor reorders descriptor keys into reading order (`formatMapping`) before
+  showing them, and compares against the same rendering to detect unsaved changes.
+- Approval-gated overwrite of exports (PLAN 7.3): moot for now, full runs write new versioned
+  output files and never overwrite; nothing to gate until an export target with fixed names
+  exists (e.g. a Lexonomy push, backlog).
+- Verified in the browser on the Oxford project: edited the agent's v2 (part-of-speech tag
+  `noun` -> `substantive`), saved as v3, ran a sample from the editor, the rendered entry shows
+  the new tag; the e2e smoke now covers editor -> save -> sample -> side-by-side -> spec save.
