@@ -94,6 +94,26 @@ export function RunPanel({ projectId, runId }: { projectId: string; runId: strin
         <Stat label="errors" value={stats.errors ?? 0} tone={stats.errors ? 'error' : undefined} />
         <Stat label="warnings" value={stats.warnings ?? 0} />
       </div>
+      {(data.steps_snapshot ?? []).length > 0 && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-1.5 text-xs"
+          data-testid="run-steps"
+        >
+          <span className="text-muted-foreground">Steps</span>
+          {(data.steps_snapshot ?? []).map((step) => (
+            <span
+              key={step.step_id}
+              title={step.stderr || step.stdout || undefined}
+              className={
+                step.exit_code !== undefined && step.exit_code !== 0 ? 'text-destructive' : ''
+              }
+            >
+              {step.position + 1}. {step.name}
+              {typeof step.duration_s === 'number' ? ` (${step.duration_s.toFixed(1)} s)` : ''}
+            </span>
+          ))}
+        </div>
+      )}
       {outputs.length > 0 && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs">
           <span className="text-muted-foreground">Outputs</span>

@@ -28,6 +28,14 @@ from elexifier_pipeline.xml import streaming
 from elexifier_pipeline.xml.dmlexifier import JsonDict, TEltDesc, new_transformer
 
 ProgressCallback = Callable[[str, int, int | None], None]  # phase, done, total
+# Custom steps (M3.5): given a JSONL file of plain normalized entries, return the transformed
+# file (same shape, one entry per line). Raise StepError to fail the conversion with a message.
+EntriesHook = Callable[[Path], Path]
+
+
+class StepError(Exception):
+    """A custom step failed; the message names the step and quotes its error."""
+
 
 PROGRESS_EVERY = 500
 MAX_ISSUE_ENTRIES = 5000
@@ -51,6 +59,7 @@ class FullRunResult:
     issue_codes: dict[str, int] = field(default_factory=dict)
     error_count: int = 0  # all errors, including those beyond the per-entry cap
     warning_count: int = 0
+    step_warnings: list[str] = field(default_factory=list)
 
 
 def _pos_key(entry: JsonDict) -> tuple[str, ...]:
@@ -77,8 +86,10 @@ def convert_document(
     total_hint: int | None = None,
     number_homographs: bool = True,
     max_errors: int = 10_000,
+    entries_hook: EntriesHook | None = None,
 ) -> FullRunResult:
-    """Convert ``source`` with ``mapping`` into ``out_dir/dmlex.xml`` and ``out_dir/dmlex.json``."""
+    """Convert ``source`` with ``mapping`` into ``out_dir/dmlex.xml`` and ``out_dir/dmlex.json``.
+    ``entries_hook`` (custom steps) runs on the converted entries before they are written."""
     timings: dict[str, float] = {}
     plan = streaming.plan_for(mapping)
     transformer = new_transformer()
@@ -115,6 +126,18 @@ def convert_document(
                 report("converting", source_entries, total_hint)
     report("converting", source_entries, total_hint)
     timings["convert_s"] = round(time.perf_counter() - started, 3)
+
+    # custom steps: the entry stream goes out as plain JSONL and comes back transformed
+    step_warnings: list[str] = []
+    if entries_hook is not None:
+        started = time.perf_counter()
+        report("steps", 0, None)
+        jsonl_path, output_entries, step_warnings = _apply_entries_hook(
+            jsonl_path, entries_hook, out_dir
+        )
+        if number_homographs:
+            groups, numbered_groups = _homograph_groups(jsonl_path)
+        timings["steps_s"] = round(time.perf_counter() - started, 3)
 
     # pass 2: write XML and JSON (homograph numbers assigned on the way)
     started = time.perf_counter()
@@ -215,7 +238,67 @@ def convert_document(
         # schema errors past max_errors are counted by the validator but not listed
         error_count=totals["error"] + max(0, validation.error_count - len(validation.errors)),
         warning_count=totals["warning"],
+        step_warnings=step_warnings,
     )
+
+
+def _homograph_groups(
+    jsonl_path: Path,
+) -> tuple[Counter[tuple[str, tuple[str, ...]]], set[tuple[str, tuple[str, ...]]]]:
+    groups: Counter[tuple[str, tuple[str, ...]]] = Counter()
+    numbered: set[tuple[str, tuple[str, ...]]] = set()
+    for _ordinal, entry in _read_jsonl(jsonl_path):
+        key = (str(entry.get("headword") or ""), _pos_key(entry))
+        groups[key] += 1
+        if entry.get("homographNumber") not in (None, ""):
+            numbered.add(key)
+    return groups, numbered
+
+
+def _apply_entries_hook(
+    jsonl_path: Path, hook: EntriesHook, out_dir: Path
+) -> tuple[Path, int, list[str]]:
+    """Run the hook on a plain-entries file and wrap its output with source ordinals again.
+    Ordinals follow positions; when a step changes the number of entries, the mapping to source
+    entries is approximate and a warning says so."""
+    plain = out_dir / "entries.plain.jsonl"
+    ordinals: list[int] = []
+    with plain.open("w", encoding="utf-8") as dst:
+        for ordinal, entry in _read_jsonl(jsonl_path):
+            ordinals.append(ordinal)
+            dst.write(json.dumps(entry, ensure_ascii=False))
+            dst.write("\n")
+    result = hook(plain)
+    stepped = out_dir / "entries.stepped.jsonl"
+    count = 0
+    with result.open("r", encoding="utf-8") as src, stepped.open("w", encoding="utf-8") as dst:
+        for line_no, line in enumerate(src, start=1):
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                entry = json.loads(text)
+            except ValueError as exc:
+                raise StepError(f"line {line_no} of the step output is not JSON: {exc}") from exc
+            if not isinstance(entry, dict):
+                raise StepError(f"line {line_no} of the step output is not an entry object")
+            ordinal = (
+                ordinals[count] if count < len(ordinals) else (ordinals[-1] if ordinals else 0)
+            )
+            dst.write(json.dumps({"o": ordinal, "e": entry}, ensure_ascii=False))
+            dst.write("\n")
+            count += 1
+    warnings: list[str] = []
+    if count != len(ordinals):
+        warnings.append(
+            f"the custom steps changed the number of entries ({len(ordinals):,} in, {count:,} "
+            "out); links from issues to source entries are approximate"
+        )
+    jsonl_path.unlink(missing_ok=True)
+    plain.unlink(missing_ok=True)
+    if result != plain and result != stepped:
+        result.unlink(missing_ok=True)
+    return stepped, count, warnings
 
 
 def _relative(path: str) -> str:

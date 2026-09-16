@@ -141,6 +141,7 @@ async def run_conversion(
                     "strategy": None if ordinals else strategy,
                     "query": query,
                 },
+                runner=deps.runner,
             )
             await db.commit()
         except (ToolInputError, ConversionError) as exc:
@@ -253,6 +254,7 @@ async def run_stats(ctx: RunContext[AgentDeps], run_id: str) -> ToolReturn:
         stats = dict(run.stats or {})
         report = dict(run.validation_report or {})
         status_, kind, version, error = run.status, run.kind, run.mapping_version, run.error
+        steps_applied = list(run.steps_snapshot or [])
         artifacts = _output_artifacts(run)
     # PDF structuring runs have no mapping (version 0)
     label = (
@@ -290,6 +292,12 @@ async def run_stats(ctx: RunContext[AgentDeps], run_id: str) -> ToolReturn:
                 if stats.get("segmentation")
                 else ""
             )
+            + (
+                f"; {len(steps_applied)} custom step(s) applied: "
+                + ", ".join(str(s.get("name")) for s in steps_applied)
+                if steps_applied
+                else ""
+            )
             + "."
         )
     return to_tool_return(
@@ -310,6 +318,8 @@ async def run_stats(ctx: RunContext[AgentDeps], run_id: str) -> ToolReturn:
                 "plan_warnings": report.get("plan_warnings", []),
                 "first_errors": (report.get("errors") or [])[:15],
                 "output_files": stats.get("output_files", []),
+                "steps": steps_applied,
+                "step_warnings": report.get("step_warnings", []),
                 "error": error,
             },
             artifacts=artifacts,

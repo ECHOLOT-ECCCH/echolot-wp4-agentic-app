@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from elexifier_agent.catalog import ModelCatalog
 from elexifier_agent.runtime import PydanticAIRuntime
+from elexifier_agent.sandbox import RunnerClient
 from elexifier_api import __version__
 from elexifier_api import jobs as _jobs  # noqa: F401  # registers tasks on the shared app
 from elexifier_api.auth.oidc import OidcClient
@@ -61,6 +62,7 @@ def build_state(settings: Settings) -> AppState:
         ),
         event_bus=EventBus(settings.database_dsn),
         catalog=ModelCatalog(),
+        runner=RunnerClient(settings.sandbox_runner_url, settings.sandbox_runner_token),
         runtime=PydanticAIRuntime(),
         jobs=jobs_app,
     )

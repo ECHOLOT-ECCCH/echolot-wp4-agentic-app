@@ -5,16 +5,28 @@ and store the run. Shared by the ``run_conversion`` tool and the API (full runs 
 from __future__ import annotations
 
 import asyncio
+import shutil
+import tempfile
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from lxml import etree
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from elexifier_agent.sandbox import RunnerClient
+from elexifier_agent.steps import (
+    StepFailed,
+    StepRecord,
+    apply_steps_to_entries,
+    enabled_steps,
+    records_snapshot,
+    snapshot_of,
+)
 from elexifier_core.db.models import (
     ConversionRun,
     ConversionStatus,
@@ -114,6 +126,7 @@ async def run_sample(
     entries: list[Entry],
     triggered_by: uuid.UUID | None,
     scope: dict[str, Any] | None = None,
+    runner: RunnerClient | None = None,
 ) -> SampleOutcome:
     """Convert ``entries`` with ``mapping`` and store a done sample run. Commits nothing; the
     caller commits. Raises ConversionError for problems the caller should report."""
@@ -162,6 +175,37 @@ async def run_sample(
         return produced, skipped
 
     produced, skipped = await asyncio.to_thread(convert)
+    # custom steps (M3.5): the sample shows what the full run will produce
+    steps = await enabled_steps(db, document.project_id)
+    step_records: list[StepRecord] = []
+    if steps and produced:
+        if runner is None:
+            raise ConversionError(
+                "this project has custom steps, which need the sandbox runner; it is not "
+                "available in this context"
+            )
+        workdir = Path(tempfile.mkdtemp(prefix="elexifier-sample-steps-"))
+        try:
+            transformed, step_records = await apply_steps_to_entries(
+                runner,
+                storage,
+                steps,
+                [dmlex for _entry, dmlex in produced],
+                project_id=document.project_id,
+                run_id=f"sample-{uuid.uuid4().hex[:8]}",
+                workdir=workdir,
+                source_key=file.s3_key,
+            )
+        except StepFailed as exc:
+            raise ConversionError(str(exc)) from exc
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+        if len(transformed) != len(produced):
+            raise ConversionError(
+                f"the custom steps changed the number of entries ({len(produced)} in, "
+                f"{len(transformed)} out); a sample needs one output per source entry"
+            )
+        produced = [(entry, new) for (entry, _old), new in zip(produced, transformed, strict=True)]
     validation = await asyncio.to_thread(
         validate_entries, scalars, [dmlex for _entry, dmlex in produced]
     )
@@ -175,6 +219,7 @@ async def run_sample(
         status=ConversionStatus.DONE.value,
         triggered_by=triggered_by,
         finished_at=datetime.now(UTC),
+        steps_snapshot=records_snapshot(steps, step_records),
     )
     db.add(run)
     await db.flush()
@@ -205,6 +250,7 @@ async def run_sample(
         "errors": errors,
         "warnings": warnings,
         "resource_issues": len(resource_issues),
+        "steps": len(step_records),
     }
     run.validation_report = {
         "summary": validation.report.summary(),
@@ -268,10 +314,12 @@ async def queue_full_run(
         raise ConversionError(
             f"a full run is already {running.status} (run {running.id}); wait for it to finish"
         )
+    steps = await enabled_steps(db, document.project_id)
     run = ConversionRun(
         project_id=document.project_id,
         document_id=document.id,
         kind=RunKind.FULL.value,
+        steps_snapshot=snapshot_of(steps),
         mapping_version=mapping.version,
         scope={"options": options or {}},
         status=ConversionStatus.QUEUED.value,

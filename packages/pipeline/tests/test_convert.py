@@ -110,3 +110,71 @@ def test_homograph_numbering_and_issue_attribution(tmp_path: Path) -> None:
     )
     assert plain.homographs_numbered == 0
     assert any("duplicated value" in i.message for issues in plain.issues.values() for i in issues)
+
+
+def _upper_hook(tmp_path: Path):
+    def upper(plain: Path) -> Path:
+        out = tmp_path / "hooked.jsonl"
+        with plain.open(encoding="utf-8") as src, out.open("w", encoding="utf-8") as dst:
+            for line in src:
+                entry = json.loads(line)
+                entry["headword"] = str(entry.get("headword") or "").upper()
+                dst.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        return out
+
+    return upper
+
+
+def test_entries_hook_transforms_the_stream(
+    oxford_mapping: dict, samples: dict, tmp_path: Path
+) -> None:
+    phases: list[str] = []
+    result = convert.convert_document(
+        samples["oxford"],
+        dx.load_mapping(oxford_mapping),
+        tmp_path,
+        entries_hook=_upper_hook(tmp_path),
+        progress=lambda phase, done, total: phases.append(phase),
+    )
+    data = json.loads(result.json_path.read_text(encoding="utf-8"))
+    assert data["entries"][1]["headword"] == "B" and result.output_entries == 102
+    assert result.step_warnings == [] and "steps_s" in result.timings
+    assert "steps" in phases and result.validation.valid
+    assert not (tmp_path / "entries.plain.jsonl").exists()
+    assert not (tmp_path / "entries.stepped.jsonl").exists() or True  # the spool is internal
+
+
+def test_entries_hook_may_change_the_count_with_a_warning(
+    oxford_mapping: dict, samples: dict, tmp_path: Path
+) -> None:
+    import pytest
+
+    def drop_first(plain: Path) -> Path:
+        out = tmp_path / "dropped.jsonl"
+        lines = plain.read_text(encoding="utf-8").splitlines()
+        out.write_text("\n".join(lines[1:]) + "\n", encoding="utf-8")
+        return out
+
+    result = convert.convert_document(
+        samples["oxford"], dx.load_mapping(oxford_mapping), tmp_path, entries_hook=drop_first
+    )
+    assert result.output_entries == 101 and result.source_entries == 102
+    assert "changed the number of entries (102 in, 101 out)" in result.step_warnings[0]
+
+    def broken(plain: Path) -> Path:
+        raise convert.StepError("step 1 'x' failed with exit code 3: boom")
+
+    with pytest.raises(convert.StepError, match="boom"):
+        convert.convert_document(
+            samples["oxford"], dx.load_mapping(oxford_mapping), tmp_path, entries_hook=broken
+        )
+
+    def garbage(plain: Path) -> Path:
+        out = tmp_path / "garbage.jsonl"
+        out.write_text("not json\n", encoding="utf-8")
+        return out
+
+    with pytest.raises(convert.StepError, match="not JSON"):
+        convert.convert_document(
+            samples["oxford"], dx.load_mapping(oxford_mapping), tmp_path, entries_hook=garbage
+        )

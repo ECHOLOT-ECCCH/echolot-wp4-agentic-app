@@ -178,6 +178,7 @@ async def create_run(
                 "strategy": None if body.ordinals else body.strategy,
                 "query": body.query,
             },
+            runner=state.runner,
         )
     except ConversionError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc

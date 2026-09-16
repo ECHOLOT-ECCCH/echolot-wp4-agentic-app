@@ -276,3 +276,51 @@ async def test_save_as_step_lists_and_removes(fixture: Fixture) -> None:
             .all()
         )
         assert sorted(a.action for a in audit) == ["step.created", "step.deleted"]
+
+
+async def test_sample_conversion_applies_saved_steps(fixture: Fixture) -> None:
+    from elexifier_agent.testing import local_runner
+    from elexifier_core.db.models import ConversionRun
+    from elexifier_pipeline.sample import OXFORD_MAPPING
+
+    from .test_xml_tools import call_tool
+
+    fixture.deps.runner = local_runner(fixture.storage)
+    mapping = json.loads(OXFORD_MAPPING.read_text(encoding="utf-8"))
+    await call_tool(fixture, "mapping_write", {"mapping": mapping, "note": "v1"})
+    snippet = (
+        "import json, pathlib\n"
+        "src = pathlib.Path('in/entries.jsonl')\n"
+        "if not src.exists():\n"
+        "    print('no entries mounted (a dry run)')\n"
+        "    raise SystemExit(0)\n"
+        "out = []\n"
+        "for line in src.read_text(encoding='utf-8').splitlines():\n"
+        "    if line.strip():\n"
+        "        e = json.loads(line); e['headword'] = e['headword'].upper(); out.append(e)\n"
+        "pathlib.Path('out/entries.jsonl').write_text(\n"
+        "    ''.join(json.dumps(e) + '\\n' for e in out))\n"
+        "print(len(out))\n"
+    )
+    run = await approved_call(
+        fixture, "run_code", {"code": snippet, "purpose": "Upper-case the headwords"}
+    )
+    assert run["data"]["exit_code"] == 0 and "dry run" in run["data"]["stdout"]
+    saved = await call_tool(
+        fixture,
+        "save_as_step",
+        {"code_run_id": run["data"]["code_run_id"], "name": "Upper-case headwords"},
+    )
+    assert saved["summary"].startswith("Saved step 1")
+
+    sample = await call_tool(
+        fixture, "run_conversion", {"kind": "sample", "n": 2, "strategy": "first"}
+    )
+    assert sample["summary"].startswith("Sample run with mapping v1: 2 entries converted")
+    assert [e["headword"] for e in sample["data"]["entries"]] == ["AZYME", "B"]
+    async with fixture.db.session() as db:
+        runs = (await db.execute(select(ConversionRun))).scalars().all()
+        assert len(runs) == 1 and runs[0].steps_snapshot[0]["name"] == "Upper-case headwords"
+        assert runs[0].steps_snapshot[0]["exit_code"] == 0 and runs[0].stats["steps"] == 1
+    stats = await call_tool(fixture, "run_stats", {"run_id": str(runs[0].id)})
+    assert "1 custom step(s) applied: Upper-case headwords" in stats["summary"]

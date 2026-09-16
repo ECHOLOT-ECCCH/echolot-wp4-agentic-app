@@ -855,3 +855,35 @@ merged span and to name the headword where the next one starts.
   reorder, agent save/list/remove through the scripted model.
 - M3.5 makes the steps run inside conversions; until then a saved step is stored and shown but
   not applied.
+
+## 2026-09-16 M3.5 Custom steps run inside samples and full runs
+
+- `convert_document` takes an `entries_hook`: after the conversion pass, the spooled entries
+  go out as a plain JSONL file (one normalized entry per line, no wrapper), the hook returns
+  the transformed file, and the pass that writes XML and JSON reads it back with the source
+  ordinals re-attached by position. When a step changes the number of entries the ordinal
+  links become approximate and `step_warnings` says so (the run panel and `run_stats` show
+  it); homograph groups are recomputed after the hook. The hook is synchronous because the
+  conversion runs in a worker thread; the job bridges to the async runner client with
+  `run_coroutine_threadsafe` on the job's loop.
+- `elexifier_agent.steps`: `StepRunner` uploads the current entries file as a temporary
+  derived object, runs the snippet through the sandbox runner with `in/entries.jsonl` (and
+  the run's source at the mount path the snippet was tried with, when it used one), takes
+  `out/entries.jsonl` back, deletes the temporary objects (only the log tails stay, on the
+  run), and fails the run with the step's name, exit code and stderr tail when the snippet
+  fails, is killed, or writes no entries file. `records_snapshot` merges what each step did
+  into the run's `steps_snapshot`.
+- Samples (tool and API) apply the enabled steps to their few entries and refuse a step that
+  changes the entry count (a sample needs one output per source entry); the lexicographer
+  sees the effect before the full run. Full runs snapshot the enabled steps when queued and
+  replay exactly those (a step deleted in between fails the run with a message).
+- `AppState.runner` holds the one `RunnerClient`; the chat router and the sample endpoint use
+  it, jobs use `job_runner()`. Tests plug in `elexifier_agent.testing.local_runner`, which
+  executes snippets with the test interpreter in a temporary directory and uploads outputs
+  like the real runner, so the sample, tool and job tests run real transformations.
+- Run panel: "Steps" line with each step's position, name and duration (stderr in the
+  tooltip, red when it failed); `run_stats` lists the applied steps and step warnings.
+- Verified: pipeline tests for the hook (transform, count change, errors), an API test that
+  saves a step, sees it in a sample, in the full run's export and in a failing run's error,
+  and an agent test where the scripted model runs a snippet, saves it as a step and the next
+  sample shows it applied.

@@ -16,8 +16,9 @@ from typing import Any
 import structlog
 from sqlalchemy import select
 
+from elexifier_agent.steps import StepRunner, enabled_steps, records_snapshot
 from elexifier_api.jobs.documents import download_to_temp
-from elexifier_api.jobs.runtime import job_database, job_storage
+from elexifier_api.jobs.runtime import job_database, job_runner, job_storage
 from elexifier_core.db.models import (
     ConversionRun,
     ConversionStatus,
@@ -158,6 +159,7 @@ async def run_full_conversion(run_id: str | uuid.UUID) -> dict[str, Any]:
         options = dict((run.scope or {}).get("options") or {})
         triggered_by = run.triggered_by
         mapping_spec = mapping.spec
+        step_ids = [uuid.UUID(str(s["step_id"])) for s in (run.steps_snapshot or [])]
         run.status = ConversionStatus.RUNNING.value
         run.error = None
         run.stats = {"phase": "downloading", "done": 0, "total": total}
@@ -181,6 +183,27 @@ async def run_full_conversion(run_id: str | uuid.UUID) -> dict[str, Any]:
         def on_progress(phase: str, done: int, phase_total: int | None) -> None:
             latest.update(phase=phase, done=done, total=phase_total)
 
+        # custom steps (M3.5): the ones snapshotted when the run was queued, through the runner
+        steps = []
+        if step_ids:
+            async with db.session() as session:
+                steps = await enabled_steps(session, project_id, ids=step_ids)
+        step_runner = StepRunner(
+            job_runner(),
+            storage,
+            project_id=project_id,
+            run_id=f"run-{str(rid)[:8]}",
+            source_key=source_key,
+        )
+
+        def entries_hook(plain: Path) -> Path:
+            # convert_document runs in a worker thread; the runner client is async
+            future = asyncio.run_coroutine_threadsafe(
+                step_runner.apply(steps, plain, workdir), loop
+            )
+            path, _records = future.result()
+            return path
+
         future = loop.run_in_executor(
             None,
             lambda: convert_document(
@@ -190,6 +213,7 @@ async def run_full_conversion(run_id: str | uuid.UUID) -> dict[str, Any]:
                 progress=on_progress,
                 total_hint=total,
                 number_homographs=bool(options.get("number_homographs", True)),
+                entries_hook=entries_hook if steps else None,
             ),
         )
         while True:
@@ -228,6 +252,10 @@ async def run_full_conversion(run_id: str | uuid.UUID) -> dict[str, Any]:
             run = await session.get(ConversionRun, rid)
             assert run is not None
             report = _report(result, run)
+            if result.step_warnings:
+                report["step_warnings"] = list(result.step_warnings)
+            if steps:
+                run.steps_snapshot = records_snapshot(steps, step_runner.records)
             report_path = workdir / "report.json"
             full_report = {
                 **report,
@@ -268,6 +296,7 @@ async def run_full_conversion(run_id: str | uuid.UUID) -> dict[str, Any]:
                 "warnings": warnings,
                 "resource_issues": len(result.resource_issues),
                 "homographs_numbered": result.homographs_numbered,
+                "steps": len(steps),
                 "timings": result.timings,
                 "output_files": [
                     {

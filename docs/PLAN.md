@@ -29,7 +29,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
   its live acceptance with a model (M2.7 cost check, M2.8 model part) is the owner's, planned
   together with the in-depth user test after M3. M1 is complete (M1.10 verified with
   claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
-- Next task: M3.5
+- Next task: M3.6
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -38,7 +38,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M3.4 custom steps stored: table, API, tools, left pane)
+- Last update: 2026-09-16 (M3.5 custom steps run inside samples and full runs)
 
 Update this block at the end of every task.
 
@@ -743,7 +743,7 @@ from the lexicographer's decisions gives a second opinion on PDF pages. Design n
   config `{stage: "entries", inputs: [...]}`), `list_steps`, `remove_step` (approval, a delete).
   Left pane "Steps" with enable/disable, reorder and delete. Tests: API and tool tests.
   Acceptance: a code run becomes a step visible in the left pane.
-- [ ] M3.5 Steps replay in conversions. `convert_document` split into the spool pass, a hook,
+- [x] M3.5 Steps replay in conversions. `convert_document` split into the spool pass, a hook,
   and the write/validate pass; the full XML job and the sample paths (tool and API) run the
   enabled steps in order through the runner (`in/entries.jsonl` and, when configured, the
   source as `in/source.xml`; `out/entries.jsonl` back), record `steps_snapshot` (id, name,

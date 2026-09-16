@@ -202,3 +202,98 @@ async def test_full_run_job_records_failures(
         await db.commit()
     with pytest.raises(jobs_conversions.ConversionJobError):
         await jobs_conversions.run_full_conversion(run_id)
+
+
+UPPER_STEP = """import json, pathlib
+out = []
+for line in pathlib.Path('in/entries.jsonl').read_text(encoding='utf-8').splitlines():
+    if not line.strip():
+        continue
+    entry = json.loads(line)
+    entry['headword'] = str(entry.get('headword') or '').upper()
+    out.append(entry)
+pathlib.Path('out/entries.jsonl').write_text(
+    ''.join(json.dumps(e, ensure_ascii=False) + '\\n' for e in out), encoding='utf-8'
+)
+print(len(out), 'entries')
+"""
+
+
+async def test_custom_steps_run_inside_samples_and_full_runs(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState, monkeypatch
+) -> None:
+    from elexifier_agent.testing import local_runner
+    from elexifier_api.jobs import conversions as jobs_conversions
+
+    from .test_steps import _artifact
+
+    logged_in.apply(client)
+    pid, _doc_id = await _parsed_project(client, app_state)
+    runner = local_runner(app_state.storage)
+    monkeypatch.setattr(jobs_conversions, "job_runner", lambda: runner)
+    monkeypatch.setattr(app_state, "runner", runner)
+    code_id = await _artifact(app_state, pid, "code-upper.py", "text/x-python", UPPER_STEP.encode())
+    step = (
+        await client.post(
+            f"/api/projects/{pid}/steps",
+            json={"name": "Upper-case headwords", "code_artifact_id": code_id},
+        )
+    ).json()
+
+    # a sample shows the step's effect and records what it did
+    sample = await client.post(f"/api/projects/{pid}/runs", json={"n": 3, "strategy": "first"})
+    assert sample.status_code == 201, sample.text
+    snap = sample.json()["steps_snapshot"]
+    assert snap[0]["name"] == "Upper-case headwords" and snap[0]["exit_code"] == 0
+    assert snap[0]["entries_in"] == 3 == snap[0]["entries_out"] and "3 entries" in snap[0]["stdout"]
+    rows = (await client.get(f"/api/projects/{pid}/runs/{sample.json()['id']}/entries")).json()
+    assert [r["headword"] for r in rows["items"]][:2] == ["AZYME", "B"]
+
+    # the full run snapshots the steps when queued and applies them in the job
+    created = await client.post(f"/api/projects/{pid}/runs", json={"kind": "full"})
+    assert created.status_code == 201, created.text
+    run = created.json()
+    assert run["steps_snapshot"] == [
+        {
+            "step_id": step["id"],
+            "name": "Upper-case headwords",
+            "position": 0,
+            "code_artifact_id": code_id,
+            "code_sha256": step["config"]["code_sha256"],
+        }
+    ]
+    result = await jobs_conversions.run_full_conversion(run["id"])
+    assert result["converted"] == 102 and result["valid"] is True
+    detail = (await client.get(f"/api/projects/{pid}/runs/{run['id']}")).json()
+    assert detail["stats"]["steps"] == 1
+    applied = detail["steps_snapshot"][0]
+    assert applied["exit_code"] == 0 and applied["entries_in"] == 102 == applied["entries_out"]
+    exported = json.loads(
+        (await client.get(f"/api/projects/{pid}/files/{result['json_file_id']}/download")).content
+    )
+    assert exported["entries"][1]["headword"] == "B"
+
+    # a failing step fails the run with its message, and refuses samples
+    bad_id = await _artifact(
+        app_state,
+        pid,
+        "code-bad.py",
+        "text/x-python",
+        b"import sys\nprint('boom', file=sys.stderr)\nsys.exit(3)\n",
+    )
+    await client.post(
+        f"/api/projects/{pid}/steps", json={"name": "Broken", "code_artifact_id": bad_id}
+    )
+    refused = await client.post(f"/api/projects/{pid}/runs", json={"n": 2})
+    assert (
+        refused.status_code == 422
+        and "step 2 'Broken' failed with exit code 3: boom" in refused.text
+    )
+    queued = (await client.post(f"/api/projects/{pid}/runs", json={"kind": "full"})).json()
+    with pytest.raises(Exception, match="Broken"):
+        await jobs_conversions.run_full_conversion(queued["id"])
+    failed = (await client.get(f"/api/projects/{pid}/runs/{queued['id']}")).json()
+    assert (
+        failed["status"] == "failed"
+        and "step 2 'Broken' failed with exit code 3: boom" in failed["error"]
+    )

@@ -271,6 +271,20 @@ export interface EntryDetail extends EntryListItem {
 export type RunKind = 'sample' | 'full'
 export type RunStatus = 'queued' | 'running' | 'done' | 'failed'
 
+/** A custom step as snapshotted on a run, with what it did once the run ran it. */
+export interface StepRunRecord {
+  step_id: string
+  name: string
+  position: number
+  code_artifact_id?: string
+  exit_code?: number
+  duration_s?: number
+  entries_in?: number
+  entries_out?: number
+  stdout?: string
+  stderr?: string
+}
+
 export interface RunRecord {
   id: string
   project_id: string
@@ -313,6 +327,7 @@ export interface RunRecord {
   error: string | null
   created_at: string
   finished_at: string | null
+  steps_snapshot?: StepRunRecord[]
 }
 
 export interface EntryIssue {

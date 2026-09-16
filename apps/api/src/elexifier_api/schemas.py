@@ -217,6 +217,7 @@ class RunOut(ApiModel):
     error: str | None
     created_at: datetime
     finished_at: datetime | None
+    steps_snapshot: list[Any] = Field(default_factory=list)  # custom steps and what they did
 
 
 class RunDetailOut(RunOut):

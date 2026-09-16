@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from elexifier_agent.catalog import curated_info
 from elexifier_agent.deps import AgentDeps, ProjectContext, UserContext
 from elexifier_agent.runtime import RunSummary
-from elexifier_agent.sandbox import RunnerClient
 from elexifier_agent.ui_messages import (
     ContextChip,
     attach_context,
@@ -237,7 +236,7 @@ async def chat(
         defer_job=_deferrer(state),
         model=model,
         model_spec=spec.model_dump(),
-        runner=RunnerClient(settings.sandbox_runner_url, settings.sandbox_runner_token),
+        runner=state.runner,
     )
 
     async def on_complete(summary: RunSummary) -> None:
