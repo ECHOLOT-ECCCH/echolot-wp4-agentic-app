@@ -25,10 +25,11 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M2 PDF end to end is built (checklist in section 12c); what remains is the
-  owner's live acceptance with a model (M2.7 cost check, M2.8 model part). M1 is complete (M1.10
-  verified with claude-opus-5 on 2026-09-16, see DECISIONS "Verification"). Next: M3.
-- Next task: M3.1 (expand the M3 scope from section 13 into a checklist 12d first)
+- Current milestone: M3 Sandbox and custom steps (checklist in section 12d). M2 is built (12c);
+  its live acceptance with a model (M2.7 cost check, M2.8 model part) is the owner's, planned
+  together with the in-depth user test after M3. M1 is complete (M1.10 verified with
+  claude-opus-5 on 2026-09-16, see DECISIONS "Verification").
+- Next task: M3.1
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -37,7 +38,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M2.10 segmentation feedback from structuring done)
+- Last update: 2026-09-16 (M3 checklist written; starting M3.1)
 
 Update this block at the end of every task.
 
@@ -688,6 +689,94 @@ Coordinates everywhere follow 7.10 (pdfplumber points, origin top-left).
   and `validate_dmlex`). Acceptance (2026-09-16): with the scripted model a merged span is
   flagged and appears in both lists (agent and API tests).
 
+## 12d. Milestone 3: Sandbox and custom steps (checklist)
+
+Goal: the agent can run Python it wrote, after approval, in a container with no network and
+strict limits; the lexicographer sees the output in the middle pane; a snippet that fixes a
+quirky source becomes a replayable step inside sample and full conversions; a segmenter learned
+from the lexicographer's decisions gives a second opinion on PDF pages. Design notes fixed here
+(record deviations in DECISIONS):
+- The runner never bind-mounts host paths: it builds a tar (root-owned read-only `in/`, the
+  snippet as `main.py`, a writable `out/` for uid 1000), `put_archive`s it into a fresh
+  container and `get_archive`s `out/` afterwards. This works when the runner is a sibling
+  container in Compose (bind mounts would refer to the daemon's host) and as a local process.
+- The runner reads inputs and writes outputs through the platform `Storage` (it depends on
+  `elexifier-core`); outputs go under `projects/{project_id}/artifacts/{run_id}/`.
+- Custom steps operate on the entry stream of a conversion: `in/entries.jsonl` (one normalized
+  DMLex entry per line, the shape the agent sees in samples) in, `out/entries.jsonl` out. They
+  run between the conversion pass and the write/validate pass, in samples and in full runs.
+
+- [ ] M3.1 Runner executes code. `packages/sandbox`: `execute(request) -> RunResponse` with
+  docker-py against `SANDBOX_IMAGE` (default `elexifier-sandbox:local`, built by `make
+  sandbox-image` from `packages/sandbox/image/Dockerfile`): container per 7.12 (network none,
+  user 1000, read-only rootfs, tmpfs /tmp, cap_drop ALL, no-new-privileges, pids, memory and
+  CPU limits, `runtime=runsc` when `SANDBOX_RUNTIME=runsc`), inputs from storage into the tar,
+  `wait(timeout)` then kill (exit code 137 and a "killed after N s" note), stdout and stderr
+  truncated at 64 KB, `out/` capped at `max_output_mb` and uploaded to storage. `POST /run`
+  answers the contract; `/healthz` reports the daemon and image. `Dockerfile.sandbox-runner`
+  copies `packages/core`; Compose mounts the docker socket into the runner only. Tests: unit
+  tests with a fake docker client (tar layout and ownership, container options, truncation,
+  timeout handling) and integration tests marked `docker` (skipped without daemon or image):
+  hello world, an output file round trip, a network attempt fails, a sleep is killed at the
+  timeout. Acceptance: `make sandbox-image && make runner`, then `POST /run` with a hello-world
+  snippet returns its stdout.
+- [ ] M3.2 `run_code` tool. `RunnerClient` (httpx, token) in the agent package, on `AgentDeps`
+  (None when unconfigured) and in the job runtime. Tool `run_code(code, purpose, inputs,
+  timeout_s)` with `requires_approval=True`: inputs are file ids or the words `source` and
+  `latest_export`, mounted as `in/<name>`; outputs become `files` rows of kind artifact (meta:
+  code run id, purpose, exit code); `code.py`, `step.json` and `log.txt` are stored as
+  artifacts of the run; the result carries exit code, duration, the first 6,000 characters of
+  stdout/stderr, ArtifactRefs and `open_artifact` for the first text output; audit log entry.
+  Prompt section `sandbox_workflow.md`: what is mounted where, write to `out/`, no network,
+  limits, the `entries.jsonl` contract for steps, and when to propose saving a step. Tests with
+  a fake runner (httpx `MockTransport`) through the scripted model, approval included.
+  Acceptance: in the browser the approval card appears, approve runs the snippet, the tool card
+  shows stdout and the artifact link, the preview opens the output.
+- [ ] M3.3 Artifact preview and code-run card. `CodeRunCard` (purpose, exit code, duration,
+  stdout/stderr collapsible, output links); `TextPreview` gains Python and plain-text modes
+  (`.py`, `.txt`, `.log`, `.jsonl`, `.csv`); artifacts of a run are listed under the run in the
+  run panel. Acceptance: vitest for the card; manual check of the preview.
+- [ ] M3.4 Custom steps stored. Migration 0009 `pipeline_steps` (project_id, position, kind
+  builtin|custom_code, name, config json, code_artifact_id, enabled, created_by, timestamps).
+  API `GET/POST/PATCH/DELETE /api/projects/{id}/steps` and `POST .../steps/reorder`. Tools
+  `save_as_step(code_run_id, name, purpose)` (registers the run's `code.py` as a step with
+  config `{stage: "entries", inputs: [...]}`), `list_steps`, `remove_step` (approval, a delete).
+  Left pane "Steps" with enable/disable, reorder and delete. Tests: API and tool tests.
+  Acceptance: a code run becomes a step visible in the left pane.
+- [ ] M3.5 Steps replay in conversions. `convert_document` split into the spool pass, a hook,
+  and the write/validate pass; the full XML job and the sample paths (tool and API) run the
+  enabled steps in order through the runner (`in/entries.jsonl` and, when configured, the
+  source as `in/source.xml`; `out/entries.jsonl` back), record `steps_snapshot` (id, name,
+  code artifact id, code sha256, timings) on the run, keep each step's log as an artifact, and
+  fail the run with the step's stderr when a step fails or writes no output. Run panel shows
+  the steps applied. Tests: a fake runner that executes the snippet locally with `subprocess`
+  in a temp dir, so the sample and job tests apply a real transformation. Acceptance (the
+  plan's): a post-processing snippet approved once is saved as a step and runs inside the next
+  full conversion; the export shows its effect.
+- [ ] M3.6 Sandbox limits verified and documented. Integration tests (marked `docker`): a
+  network attempt fails, a runaway snippet is killed at the timeout, a memory hog is killed,
+  outputs beyond the cap are refused. `docs/self-hosting.md`: the docker socket exposure, the
+  sandbox image and `make sandbox-image`, `SANDBOX_RUNTIME=runsc` with gVisor install notes and
+  the daemon `runtimes` configuration. Acceptance: the three behaviours observed on the local
+  Docker (runc); runsc documented, not required.
+- [ ] M3.7 Trainable segmenter. `pipeline/pdf/learned.py`: `LearnedSegmenter` implementing
+  the `TrainableSegmenter` protocol (7.7) with an averaged perceptron over line features (first
+  word font family, size bucket, bold, italic, indent bucket, first character class, gap above,
+  previous line's end punctuation and length share, position on page), `train(pages, gold) ->
+  TrainReport` (precision, recall, F1 on a held-out page split), `save/load` as JSON weights in
+  storage under `projects/{id}/derived/`. Gold: accepted, edited and user spans on the pages
+  with at least one decision; rejected proposals are negatives. Tool `pdf_train_segmenter
+  (document_id, apply=False)`: trains, reports, segments the unreviewed pages as a second
+  opinion and flags disagreements with the current proposals (`learned_disagrees`) so they
+  reach the review sample; `apply=True` replaces the proposals on unreviewed pages with the
+  learned segmentation. Acceptance: on the fixture, training on two reviewed pages reproduces
+  the third page's spans (F1 >= 0.95); on the owner's PDF, training on the reviewed sample
+  pages flags the odd pages (recorded in DECISIONS).
+- [ ] M3.8 Milestone acceptance. The M3 acceptance flow run in the dev stack without a paid
+  model (a hand-written snippet through the tools with the scripted model and through the
+  browser); Verification entry in DECISIONS; README and self-hosting updated; tag `m3`. The
+  owner's in-depth user testing follows this task.
+
 ## 13. Later milestones (expand into a checklist in docs/PLAN.md when starting each)
 
 ### M1 XML end-to-end (expanded into section 12b)
@@ -698,7 +787,7 @@ Acceptance: a real legacy XML dictionary becomes schema-valid DMLex XML and JSON
 Scope: layout extraction job (`pdf_pages`, layout JSON in storage), `PdfViewer` overlays from `EntrySpan` sets, review mode (accept/reject, keyboard j/k/a/r), edit mode (draw, resize, relabel, split, merge), select-to-chat (drag region or text-layer selection, words inside become a context chip with page and bbox), PDF toolset (`pdf_analyze`, `pdf_get_page`, `pdf_segment`, `pdf_estimate_cost`, `pdf_structure` sample and full, `annotations_get`), `LlmStructurer` batch job with concurrency, caching and cost accounting, extracted-entry editing saved as user overrides, low-confidence review list.
 Acceptance: a ~200-page born-digital PDF dictionary becomes DMLex with user corrections applied; the cost estimate shown before the batch is within 25% of the recorded usage.
 
-### M3 Sandbox and custom steps
+### M3 Sandbox and custom steps (expanded into section 12d)
 Scope: runner service and image per 7.12, `run_code` tool with approval, artifact preview in the middle pane, `save_as_step` and replay of custom steps inside full runs, `pdf_train_segmenter` with the trainable segmenter, SANDBOX_RUNTIME=runsc documented.
 Acceptance: the agent writes a post-processing snippet for a quirky XML, the user approves, the output previews, the saved step runs inside the next full conversion; a snippet trying to open a network connection fails; a runaway snippet is killed at the timeout.
 
