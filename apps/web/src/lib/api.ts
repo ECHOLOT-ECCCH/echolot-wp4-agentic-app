@@ -47,17 +47,20 @@ export interface ApiOptions extends Omit<RequestInit, 'body'> {
   body?: BodyInit | null
   /** Skip the automatic redirect to login on 401 (used by useMe). */
   noRedirect?: boolean
+  /** Return the body as text whatever its content type (file contents: a .json artifact must
+   *  not be parsed into an object). */
+  asText?: boolean
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
-  const { json, noRedirect, headers, ...rest } = options
+  const { json, noRedirect, asText, headers, ...rest } = options
   const method = (rest.method ?? 'GET').toUpperCase()
   const init: RequestInit = {
     credentials: 'same-origin',
     ...rest,
     method,
     headers: {
-      Accept: 'application/json',
+      Accept: asText ? '*/*' : 'application/json',
       ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(method !== 'GET' && method !== 'HEAD' ? { 'X-CSRF-Token': csrfToken() } : {}),
       ...(headers as Record<string, string> | undefined),
@@ -73,6 +76,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     throw new ApiError(response.status, await detailOf(response))
   }
   if (response.status === 204) return undefined as T
+  if (asText) return (await response.text()) as unknown as T
   const contentType = response.headers.get('content-type') ?? ''
   if (contentType.includes('application/json')) return (await response.json()) as T
   return (await response.text()) as unknown as T

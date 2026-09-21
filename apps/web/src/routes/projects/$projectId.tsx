@@ -4,6 +4,7 @@ import { ThreePane } from '@/app/ThreePane'
 import { AuthGuard } from '@/features/auth/AuthGuard'
 import { UserMenu } from '@/features/auth/UserMenu'
 import { ChatPane } from '@/features/chat/ChatPane'
+import { PreviewErrorBoundary } from '@/features/preview/PreviewErrorBoundary'
 import { PreviewHost } from '@/features/preview/PreviewHost'
 import { LeftPane } from '@/features/project/LeftPane'
 import { useProject } from '@/lib/queries'
@@ -45,7 +46,11 @@ function Workspace() {
         </div>
       }
       left={<LeftPane project={project.data} />}
-      middle={<PreviewHost projectId={projectId} />}
+      middle={
+        <PreviewErrorBoundary>
+          <PreviewHost projectId={projectId} />
+        </PreviewErrorBoundary>
+      }
       right={<ChatPane project={project.data} />}
     />
   )

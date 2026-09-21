@@ -144,7 +144,7 @@ function TextFile({
 }) {
   const content = useQuery({
     queryKey: ['file-content', projectId, file.id],
-    queryFn: () => api<string>(fileContentUrl(projectId, file.id), { headers: { Accept: '*/*' } }),
+    queryFn: () => api<string>(fileContentUrl(projectId, file.id), { asText: true }),
     staleTime: 60_000,
   })
   if (content.isPending) return <p className="text-muted-foreground p-3 text-sm">Loading…</p>

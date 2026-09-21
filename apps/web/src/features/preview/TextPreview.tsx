@@ -15,6 +15,8 @@ export function TextPreview({
   file: { name: string; mime: string }
   content: string
 }) {
+  // CodeMirror throws on anything but a string; a parsed JSON body must never reach it
+  const text = typeof content === 'string' ? content : JSON.stringify(content, null, 2)
   const extensions = useMemo(() => {
     const language = languageFor(file)
     const base = [EditorView.lineWrapping]
@@ -27,7 +29,7 @@ export function TextPreview({
 
   return (
     <CodeMirror
-      value={content}
+      value={text}
       height="100%"
       className="h-full text-[13px] [&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto"
       extensions={extensions}
