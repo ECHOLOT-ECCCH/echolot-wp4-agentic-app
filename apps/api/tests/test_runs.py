@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import uuid
 from collections.abc import Iterator
 
 import httpx
@@ -297,3 +298,66 @@ async def test_custom_steps_run_inside_samples_and_full_runs(
         failed["status"] == "failed"
         and "step 2 'Broken' failed with exit code 3: boom" in failed["error"]
     )
+
+
+async def test_live_preview_converts_an_entry_with_the_current_mapping(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState, monkeypatch
+) -> None:
+    from elexifier_agent.sandbox import RunnerClient
+    from elexifier_agent.testing import local_runner
+
+    from .test_steps import _artifact
+
+    logged_in.apply(client)
+    pid, doc_id = await _parsed_project(client, app_state)
+    entries = (
+        await client.get(f"/api/projects/{pid}/documents/{doc_id}/entries", params={"limit": 3})
+    ).json()["items"]
+    baby = entries[0]
+
+    # no run exists: the preview converts on the spot with the latest mapping
+    preview = await client.get(f"/api/projects/{pid}/entries/{baby['id']}/preview")
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["mapping_version"] == 1 and body["skipped"] is False and body["checked_alone"]
+    assert body["outputs"][0]["headword"] == "azyme"
+    assert body["outputs"][0]["xml"].startswith("<entry") and body["outputs"][0]["dmlex"]["id"]
+    assert body["steps"] == [] and body["warnings"] == []
+    assert (await client.get(f"/api/projects/{pid}/runs")).json() == []  # nothing stored
+
+    explicit = await client.get(
+        f"/api/projects/{pid}/entries/{baby['id']}/preview", params={"mapping_version": 1}
+    )
+    assert explicit.json()["outputs"] == body["outputs"]
+    missing = await client.get(
+        f"/api/projects/{pid}/entries/{baby['id']}/preview", params={"mapping_version": 9}
+    )
+    assert missing.status_code == 422 and "No such mapping version" in missing.text
+    assert (
+        await client.get(f"/api/projects/{pid}/entries/{uuid.uuid4()}/preview")
+    ).status_code == 404
+
+    # a custom step shows in the preview; without the runner the mapping output comes back
+    # with a warning instead of an error
+    code_id = await _artifact(app_state, pid, "code-upper.py", "text/x-python", UPPER_STEP.encode())
+    await client.post(
+        f"/api/projects/{pid}/steps",
+        json={"name": "Upper-case headwords", "code_artifact_id": code_id},
+    )
+    monkeypatch.setattr(app_state, "runner", local_runner(app_state.storage))
+    stepped = (await client.get(f"/api/projects/{pid}/entries/{baby['id']}/preview")).json()
+    assert stepped["outputs"][0]["headword"] == "AZYME" and stepped["steps"] == [
+        "Upper-case headwords"
+    ]
+
+    async def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(
+        app_state,
+        "runner",
+        RunnerClient("http://runner", "tok", transport=httpx.MockTransport(unreachable)),
+    )
+    unstepped = (await client.get(f"/api/projects/{pid}/entries/{baby['id']}/preview")).json()
+    assert unstepped["outputs"][0]["headword"] == "azyme" and unstepped["steps"] == []
+    assert unstepped["warnings"][0].startswith("custom steps not applied: step 1")

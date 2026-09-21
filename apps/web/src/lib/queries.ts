@@ -12,6 +12,7 @@ import type {
   DocumentDetail,
   DocumentRecord,
   EntryDetail,
+  EntryPreview,
   EntryPage,
   FileRecord,
   MappingCheck,
@@ -63,6 +64,8 @@ export const keys = {
     ['projects', projectId, 'runs', runId, 'entries', { offset, limit, issues }] as const,
   converted: (projectId: string, entryId: string, runId: string | null) =>
     ['projects', projectId, 'entries', entryId, 'converted', runId ?? 'latest'] as const,
+  preview: (projectId: string, entryId: string, version: number) =>
+    ['projects', projectId, 'entries', entryId, 'preview', version] as const,
   mappings: (projectId: string) => ['projects', projectId, 'mappings'] as const,
   mapping: (projectId: string, version: string) =>
     ['projects', projectId, 'mappings', version] as const,
@@ -268,6 +271,20 @@ export function useAnnotation(projectId: string, annotationId: string | null) {
 }
 
 /** Converted output of a source entry in a run (the latest run that has it when runId is null). */
+/** The entry converted on the spot with a mapping version (the latest, normally): the key
+ *  carries the version, so saving a new mapping refreshes every open entry. */
+export function useEntryPreview(projectId: string, entryId: string | null, version: number | null) {
+  return useQuery({
+    queryKey: keys.preview(projectId, entryId ?? '', version ?? 0),
+    queryFn: () =>
+      api<EntryPreview>(
+        `/api/projects/${projectId}/entries/${entryId}/preview?mapping_version=${version}`,
+      ),
+    enabled: Boolean(entryId) && version !== null,
+    staleTime: 5 * 60_000,
+  })
+}
+
 export function useConvertedEntry(projectId: string, entryId: string | null, runId: string | null) {
   const search = runId ? `?run_id=${runId}` : ''
   return useQuery({

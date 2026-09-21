@@ -963,3 +963,31 @@ Run with a scripted model driving the real tools against the dev database, the l
 - Not covered here, by design: the agent writing the snippet itself and the approval card in
   the chat, which need a paid model; the owner's in-depth user test covers them. The
   scripted-model tests exercise the same tool path, and the vitest renders the cards.
+
+## 2026-09-21 User test finding: entries convert live, runs are for batches
+
+The owner, testing with a real model: after a mapping change and a sample run, only the
+sampled entries showed fresh DMLex; other entries showed nothing or the output of whichever
+older run (and mapping version) last included them, with no way to tell. Runs were built for
+the agent's batch check and for full conversions; using them as the browsing view was wrong.
+Converting one entry is `convert_fragment` on a byte range of the source plus a per-entry
+schema validation, a few milliseconds, so:
+- `convert_live` (agent package) is the conversion behind both samples and the new preview:
+  mapping plan, fragment conversion with ordinal-seeded ids, the project's enabled custom
+  steps through the sandbox runner, per-entry validation. Samples require the steps (a
+  missing runner or a failing step is an error, as before); the preview is best effort and
+  returns the mapping output with a warning when the steps cannot run.
+- `GET /api/projects/{id}/entries/{entry_id}/preview?mapping_version=` converts one entry now
+  with the latest (or a given) mapping version; nothing is stored. The response carries the
+  outputs (DMLex JSON, XML, issues), the steps applied, warnings, and `checked_alone`.
+- The entry view shows the live output by default, labelled "Live · mapping vN", with a note
+  that the entry was checked alone (duplicate ids, homograph numbers and other cross-entry
+  checks need a sample or a full run). The query key carries the mapping version, so saving a
+  mapping refreshes every open entry; a `steps.changed` event refreshes them too. An entry
+  opened from a run keeps showing that run's stored output ("From run · mapping vN") with a
+  switch to the live view.
+- The XML workflow prompt tells the agent that the lexicographer sees any entry converted on
+  the spot ("open any entry to see it") and that samples and full runs are where it reads
+  issues and where cross-entry checks happen.
+- Not done: an issue marker per entry in the navigator, which would need converting every
+  entry on each mapping save (fine for small documents, a job for the large ones); backlog.

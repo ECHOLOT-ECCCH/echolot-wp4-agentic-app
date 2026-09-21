@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from elexifier_agent.conversion import (
     ConversionError,
+    convert_live,
     entry_xml,
     mapping_version,
     queue_full_run,
@@ -27,6 +28,8 @@ from elexifier_api.schemas import (
     ConvertedEntryOut,
     ConvertedEntryOverride,
     ConvertedEntryPage,
+    EntryPreviewOut,
+    LiveOutputOut,
     RunCreate,
     RunDetailOut,
     RunOut,
@@ -336,6 +339,69 @@ async def rebuild_run_outputs(
     await db.flush()
     await db.refresh(run)
     return RunDetailOut.model_validate(run)
+
+
+@router.get("/entries/{entry_id}/preview", response_model=EntryPreviewOut)
+async def preview_entry(
+    project_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+    storage: CurrentStorage,
+    state: State,
+    mapping_version_no: Annotated[
+        int | None, Query(alias="mapping_version", description="default: the latest")
+    ] = None,
+) -> EntryPreviewOut:
+    """Convert one source entry with a mapping version right now (steps applied when the
+    sandbox runner answers) and validate it on its own. Nothing is stored: this is what the
+    entry view shows for any entry, always with the current mapping."""
+    await get_project_or_404(db, project_id, user)
+    entry = await db.get(Entry, entry_id)
+    document = await db.get(Document, entry.document_id) if entry else None
+    if entry is None or document is None or document.project_id != project_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Entry not found")
+    mapping = await mapping_version(db, project_id, mapping_version_no)
+    if mapping is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "No such mapping version" if mapping_version_no else "No mapping yet",
+        )
+    try:
+        live = await convert_live(
+            db,
+            storage,
+            document=document,
+            mapping=mapping,
+            entries=[entry],
+            runner=state.runner,
+            steps_required=False,
+        )
+    except ConversionError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    outputs = []
+    for position, (_entry, dmlex) in enumerate(live.produced):
+        issues = [issue.as_dict() for issue in live.validation.issues_for(position)]
+        outputs.append(
+            LiveOutputOut(
+                position=position,
+                headword=(str(dmlex.get("headword") or entry.headword or "")[:300]) or None,
+                dmlex=dmlex,
+                xml=entry_xml(dmlex),
+                issues=issues,
+                issue_count=len(issues),
+            )
+        )
+    return EntryPreviewOut(
+        entry_id=entry.id,
+        mapping_version=mapping.version,
+        outputs=outputs,
+        skipped=not outputs,
+        resource_issues=[issue.as_dict() for issue in live.validation.resource_issues],
+        plan_warnings=live.plan_warnings,
+        steps=[record.name for record in live.step_records],
+        warnings=live.warnings,
+    )
 
 
 @router.get("/entries/{entry_id}/converted", response_model=list[ConvertedEntryDetailOut])

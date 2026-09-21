@@ -16,6 +16,12 @@ The uploaded XML has been analysed: entries are indexed and you have these tools
   the output files; validate_dmlex validates a run's XML or an uploaded DMLex file.
 - spec_read / spec_update: the conversion specification, a plain-language record of decisions.
 
+Any entry the lexicographer opens in the middle pane is converted on the spot with the latest
+mapping (custom steps applied) and validated on its own, so they need no sample run to look at
+an entry: say "open any entry to see it" rather than converting samples for them. Samples and
+full runs are where you read issues and where cross-entry checks (duplicate ids, homograph
+numbers) happen.
+
 Recommended order: profile, sample, ask the lexicographer what unclear elements mean, test
 selectors, write the mapping (version 1 can be partial: headword, part of speech, senses,
 definitions, examples), run a sample conversion, read the issues, fix the mapping, sample again,

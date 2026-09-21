@@ -376,6 +376,29 @@ export interface ConvertedEntryPage {
   limit: number
 }
 
+/** One output entry of a live conversion (nothing stored). */
+export interface LiveOutput {
+  position: number
+  headword: string | null
+  dmlex: Record<string, unknown>
+  xml: string
+  issues: EntryIssue[]
+  issue_count: number
+}
+
+/** A source entry converted just now with a mapping version, checked on its own. */
+export interface EntryPreview {
+  entry_id: string
+  mapping_version: number
+  outputs: LiveOutput[]
+  skipped: boolean
+  resource_issues: EntryIssue[]
+  plan_warnings: string[]
+  steps: string[]
+  warnings: string[]
+  checked_alone: boolean
+}
+
 export interface ConvertedEntryDetail extends ConvertedEntryItem {
   dmlex: Record<string, unknown>
   xml: string

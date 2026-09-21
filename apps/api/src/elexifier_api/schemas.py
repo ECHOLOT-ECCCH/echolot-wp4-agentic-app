@@ -253,6 +253,29 @@ class ConvertedEntryDetailOut(ConvertedEntryOut):
     override: dict[str, Any] | None = None
 
 
+class LiveOutputOut(BaseModel):
+    position: int
+    headword: str | None
+    dmlex: dict[str, Any]
+    xml: str
+    issues: list[Any]
+    issue_count: int
+
+
+class EntryPreviewOut(BaseModel):
+    """One source entry converted just now with a mapping version: nothing is stored."""
+
+    entry_id: uuid.UUID
+    mapping_version: int
+    outputs: list[LiveOutputOut]
+    skipped: bool  # the mapping produced no entry for this source entry
+    resource_issues: list[Any] = Field(default_factory=list)
+    plan_warnings: list[str] = Field(default_factory=list)
+    steps: list[str] = Field(default_factory=list)  # custom steps applied, in order
+    warnings: list[str] = Field(default_factory=list)
+    checked_alone: bool = True  # cross-entry checks (duplicate ids, homographs) need a run
+
+
 class ConvertedEntryOverride(BaseModel):
     override: dict[str, Any] | None  # None removes the correction
 

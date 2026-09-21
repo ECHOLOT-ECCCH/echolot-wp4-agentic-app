@@ -22,6 +22,7 @@ from elexifier_agent.sandbox import RunnerClient
 from elexifier_agent.steps import (
     StepFailed,
     StepRecord,
+    StepSpec,
     apply_steps_to_entries,
     enabled_steps,
     records_snapshot,
@@ -117,23 +118,36 @@ def entry_xml(dmlex: dict[str, Any]) -> str:
     return etree.tostring(element, encoding="unicode")
 
 
-async def run_sample(
+@dataclass
+class LiveConversion:
+    """Entries converted with a mapping, right now, nothing stored: what a sample run stores
+    and what the entry view shows for any entry the lexicographer opens."""
+
+    produced: list[tuple[Entry, dict[str, Any]]]
+    skipped: list[dict[str, Any]]  # entries with no output
+    scalars: dict[str, Any]
+    validation: EntryValidation
+    plan_warnings: list[str] = field(default_factory=list)
+    steps: list[StepSpec] = field(default_factory=list)
+    step_records: list[StepRecord] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)  # steps skipped, and why
+
+
+async def convert_live(
     db: AsyncSession,
     storage: Storage,
     *,
     document: Document,
     mapping: Mapping,
     entries: list[Entry],
-    triggered_by: uuid.UUID | None,
-    scope: dict[str, Any] | None = None,
     runner: RunnerClient | None = None,
-) -> SampleOutcome:
-    """Convert ``entries`` with ``mapping`` and store a done sample run. Commits nothing; the
-    caller commits. Raises ConversionError for problems the caller should report."""
+    steps_required: bool = True,
+) -> LiveConversion:
+    """Convert ``entries`` with ``mapping`` on the fly, apply the project's enabled steps and
+    validate each output entry on its own. With ``steps_required`` a missing runner or a failing
+    step raises; otherwise the output before the steps comes back with a warning."""
     if not entries:
         raise ConversionError("no entries selected")
-    if len(entries) > MAX_SAMPLE_RUN_ENTRIES:
-        raise ConversionError(f"a sample converts at most {MAX_SAMPLE_RUN_ENTRIES} entries")
     try:
         desc = load_mapping_spec(mapping.spec).to_desc()
         plan = streaming.plan_for(desc)
@@ -175,40 +189,80 @@ async def run_sample(
         return produced, skipped
 
     produced, skipped = await asyncio.to_thread(convert)
-    # custom steps (M3.5): the sample shows what the full run will produce
+    # custom steps (M3.5): samples and previews show what the full run will produce
     steps = await enabled_steps(db, document.project_id)
     step_records: list[StepRecord] = []
+    warnings: list[str] = []
     if steps and produced:
-        if runner is None:
-            raise ConversionError(
-                "this project has custom steps, which need the sandbox runner; it is not "
-                "available in this context"
-            )
-        workdir = Path(tempfile.mkdtemp(prefix="elexifier-sample-steps-"))
         try:
-            transformed, step_records = await apply_steps_to_entries(
-                runner,
-                storage,
-                steps,
-                [dmlex for _entry, dmlex in produced],
-                project_id=document.project_id,
-                run_id=f"sample-{uuid.uuid4().hex[:8]}",
-                workdir=workdir,
-                source_key=file.s3_key,
-            )
+            if runner is None:
+                raise StepFailed(
+                    "this project has custom steps, which need the sandbox runner; it is not "
+                    "available in this context"
+                )
+            workdir = Path(tempfile.mkdtemp(prefix="elexifier-sample-steps-"))
+            try:
+                transformed, step_records = await apply_steps_to_entries(
+                    runner,
+                    storage,
+                    steps,
+                    [dmlex for _entry, dmlex in produced],
+                    project_id=document.project_id,
+                    run_id=f"sample-{uuid.uuid4().hex[:8]}",
+                    workdir=workdir,
+                    source_key=file.s3_key,
+                )
+            finally:
+                shutil.rmtree(workdir, ignore_errors=True)
+            if len(transformed) != len(produced):
+                raise StepFailed(
+                    f"the custom steps changed the number of entries ({len(produced)} in, "
+                    f"{len(transformed)} out); a sample needs one output per source entry"
+                )
+            produced = [
+                (entry, new) for (entry, _old), new in zip(produced, transformed, strict=True)
+            ]
         except StepFailed as exc:
-            raise ConversionError(str(exc)) from exc
-        finally:
-            shutil.rmtree(workdir, ignore_errors=True)
-        if len(transformed) != len(produced):
-            raise ConversionError(
-                f"the custom steps changed the number of entries ({len(produced)} in, "
-                f"{len(transformed)} out); a sample needs one output per source entry"
-            )
-        produced = [(entry, new) for (entry, _old), new in zip(produced, transformed, strict=True)]
+            if steps_required:
+                raise ConversionError(str(exc)) from exc
+            step_records = []
+            warnings.append(f"custom steps not applied: {exc}")
     validation = await asyncio.to_thread(
         validate_entries, scalars, [dmlex for _entry, dmlex in produced]
     )
+    return LiveConversion(
+        produced=produced,
+        skipped=skipped,
+        scalars=scalars,
+        validation=validation,
+        plan_warnings=plan.warnings,
+        steps=steps,
+        step_records=step_records,
+        warnings=warnings,
+    )
+
+
+async def run_sample(
+    db: AsyncSession,
+    storage: Storage,
+    *,
+    document: Document,
+    mapping: Mapping,
+    entries: list[Entry],
+    triggered_by: uuid.UUID | None,
+    scope: dict[str, Any] | None = None,
+    runner: RunnerClient | None = None,
+) -> SampleOutcome:
+    """Convert ``entries`` with ``mapping`` and store a done sample run. Commits nothing; the
+    caller commits. Raises ConversionError for problems the caller should report."""
+    if not entries:
+        raise ConversionError("no entries selected")
+    if len(entries) > MAX_SAMPLE_RUN_ENTRIES:
+        raise ConversionError(f"a sample converts at most {MAX_SAMPLE_RUN_ENTRIES} entries")
+    live = await convert_live(
+        db, storage, document=document, mapping=mapping, entries=entries, runner=runner
+    )
+    produced, skipped, validation = live.produced, live.skipped, live.validation
 
     run = ConversionRun(
         project_id=document.project_id,
@@ -219,7 +273,7 @@ async def run_sample(
         status=ConversionStatus.DONE.value,
         triggered_by=triggered_by,
         finished_at=datetime.now(UTC),
-        steps_snapshot=records_snapshot(steps, step_records),
+        steps_snapshot=records_snapshot(live.steps, live.step_records),
     )
     db.add(run)
     await db.flush()
@@ -250,7 +304,7 @@ async def run_sample(
         "errors": errors,
         "warnings": warnings,
         "resource_issues": len(resource_issues),
-        "steps": len(step_records),
+        "steps": len(live.step_records),
     }
     run.validation_report = {
         "summary": validation.report.summary(),
@@ -258,8 +312,8 @@ async def run_sample(
         "error_count": validation.report.error_count,
         "limitation_count": validation.report.limitation_count,
         "resource_issues": resource_issues,
-        "plan_warnings": plan.warnings,
-        "resource_scalars": scalars,
+        "plan_warnings": live.plan_warnings,
+        "resource_scalars": live.scalars,
     }
     await publish(
         db,
@@ -273,7 +327,7 @@ async def run_sample(
         converted=converted,
         validation=validation,
         skipped=skipped,
-        plan_warnings=plan.warnings,
+        plan_warnings=live.plan_warnings,
     )
 
 

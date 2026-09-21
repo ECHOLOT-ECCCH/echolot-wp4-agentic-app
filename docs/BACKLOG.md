@@ -25,3 +25,4 @@ Move an item into docs/PLAN.md when it is scheduled.
 - Review sample: let the lexicographer choose the sample size, redraw it, and mark sample pages as seen.
 - Act on structurer verdicts: offer to split a merged span at the named headword (the line that starts with it), merge a fragment with its predecessor, reject a not_an_entry span, as one-click suggestions in the review panel and as an agent tool.
 - Files pane: group a code run's artifacts (code, log, step, outputs share `meta.code_run`) under one collapsible row with the purpose; stream sandbox inputs instead of staging them twice.
+- Entry navigator: an issue marker per entry, from a background pass that converts every entry with the latest mapping on each save (synchronous for documents up to a few thousand entries, a job above that); would also make "entries with issues" browsable without a run.
