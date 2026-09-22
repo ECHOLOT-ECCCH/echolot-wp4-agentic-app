@@ -3,114 +3,225 @@ import type { ReactNode } from 'react'
 type Obj = Record<string, unknown>
 
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
-const list = (v: unknown): Obj[] => (Array.isArray(v) ? v.filter(isObj) : [])
-const text = (v: unknown): string =>
-  typeof v === 'string' || typeof v === 'number' ? String(v) : ''
+const isObjList = (v: unknown): v is Obj[] => Array.isArray(v) && v.length > 0 && v.every(isObj)
+const scalar = (v: unknown): string =>
+  typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : ''
 
-function Tags({ items, field = 'tag' }: { items: Obj[]; field?: string }) {
-  if (items.length === 0) return null
+/** DMLex names the XML uses (singular), for the plural keys of the JSON serialisation. */
+const SINGULAR: Record<string, string> = {
+  partsOfSpeech: 'partOfSpeech',
+  labels: 'label',
+  pronunciations: 'pronunciation',
+  transcriptions: 'transcription',
+  inflectedForms: 'inflectedForm',
+  senses: 'sense',
+  definitions: 'definition',
+  examples: 'example',
+  headwordTranslations: 'headwordTranslation',
+  headwordExplanations: 'headwordExplanation',
+  exampleTranslations: 'exampleTranslation',
+  relations: 'relation',
+  members: 'member',
+  etymologies: 'etymology',
+  etymons: 'etymon',
+  etymonUnits: 'etymonUnit',
+  placeholderMarkers: 'placeholderMarker',
+  headwordMarkers: 'headwordMarker',
+  itemMarkers: 'itemMarker',
+}
+const singular = (key: string): string =>
+  SINGULAR[key] ?? (key.endsWith('ies') ? `${key.slice(0, -3)}y` : key.replace(/s$/, ''))
+
+/** Fields shown first, in this order; anything else follows in the order of the data. */
+const FIRST = [
+  'headword',
+  'homographNumber',
+  'indicator',
+  'text',
+  'tag',
+  'partsOfSpeech',
+  'labels',
+  'pronunciations',
+  'transcriptions',
+  'inflectedForms',
+  'definitions',
+  'headwordTranslations',
+  'headwordExplanations',
+  'examples',
+  'exampleTranslations',
+  'senses',
+]
+/** Scalars that qualify the object's text and sit next to it as small tags. */
+const QUALIFIERS = new Set([
+  'langCode',
+  'scheme',
+  'definitionType',
+  'listingOrder',
+  'sourceIdentity',
+  'sourceElaboration',
+  'soundFile',
+  'type',
+])
+
+function orderedKeys(obj: Obj): string[] {
+  const keys = Object.keys(obj).filter((k) => k !== 'id')
+  const rank = (k: string) => {
+    const i = FIRST.indexOf(k)
+    return i < 0 ? FIRST.length : i
+  }
+  return keys.sort((a, b) => rank(a) - rank(b) || keys.indexOf(a) - keys.indexOf(b))
+}
+
+function Id({ value }: { value: unknown }) {
+  const id = scalar(value)
+  if (!id) return null
   return (
-    <>
-      {items.map((item, i) => (
-        <span key={i} className="bg-muted text-muted-foreground rounded px-1 text-[11px]">
-          {text(item[field])}
-        </span>
-      ))}
-    </>
+    <code className="text-muted-foreground ml-auto shrink-0 text-[11px]" data-testid="dmlex-id">
+      {id}
+    </code>
   )
 }
 
-function Sense({ sense, index }: { sense: Obj; index: number }) {
-  const definitions = list(sense.definitions)
-  const examples = list(sense.examples)
-  const translations = list(sense.headwordTranslations)
-  const explanations = list(sense.headwordExplanations)
+function Name({ children }: { children: ReactNode }) {
   return (
-    <li className="flex flex-col gap-0.5">
-      <div className="flex flex-wrap items-baseline gap-1">
-        <span className="text-muted-foreground text-xs">{index + 1}.</span>
-        {text(sense.indicator) && <span className="italic">({text(sense.indicator)})</span>}
-        <Tags items={list(sense.labels)} />
-        {definitions.map((d, i) => (
-          <span key={i}>{text(d.text)}</span>
-        ))}
-        {translations.map((t, i) => (
-          <span key={i} className="font-medium">
-            {text(t.text)}
-            {i < translations.length - 1 ? ';' : ''}
-          </span>
-        ))}
-        {explanations.map((e, i) => (
-          <span key={i} className="text-muted-foreground">
-            [{text(e.text)}]
-          </span>
-        ))}
-      </div>
-      {examples.length > 0 && (
-        <ul className="ml-4 flex flex-col gap-0.5">
-          {examples.map((example, i) => {
-            const exampleTranslations = list(example.exampleTranslations)
-            return (
-              <li key={i} className="text-[13px]">
-                <span className="italic">{text(example.text)}</span>
-                <Tags items={list(example.labels)} />
-                {exampleTranslations.map((t, j) => (
-                  <span key={j} className="text-muted-foreground">
-                    {' '}
-                    — {text(t.text)}
-                  </span>
-                ))}
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </li>
+    <span
+      className="text-muted-foreground w-36 shrink-0 text-[11px] leading-5"
+      data-testid="dmlex-field"
+    >
+      {children}
+    </span>
   )
 }
 
-/** A dictionary-style rendering of one DMLex entry (core + crosslingual, best effort). */
-export function DmlexRendering({ entry }: { entry: Obj }) {
-  const pronunciations = list(entry.pronunciations)
-  const transcriptions = pronunciations.flatMap((p) => list(p.transcriptions))
-  const inflected = list(entry.inflectedForms)
-  const senses = list(entry.senses)
-  const extras: ReactNode[] = []
-  if (transcriptions.length > 0)
-    extras.push(
-      <span key="pr" className="text-muted-foreground">
-        /{transcriptions.map((t) => text(t.text)).join(', ')}/
-      </span>,
+function Qualifier({ name, value }: { name: string; value: string }) {
+  return (
+    <span className="bg-muted text-muted-foreground rounded px-1 text-[10px]" title={name}>
+      {value}
+    </span>
+  )
+}
+
+/** One field of an object: a scalar as "name value", a list of objects as one line or one
+ *  block per object, named in the singular the way the XML names them. */
+function Field({ name, value, depth }: { name: string; value: unknown; depth: number }) {
+  if (isObjList(value)) {
+    const one = singular(name)
+    return (
+      <>
+        {value.map((item, i) => (
+          <Item
+            key={i}
+            name={one}
+            index={value.length > 1 ? i + 1 : undefined}
+            item={item}
+            depth={depth}
+          />
+        ))}
+      </>
     )
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null
+    return (
+      <div className="flex gap-2">
+        <Name>{name}</Name>
+        <span>{value.map(scalar).join(', ')}</span>
+      </div>
+    )
+  }
+  if (isObj(value)) return <Item name={name} item={value} depth={depth} />
+  const text = scalar(value)
+  if (!text) return null
   return (
-    <article className="flex flex-col gap-2 p-3 text-sm leading-relaxed">
+    <div className="flex gap-2">
+      <Name>{name}</Name>
+      <span className="min-w-0 break-words">{text}</span>
+    </div>
+  )
+}
+
+/** A DMLex object. One with nothing but a text/tag and its qualifiers takes one line; one
+ *  with more inside (a sense, an example with translations) becomes a block with its id. */
+function Item({
+  name,
+  index,
+  item,
+  depth,
+}: {
+  name: string
+  index?: number
+  item: Obj
+  depth: number
+}) {
+  const keys = orderedKeys(item)
+  const main = scalar(item.text) || scalar(item.tag)
+  const mainKey = scalar(item.text) ? 'text' : scalar(item.tag) ? 'tag' : null
+  const rest = keys.filter((k) => k !== mainKey)
+  const qualifiers = rest.filter(
+    (k) => (QUALIFIERS.has(k) || (k === 'tag' && mainKey === 'text')) && scalar(item[k]),
+  )
+  const others = rest.filter((k) => !qualifiers.includes(k))
+  const label = index !== undefined ? `${name} ${index}` : name
+  if (mainKey && others.length === 0) {
+    return (
+      <div className="flex flex-wrap items-baseline gap-2">
+        <Name>{label}</Name>
+        <span
+          className={`min-w-0 break-words ${name.endsWith('Translation') ? 'font-medium' : ''}`}
+        >
+          {main}
+        </span>
+        {qualifiers.map((k) => (
+          <Qualifier key={k} name={k} value={scalar(item[k])} />
+        ))}
+        <Id value={item.id} />
+      </div>
+    )
+  }
+  return (
+    <section
+      className={`flex flex-col gap-0.5 ${depth > 0 ? 'border-border ml-2 border-l pl-3' : ''}`}
+      data-testid={`dmlex-${name}`}
+    >
       <header className="flex flex-wrap items-baseline gap-2">
-        <span className="text-base font-semibold">{text(entry.headword) || '(no headword)'}</span>
-        {text(entry.homographNumber) && <sup>{text(entry.homographNumber)}</sup>}
-        {extras}
-        <Tags items={list(entry.partsOfSpeech)} />
-        <Tags items={list(entry.labels)} />
+        <span className="text-xs font-semibold">{label}</span>
+        {mainKey && <span className="min-w-0 break-words">{main}</span>}
+        {qualifiers.map((k) => (
+          <Qualifier key={k} name={k} value={scalar(item[k])} />
+        ))}
+        <Id value={item.id} />
       </header>
-      {inflected.length > 0 && (
-        <p className="text-muted-foreground text-xs">
-          {inflected.map((f, i) => (
-            <span key={i} className="mr-2">
-              {text(f.tag) && <span>{text(f.tag)} </span>}
-              <span className="text-foreground">{text(f.text)}</span>
-            </span>
-          ))}
-        </p>
+      {others.map((k) => (
+        <Field key={k} name={k} value={item[k]} depth={depth + 1} />
+      ))}
+    </section>
+  )
+}
+
+/**
+ * One DMLex entry with every field named the way DMLex names it and every id visible: the
+ * headword on top, then each field as "name value", nested objects (senses, examples,
+ * pronunciations) as blocks with their ids. Generic over the JSON, so extensions and
+ * unexpected fields show too; nothing is hidden.
+ */
+export function DmlexRendering({ entry }: { entry: Obj }) {
+  const keys = orderedKeys(entry).filter((k) => k !== 'headword' && k !== 'homographNumber')
+  return (
+    <article className="flex flex-col gap-1 p-3 text-sm leading-5">
+      <header className="flex flex-wrap items-baseline gap-2">
+        <Name>entry</Name>
+        <span className="text-base font-semibold">{scalar(entry.headword) || '(no headword)'}</span>
+        {scalar(entry.homographNumber) && (
+          <sup title="homographNumber">{scalar(entry.homographNumber)}</sup>
+        )}
+        <Id value={entry.id} />
+      </header>
+      {keys.map((k) => (
+        <Field key={k} name={k} value={entry[k]} depth={0} />
+      ))}
+      {keys.length === 0 && (
+        <p className="text-muted-foreground text-xs">No fields besides the headword.</p>
       )}
-      {senses.length > 0 ? (
-        <ol className="flex flex-col gap-1.5">
-          {senses.map((sense, i) => (
-            <Sense key={i} sense={sense} index={i} />
-          ))}
-        </ol>
-      ) : (
-        <p className="text-muted-foreground text-xs">No senses.</p>
-      )}
-      {text(entry.id) && <p className="text-muted-foreground text-[11px]">id {text(entry.id)}</p>}
     </article>
   )
 }

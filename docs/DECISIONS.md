@@ -1059,3 +1059,14 @@ one and gives the halves `p` and `p+1`; the panel takes the next span in the lis
 (position, top edge, id). A regression test checks the positions after a split and that the
 merge leaves every other proposal alone. Lesson: a flaky e2e is a bug until proven otherwise;
 the two earlier one-off failures of this test were the same defect.
+
+## 2026-09-22 User test finding: the rendered view names the fields and shows the ids
+
+The dictionary-style rendering hid which DMLex field a value had landed in, and showed no
+sense ids; for checking a mapping that is the whole point. The rendered view is now a generic
+walk over the entry's JSON: every field named the way DMLex XML names it (`partOfSpeech`,
+`definition`, `headwordTranslation`, `exampleTranslation`, …), scalars as "name value",
+objects with content of their own (senses, examples, pronunciations) as numbered blocks with
+their id on the right, qualifiers (`langCode`, `scheme`, `definitionType`, an inflected form's
+`tag`) as small tags next to the text. Because it is generic, extension modules and unexpected
+fields show as well; nothing is hidden. Used by the entry view and the PDF span view.
