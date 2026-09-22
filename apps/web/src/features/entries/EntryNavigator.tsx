@@ -1,5 +1,5 @@
 import { ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,10 +22,17 @@ export function EntryNavigator({
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [offset, setOffset] = useState(0)
+  const applied = useRef('')
 
+  // the search term settles 250 ms after the last keystroke; paging goes back to the first
+  // page only when the term actually changed (the timer also fires once after mount, and must
+  // not undo a page turn made in the meantime)
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      setDebounced(query.trim())
+      const next = query.trim()
+      if (next === applied.current) return
+      applied.current = next
+      setDebounced(next)
       setOffset(0)
     }, 250)
     return () => window.clearTimeout(handle)
