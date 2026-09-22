@@ -211,3 +211,100 @@ async def test_chat_attaches_selection_context(
     assert (
         await client.post(f"/api/projects/{pid}/conversations/{cid}/chat", json=bad)
     ).status_code == 422
+
+
+async def _parsed_project_with_test_model(
+    client: httpx.AsyncClient,
+) -> tuple[str, dict[str, Any]]:
+    from elexifier_api.jobs import documents as jobs_documents
+    from elexifier_pipeline.sample import OXFORD_XML
+
+    pid = await _project_with_test_model(client)
+    resp = await client.post(
+        f"/api/projects/{pid}/files", params={"name": "oxford.xml"}, content=OXFORD_XML.read_bytes()
+    )
+    assert resp.status_code == 201, resp.text
+    doc = (await client.get(f"/api/projects/{pid}/documents")).json()[0]
+    await jobs_documents.parse_document(doc["id"])
+    entries = (
+        await client.get(f"/api/projects/{pid}/documents/{doc['id']}/entries", params={"limit": 2})
+    ).json()["items"]
+    return pid, entries[1]
+
+
+async def test_chat_tells_the_model_what_is_open_and_keeps_it_across_turns(
+    client: httpx.AsyncClient, logged_in: LoggedIn
+) -> None:
+    logged_in.apply(client)
+    pid, entry = await _parsed_project_with_test_model(client)
+    cid = (await client.post(f"/api/projects/{pid}/conversations", json={})).json()["id"]
+    chat = f"/api/projects/{pid}/conversations/{cid}/chat"
+
+    body = _chat_body(_user_message("is this entry right?"))
+    body["viewing"] = {"kind": "entry", "entryId": entry["id"], "runId": None}
+    assert (await client.post(chat, json=body)).status_code == 200
+    stored = (await client.get(f"/api/projects/{pid}/conversations/{cid}/messages")).json()
+    parts = stored[0]["parts"]
+    assert [p["type"] for p in parts] == ["text", "text", "data-viewing"]
+    assert parts[1]["text"] == (
+        "[Looking at: entry 2 “b” of oxford.xml, converted live with the latest mapping]"
+    )
+    assert parts[2]["data"]["ordinal"] == 1 and parts[2]["data"]["kind"] == "entry"
+
+    # the next turn: the browser resends its own copy of the first message (no server parts)
+    # plus the new one; the note survives on the first and the new one gets its own
+    second = _chat_body(
+        _user_message("is this entry right?"), *stored[1:], _user_message("and the mapping?", "m2")
+    )
+    second["viewing"] = {"kind": "mapping", "version": 2}
+    assert (await client.post(chat, json=second)).status_code == 200
+    stored = (await client.get(f"/api/projects/{pid}/conversations/{cid}/messages")).json()
+    users = [m for m in stored if m["role"] == "user"]
+    assert users[0]["parts"] == parts
+    assert users[1]["parts"][1]["text"] == "[Looking at: the mapping editor, version 2]"
+
+    # nothing open, or something of another project: no note; a malformed target is ignored
+    third = _chat_body(*stored, _user_message("thanks", "m3"))
+    third["viewing"] = {"kind": "entry", "entryId": str(uuid.uuid4())}
+    assert (await client.post(chat, json=third)).status_code == 200
+    stored = (await client.get(f"/api/projects/{pid}/conversations/{cid}/messages")).json()
+    assert [p["type"] for p in stored[-2]["parts"] if stored[-2]["role"] == "user"] in (
+        ["text"],
+        [],
+    )
+    fourth = _chat_body(*stored, _user_message("bye", "m4"))
+    fourth["viewing"] = {"kind": "entry", "entryId": "not-a-uuid"}
+    assert (await client.post(chat, json=fourth)).status_code == 200
+
+
+async def test_chat_attaches_an_entry_as_shown(
+    client: httpx.AsyncClient, logged_in: LoggedIn
+) -> None:
+    logged_in.apply(client)
+    pid = await _project_with_test_model(client)
+    cid = (await client.post(f"/api/projects/{pid}/conversations", json={})).json()["id"]
+    body = _chat_body(_user_message("the sense numbering here is wrong"))
+    body["context"] = [
+        {
+            "kind": "entry",
+            "id": "entry:e1",
+            "label": "entry 8 babble",
+            "entry_id": str(uuid.uuid4()),
+            "document_id": str(uuid.uuid4()),
+            "ordinal": 7,
+            "headword": "babble",
+            "document_name": "oxford.xml",
+            "origin": "converted live with mapping v3",
+            "source_text": "<se><hw>babble</hw><s1>...</s1></se>",
+            "output_xml": '<entry id="e8"><headword>babble</headword></entry>',
+            "issues": ["sense[1]: sense has no content"],
+        }
+    ]
+    resp = await client.post(f"/api/projects/{pid}/conversations/{cid}/chat", json=body)
+    assert resp.status_code == 200, resp.text
+    stored = (await client.get(f"/api/projects/{pid}/conversations/{cid}/messages")).json()
+    parts = stored[0]["parts"]
+    assert [p["type"] for p in parts] == ["text", "text", "data-context"]
+    assert parts[1]["text"].startswith("[Attached: entry 8 “babble” of oxford.xml; converted live")
+    assert "<hw>babble</hw>" in parts[1]["text"] and "Issues: sense[1]" in parts[1]["text"]
+    assert parts[2]["data"]["kind"] == "entry" and "id" not in parts[2]["data"]

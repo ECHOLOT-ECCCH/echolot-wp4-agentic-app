@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import copy
 import json
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 UiMessage = dict[str, Any]
 FINAL_STATES = ("output-available", "output-error", "output-denied")
@@ -143,29 +143,74 @@ def _is_live_approval_turn(messages: list[UiMessage], last_assistant: int) -> bo
     return last_assistant >= 0 and last_assistant == len(messages) - 1
 
 
-# --- context chips (selection on a PDF page sent with a message) ------------------------------
+# --- context chips (what the lexicographer attached to a message) -----------------------------
 
 MAX_CHIP_CHARS = 4000
 MAX_CHIPS = 6
+VIEWING_PREFIX = "[Looking at: "
 
 
 class ContextChip(BaseModel):
-    """A region the lexicographer selected on a page, attached to the next message."""
+    """Something the lexicographer attached to the next message: a region selected on a PDF
+    page (``kind`` "region": page, box, its words) or an entry as shown in the middle pane
+    (``kind`` "entry": its source, its DMLex output and the issues found)."""
 
     model_config = ConfigDict(extra="ignore")
 
-    document_id: str
-    page: int = Field(ge=1)
-    bbox: tuple[float, float, float, float]
-    text: str = Field(max_length=MAX_CHIP_CHARS)
-    words: int = 0
+    kind: Literal["region", "entry"] = "region"
+    document_id: str | None = None
     file_id: str | None = None
     label: str | None = None  # what the UI showed, e.g. "page 3, 12 words"
+    # region
+    page: int | None = Field(default=None, ge=1)
+    bbox: tuple[float, float, float, float] | None = None
+    text: str = Field(default="", max_length=MAX_CHIP_CHARS)
+    words: int = 0
+    # entry
+    entry_id: str | None = None
+    ordinal: int | None = None
+    headword: str | None = Field(default=None, max_length=300)
+    document_name: str | None = Field(default=None, max_length=300)
+    origin: str | None = Field(default=None, max_length=200)  # "live, mapping v3" / "run …"
+    source_kind: Literal["xml", "pdf"] = "xml"
+    source_text: str = Field(default="", max_length=MAX_CHIP_CHARS)
+    output_xml: str = Field(default="", max_length=MAX_CHIP_CHARS)
+    issues: list[str] = Field(default_factory=list, max_length=40)
+
+    @model_validator(mode="after")
+    def _complete(self) -> ContextChip:
+        if self.kind == "region":
+            if self.document_id is None or self.page is None or self.bbox is None:
+                raise ValueError("a region chip needs document_id, page and bbox")
+        elif not (self.source_text or self.output_xml):
+            raise ValueError("an entry chip needs the source text or the output")
+        return self
 
 
 def chip_text(chip: ContextChip) -> str:
-    box = ", ".join(str(round(v)) for v in chip.bbox)
-    return f'[Selected on page {chip.page}, box ({box}) in points]\n"""\n{chip.text.strip()}\n"""'
+    """The chip as the model reads it, quoted so it is not mistaken for an instruction."""
+    if chip.kind == "region":
+        box = ", ".join(str(round(v)) for v in chip.bbox or (0, 0, 0, 0))
+        return (
+            f'[Selected on page {chip.page}, box ({box}) in points]\n"""\n{chip.text.strip()}\n"""'
+        )
+    who = f"entry {chip.ordinal + 1}" if chip.ordinal is not None else "an entry"
+    head = f" \u201c{chip.headword}\u201d" if chip.headword else ""
+    where = f" of {chip.document_name}" if chip.document_name else ""
+    origin = f"; {chip.origin}" if chip.origin else ""
+    lines = [f"[Attached: {who}{head}{where}{origin}]"]
+    if chip.source_text.strip():
+        label = (
+            "Source XML"
+            if chip.source_kind == "xml"
+            else (f"Text of the span on page {chip.page}" if chip.page else "Text of the span")
+        )
+        lines.append(f'{label}:\n"""\n{chip.source_text.strip()}\n"""')
+    if chip.output_xml.strip():
+        lines.append(f'DMLex output:\n"""\n{chip.output_xml.strip()}\n"""')
+    if chip.issues:
+        lines.append("Issues: " + "; ".join(i.strip() for i in chip.issues if i.strip()))
+    return "\n".join(lines)
 
 
 def attach_context(messages: list[UiMessage], chips: list[ContextChip]) -> list[UiMessage]:
@@ -182,7 +227,7 @@ def attach_context(messages: list[UiMessage], chips: list[ContextChip]) -> list[
         if p.get("type") == "data-context" and isinstance(p.get("data"), dict)
     }
     for chip in chips[:MAX_CHIPS]:
-        data = chip.model_dump(mode="json")
+        data = chip.model_dump(mode="json", exclude_defaults=True)
         if json.dumps(data, sort_keys=True) in already:
             continue
         parts.append({"type": "text", "text": chip_text(chip)})
@@ -191,10 +236,54 @@ def attach_context(messages: list[UiMessage], chips: list[ContextChip]) -> list[
     return messages
 
 
+def attach_viewing(
+    messages: list[UiMessage], description: str, data: dict[str, Any]
+) -> list[UiMessage]:
+    """Tell the model what the lexicographer has open in the middle pane: a short text part on
+    the last user message (so "this entry" means something) and a ``data-viewing`` part the UI
+    shows as a small note. Once per message."""
+    description = " ".join(description.split())
+    if not description or not messages or messages[-1].get("role") != "user":
+        return messages
+    if any(p.get("type") == "data-viewing" for p in messages[-1].get("parts", [])):
+        return messages
+    messages = copy.deepcopy(messages)
+    last = messages[-1]
+    last["parts"] = [
+        *last.get("parts", []),
+        {"type": "text", "text": f"{VIEWING_PREFIX}{description}]"},
+        {"type": "data-viewing", "data": {**data, "description": description}},
+    ]
+    return messages
+
+
+def restore_attachments(messages: list[UiMessage], stored: list[UiMessage]) -> list[UiMessage]:
+    """The browser resends its own copy of earlier user messages, which lacks the parts the
+    server attached (chips, the viewing note). Where a stored user message with the same id
+    starts with the parts the browser sent, the stored parts win, so the attachments stay in
+    the history the model sees and in what is saved."""
+    by_id = {m.get("id"): m for m in stored if m.get("role") == "user" and m.get("id")}
+    if not by_id:
+        return messages
+    out = []
+    for message in messages:
+        kept = by_id.get(message.get("id")) if message.get("role") == "user" else None
+        if kept is not None:
+            mine = list(message.get("parts", []))
+            theirs = list(kept.get("parts", []))
+            if len(theirs) > len(mine) and theirs[: len(mine)] == mine:
+                message = {**message, "parts": copy.deepcopy(theirs)}
+        out.append(message)
+    return out
+
+
 __all__ = [
+    "VIEWING_PREFIX",
     "ContextChip",
     "attach_context",
+    "attach_viewing",
     "chip_text",
     "collect_tool_outputs",
     "normalize_ui_messages",
+    "restore_attachments",
 ]

@@ -118,7 +118,8 @@ function LiveThread({
         api: `/api/projects/${project.id}/conversations/${conversationId}/chat`,
         credentials: 'same-origin',
         headers: () => ({ 'X-CSRF-Token': csrfToken() }),
-        // selections on the PDF page travel with the message and are cleared once sent
+        // attachments travel with the message and are cleared once sent; what is open in the
+        // middle pane goes along too, so "this entry" means something to the model
         prepareSendMessagesRequest: ({ id, messages, trigger, messageId, body }) => ({
           body: {
             ...(body as object | undefined),
@@ -127,6 +128,7 @@ function LiveThread({
             trigger,
             messageId,
             context: useChatContext.getState().take(),
+            viewing: usePreview.getState().target,
           },
         }),
       }),

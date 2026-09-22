@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, PencilIcon } from 'lucide-react'
+import { ArrowLeftIcon, MessageSquareQuoteIcon, PencilIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 
@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ConvertedOutput, type OutputView } from '@/features/entries/EntryView'
 import { CodeEditor } from '@/features/preview/CodeEditor'
 import { ApiError } from '@/lib/api'
+import { useChatContext } from '@/lib/chatContext'
 import {
   useAnnotation,
   useConvertedEntryById,
@@ -38,6 +39,7 @@ export function SpanView({
   const openDocument = usePreview((s) => s.openDocument)
   const project = useProject(projectId)
   const override = useOverrideEntry(projectId, runId)
+  const addEntry = useChatContext((s) => s.addEntry)
   const [view, setView] = useState<OutputView>('rendered')
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -99,6 +101,28 @@ export function SpanView({
             {span.payload.structurer.segmentation.replaceAll('_', ' ')}
           </span>
         )}
+        <Button
+          variant="outline"
+          size="xs"
+          title="Attach this entry (span text, output, issues) to your next message"
+          onClick={() => {
+            addEntry({
+              document_id: documentId ?? undefined,
+              headword: output.headword,
+              origin: `structured PDF entry from run ${runId.slice(0, 8)}`,
+              source_kind: 'pdf',
+              page: span?.page_no,
+              source_text: span?.payload.text ?? '',
+              output_xml: output.xml,
+              issues: output.issues.map((i) =>
+                i.path && i.path !== 'entry' ? `${i.path}: ${i.message}` : i.message,
+              ),
+            })
+            toast.success(`Entry ${output.headword ?? ''} added to the chat`.replace('  ', ' '))
+          }}
+        >
+          <MessageSquareQuoteIcon /> Add to chat
+        </Button>
         {canEdit && !editing && (
           <Button
             variant="outline"

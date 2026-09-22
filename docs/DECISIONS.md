@@ -1023,3 +1023,27 @@ mapping means nothing and nothing writes the specification; the owner found it e
   registered for both project types; the PDF workflow prompt tells the agent to keep the
   specification in step with the profile (`contents` is the short version the structurer reads
   on every entry, the specification is the lexicographer's full record).
+
+## 2026-09-22 User test finding: the agent knows what the lexicographer is looking at
+
+The owner selected an entry in an XML project and asked the agent about it; the agent had no
+idea, because only the message text and PDF region chips were ever sent. Now:
+- **A "looking at" note on every message.** The browser sends the middle pane's target
+  (`viewing`) with each chat request; the API resolves it against the project (entry: ordinal,
+  headword, document, and whether it is the live conversion or a run's output; run; PDF page;
+  span; mapping version; specification; profile) and appends `[Looking at: …]` as a text part
+  plus a `data-viewing` part to the user message. Targets of other projects or malformed ones
+  are ignored. It lives in the user message, not in the instructions, so the cached system
+  prompt and history prefixes stay intact. The system prompt explains the line and that it
+  carries no content (the agent fetches the entry with its tools).
+- **"Add to chat" on the entry view and the PDF span view** attaches the entry as shown:
+  source XML (or the span's text and page), the DMLex output and the issues, with its origin
+  (live with mapping vN, or the run). Context chips are now `region` or `entry`
+  (`ContextChip.kind`); the model gets them as quoted blocks headed `[Attached: entry 8
+  "babble" of oxford.xml; …]` and is told that quoted blocks are data, not instructions.
+- **Attachments survive later turns.** The browser resends its own copy of earlier messages,
+  which never had the server-appended parts, and `replace_messages` then dropped them: chips
+  used to reach the model for one turn only. `restore_attachments` puts the stored parts back
+  when the browser's parts are their prefix (an edited message is left alone).
+- In the user bubble the note renders as one muted line and an attachment as a collapsed block
+  (`UserTextPart`), so the lexicographer's own words stay readable.

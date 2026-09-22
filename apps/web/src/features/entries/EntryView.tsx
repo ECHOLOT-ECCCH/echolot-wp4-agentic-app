@@ -1,4 +1,6 @@
+import { MessageSquareQuoteIcon } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -6,6 +8,7 @@ import { DmlexRendering } from '@/features/entries/DmlexRendering'
 import { IssueList } from '@/features/entries/IssueList'
 import { TextPreview } from '@/features/preview/TextPreview'
 import { ApiError } from '@/lib/api'
+import { useChatContext } from '@/lib/chatContext'
 import { useConvertedEntry, useEntry, useEntryPreview, useMappings } from '@/lib/queries'
 import type { EntryIssue } from '@/lib/types'
 
@@ -33,6 +36,7 @@ export function EntryView({
   runId: string | null
 }) {
   const entry = useEntry(projectId, entryId)
+  const addEntry = useChatContext((s) => s.addEntry)
   const mappings = useMappings(projectId)
   const latest = mappings.data?.[0]?.version ?? null
   const [showRun, setShowRun] = useState(true)
@@ -61,10 +65,32 @@ export function EntryView({
         ? preview.error.detail
         : preview.error.message
       : null
+  // the entry as shown here, for the next chat message: source, output and issues
+  const attach = () => {
+    const origin = runMode
+      ? `output of a run with mapping v${runOutputs[0]?.mapping_version ?? '?'}`
+      : live
+        ? `converted live with mapping v${live.mapping_version}`
+        : undefined
+    addEntry({
+      entry_id: entryId,
+      document_id: entry.data.document_id,
+      ordinal: entry.data.ordinal,
+      headword: entry.data.headword,
+      origin,
+      source_kind: 'xml',
+      source_text: entry.data.source_xml,
+      output_xml: outputs.map((o) => o.xml).join('\n\n'),
+      issues: outputs.flatMap((o) =>
+        o.issues.map((i) => (i.path && i.path !== 'entry' ? `${i.path}: ${i.message}` : i.message)),
+      ),
+    })
+    toast.success(`Entry ${entry.data.ordinal + 1} added to the chat`)
+  }
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs whitespace-nowrap">
+      <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1 text-xs whitespace-nowrap">
         <span className="truncate font-medium">{entry.data.headword ?? '(no headword)'}</span>
         <span className="text-muted-foreground shrink-0">entry {entry.data.ordinal + 1}</span>
         {runMode && runOutputs[0] && (
@@ -92,6 +118,15 @@ export function EntryView({
             {runMode ? `Show live (v${latest})` : 'Show run output'}
           </Button>
         )}
+        <Button
+          variant="outline"
+          size="xs"
+          className="shrink-0"
+          onClick={attach}
+          title="Attach this entry (source, output, issues) to your next message"
+        >
+          <MessageSquareQuoteIcon /> Add to chat
+        </Button>
         {hasOutput && (
           <Tabs
             value={view}

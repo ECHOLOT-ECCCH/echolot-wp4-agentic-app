@@ -1,7 +1,8 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CodeOutputs, EntryView } from '@/features/entries/EntryView'
+import { useChatContext } from '@/lib/chatContext'
 import { mockApi, renderWithProviders } from '@/test/utils'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -117,6 +118,18 @@ describe('EntryView', () => {
     expect(screen.getByTestId('live-notes')).toHaveTextContent('steps: Upper-case headwords')
     expect(screen.getByText(/the runner is down/)).toBeInTheDocument()
     expect(calls.some((c) => c.url.includes('/converted'))).toBe(false)
+
+    // "Add to chat" attaches the entry as shown: source, output and origin
+    useChatContext.getState().clear()
+    fireEvent.click(screen.getByRole('button', { name: /Add to chat/ }))
+    const chip = useChatContext.getState().chips[0]
+    expect(chip).toMatchObject({
+      kind: 'entry',
+      label: 'entry 5 baby',
+      source_text: entry.source_xml,
+      output_xml: converted.xml,
+      origin: 'converted live with mapping v3',
+    })
   })
 
   it('explains when the project has no mapping yet', async () => {

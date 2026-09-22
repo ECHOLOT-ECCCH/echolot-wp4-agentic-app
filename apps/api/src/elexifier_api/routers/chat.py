@@ -19,8 +19,10 @@ from elexifier_agent.runtime import RunSummary
 from elexifier_agent.ui_messages import (
     ContextChip,
     attach_context,
+    attach_viewing,
     collect_tool_outputs,
     normalize_ui_messages,
+    restore_attachments,
 )
 from elexifier_api import audit
 from elexifier_api.authz import get_project_or_404
@@ -28,6 +30,7 @@ from elexifier_api.deps import CurrentSecretBox, CurrentSettings, CurrentUser, D
 from elexifier_api.models_resolver import resolve_model
 from elexifier_api.schemas import ConversationCreate, ConversationOut, MessagesIn
 from elexifier_api.state import AppState
+from elexifier_api.viewing import Viewing, describe_viewing
 from elexifier_core.db.models import (
     AgentRun,
     Conversation,
@@ -202,6 +205,7 @@ async def chat(
     # tool outputs recorded by earlier turns resolve approval parts the browser still holds
     stored = await load_messages(db, conversation.id)
     messages = normalize_ui_messages(messages, known_outputs=collect_tool_outputs(stored))
+    messages = restore_attachments(messages, stored)
     raw_context = body.get("context")
     if isinstance(raw_context, list) and raw_context:
         try:
@@ -209,7 +213,18 @@ async def chat(
         except ValidationError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Malformed context") from exc
         messages = attach_context(messages, chips)
-    body = {k: v for k, v in body.items() if k != "context"} | {"messages": messages}
+    raw_viewing = body.get("viewing")
+    if isinstance(raw_viewing, dict) and raw_viewing.get("kind") not in (None, "none"):
+        try:
+            viewing = Viewing.model_validate(raw_viewing)
+        except ValidationError:
+            viewing = None  # an unknown target is not worth failing the turn
+        described = await describe_viewing(db, project.id, viewing) if viewing else None
+        if described is not None:
+            messages = attach_viewing(messages, *described)
+    body = {k: v for k, v in body.items() if k not in ("context", "viewing")} | {
+        "messages": messages
+    }
     await replace_messages(db, conversation, messages)
     run = AgentRun(
         conversation_id=conversation.id,

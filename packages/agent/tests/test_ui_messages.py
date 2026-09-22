@@ -152,3 +152,62 @@ def test_context_chips_become_a_quoted_block_on_the_last_user_message() -> None:
     assert attach_context(out, [chip]) == out
     # nothing happens when the last message is not from the user
     assert attach_context([_user("a"), _stale_assistant()], [chip])[-1] == _stale_assistant()
+
+
+def test_entry_chips_quote_source_output_and_issues() -> None:
+    from elexifier_agent.ui_messages import ContextChip, chip_text
+
+    chip = ContextChip(
+        kind="entry",
+        entry_id="e1",
+        ordinal=7,
+        headword="babble",
+        document_name="oxford.xml",
+        origin="converted live with mapping v3",
+        source_text="<se><hw>babble</hw></se>",
+        output_xml='<entry id="e8"><headword>babble</headword></entry>',
+        issues=["sense[1]: sense has no content"],
+    )
+    text = chip_text(chip)
+    assert text.startswith("[Attached: entry 8 “babble” of oxford.xml; converted live")
+    assert 'Source XML:\n"""\n<se><hw>babble</hw></se>\n"""' in text
+    assert 'DMLex output:\n"""\n<entry id="e8">' in text
+    assert text.endswith("Issues: sense[1]: sense has no content")
+    span = ContextChip(
+        kind="entry", source_kind="pdf", page=12, headword="bond", source_text="bond I sam."
+    )
+    assert "Text of the span on page 12:" in chip_text(span)
+    import pytest
+
+    with pytest.raises(ValueError, match="needs the source text or the output"):
+        ContextChip(kind="entry", headword="x")
+    with pytest.raises(ValueError, match="needs document_id, page and bbox"):
+        ContextChip(kind="region", text="x")
+
+
+def test_viewing_note_is_added_once_and_restored_on_the_next_turn() -> None:
+    from elexifier_agent.ui_messages import attach_viewing, restore_attachments
+
+    messages = [_user("is this right?")]
+    noted = attach_viewing(
+        messages, "entry 8  “babble” of oxford.xml", {"kind": "entry", "entry_id": "e1"}
+    )
+    parts = noted[0]["parts"]
+    assert parts[1] == {"type": "text", "text": "[Looking at: entry 8 “babble” of oxford.xml]"}
+    assert parts[2]["type"] == "data-viewing" and parts[2]["data"]["entry_id"] == "e1"
+    assert parts[2]["data"]["description"] == "entry 8 “babble” of oxford.xml"
+    assert attach_viewing(noted, "something else", {}) == noted  # once per message
+    assert attach_viewing([_user("a"), _stale_assistant()], "x", {}) == [
+        _user("a"),
+        _stale_assistant(),
+    ]
+    assert attach_viewing(messages, "   ", {}) == messages
+
+    # the browser resends its own copy of the message (without the server's parts): the stored
+    # parts win when the browser's parts are their prefix, and nothing else is touched
+    resent = [_user("is this right?"), _user("and this?", "u2")]
+    restored = restore_attachments(resent, noted)
+    assert restored[0]["parts"] == parts and restored[1] == _user("and this?", "u2")
+    edited = [{**_user("is this wrong?"), "id": "u1"}]
+    assert restore_attachments(edited, noted) == edited  # a changed message is not overwritten
+    assert restore_attachments(resent, []) == resent
