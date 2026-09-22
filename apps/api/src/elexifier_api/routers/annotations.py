@@ -413,6 +413,12 @@ async def split_annotation(
             ([x0, top, x1, body.y], {"bboxes": [[x0, top, x1, body.y]]}),
             ([x0, body.y, x1, bottom], {"bboxes": [[x0, body.y, x1, bottom]]}),
         ]
+    # the halves take the span's place in reading order: everything after it moves up one
+    await db.execute(
+        update(Annotation)
+        .where(Annotation.document_id == document.id, Annotation.position > annotation.position)
+        .values(position=Annotation.position + 1)
+    )
     created: list[Annotation] = []
     for offset, (bbox, payload) in enumerate(halves):
         row = Annotation(
@@ -425,7 +431,7 @@ async def split_annotation(
             status=AnnotationStatus.ACCEPTED.value,
             payload={**payload, "split_from": str(annotation.id)},
             set_id=annotation.set_id,
-            position=annotation.position * 2 + offset,
+            position=annotation.position + offset,
             created_by=user.id,
         )
         db.add(row)

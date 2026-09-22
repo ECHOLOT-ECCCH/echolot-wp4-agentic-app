@@ -145,14 +145,16 @@ export function PdfDocumentPanel({
   const live = selected
     ? (annotationsFor(selected.page_no).find((a) => a.id === selected.id) ?? selected)
     : null
-  const nextOnPage = live
-    ? (annotationsFor(live.page_no)
-        .filter((a) => a.status !== 'rejected')
-        .sort((a, b) => a.position - b.position || a.bbox[1] - b.bbox[1])
-        .find(
-          (a) => a.position > live.position || (a.position === live.position && a.id > live.id),
-        ) ?? null)
-    : null
+  // the span after the selected one in reading order (position, then top edge, then id, the
+  // same order the list shows), never a random neighbour when positions tie
+  const nextOnPage = (() => {
+    if (!live) return null
+    const ordered = annotationsFor(live.page_no)
+      .filter((a) => a.status !== 'rejected')
+      .sort((a, b) => a.position - b.position || a.bbox[1] - b.bbox[1] || a.id.localeCompare(b.id))
+    const index = ordered.findIndex((a) => a.id === live.id)
+    return index >= 0 ? (ordered[index + 1] ?? null) : null
+  })()
 
   const select = useCallback(
     (annotation: AnnotationRecord | null) => {

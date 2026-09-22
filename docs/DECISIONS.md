@@ -1047,3 +1047,15 @@ idea, because only the message text and PDF region chips were ever sent. Now:
   when the browser's parts are their prefix (an edited message is left alone).
 - In the user bubble the note renders as one muted line and an attachment as a collapsed block
   (`UserTextPart`), so the lexicographer's own words stay readable.
+
+## 2026-09-22 Split spans took positions that collided with their neighbours
+
+The PDF e2e failed on roughly every second run at "Accept the remaining 127" (it showed 126).
+Cause: splitting a span gave the halves positions `2p` and `2p+1`, which collided with other
+spans' positions further down the page, and the panel's "next span" tie-break was the random
+uuid, so "Merge with next" merged the first half with a random neighbour half the time and
+consumed that neighbour's proposal. The split now shifts every later span of the document up
+one and gives the halves `p` and `p+1`; the panel takes the next span in the list's own order
+(position, top edge, id). A regression test checks the positions after a split and that the
+merge leaves every other proposal alone. Lesson: a flaky e2e is a bug until proven otherwise;
+the two earlier one-off failures of this test were the same defect.

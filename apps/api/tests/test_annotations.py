@@ -467,3 +467,38 @@ async def test_structure_profile_endpoints(
     assert (
         await client.put(f"/api/projects/{xml_pid}/structure-profile", json={})
     ).status_code == 422
+
+
+async def test_split_keeps_reading_order_and_merge_with_next_is_the_second_half(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    logged_in.apply(client)
+    pid, doc_id = await _pdf_project(client)
+    base = f"/api/projects/{pid}/documents/{doc_id}"
+    await client.post(f"{base}/segment", json={})
+    page1 = (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["items"]
+    abbey = next(a for a in page1 if a["payload"]["headword_guess"] == "abbey")
+    layout = (await client.get(f"{base}/pages/1/layout")).json()
+    lines = {line["id"]: line for line in layout["lines"]}
+    last_line = lines[abbey["payload"]["line_ids"][-1]]
+    halves = (
+        await client.post(
+            f"/api/projects/{pid}/annotations/{abbey['id']}/split", json={"y": last_line["top"]}
+        )
+    ).json()
+    # the halves take abbey's place; everything after moves up one; no position is shared
+    after = (await client.get(f"{base}/annotations", params={"page_no": 1})).json()["items"]
+    positions = [a["position"] for a in after]
+    assert positions == sorted(positions) and len(set(positions)) == len(positions)
+    assert [h["position"] for h in halves] == [abbey["position"], abbey["position"] + 1]
+    following = after[after.index(next(a for a in after if a["id"] == halves[1]["id"])) + 1]
+    assert following["payload"]["headword_guess"] == "abbot"
+    assert following["position"] == abbey["position"] + 2
+    # merging the first half "with the next" is the second half, not a random neighbour
+    merged = await client.post(
+        f"/api/projects/{pid}/annotations/{halves[0]['id']}/merge",
+        json={"with_id": halves[1]["id"]},
+    )
+    assert merged.status_code == 200, merged.text
+    review = (await client.get(f"{base}/review")).json()
+    assert review["remaining_proposed"] == 129  # abbey's proposal is gone, nothing else changed
