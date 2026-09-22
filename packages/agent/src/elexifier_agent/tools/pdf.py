@@ -36,6 +36,7 @@ from elexifier_agent.structuring import (
 )
 from elexifier_agent.tools._entries import ToolInputError, get_document
 from elexifier_core.db.models import Document, File, Project
+from elexifier_core.events import publish
 from elexifier_pipeline.pdf.structurers import StructureProfile
 
 pdf_toolset: FunctionToolset[AgentDeps] = FunctionToolset()
@@ -339,6 +340,7 @@ async def _store_profile(db: Any, project_id: Any, profile: dict[str, Any]) -> N
     project = await db.get(Project, project_id)
     if project is not None:
         project.settings = {**(project.settings or {}), "structure_profile": profile}
+        await publish(db, project_id, "project.updated", {"what": "structure_profile"})
 
 
 @pdf_toolset.tool

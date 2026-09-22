@@ -6,6 +6,7 @@ import { DocumentPanel } from '@/features/entries/DocumentPanel'
 import { MappingEditor } from '@/features/mapping/MappingEditor'
 import { SpanView } from '@/features/pdf/SpanView'
 import { RunPanel } from '@/features/runs/RunPanel'
+import { ProfileEditor } from '@/features/pdf/ProfileEditor'
 import { SpecEditor } from '@/features/spec/SpecEditor'
 import { PdfViewer } from '@/features/preview/PdfViewer'
 import { TextPreview } from '@/features/preview/TextPreview'
@@ -73,6 +74,9 @@ export function PreviewHost({ projectId }: { projectId: string }) {
   }
   if (target.kind === 'mapping') {
     return <MappingEditor projectId={projectId} version={target.version} canEdit={canEdit} />
+  }
+  if (target.kind === 'profile') {
+    return <ProfileEditor projectId={projectId} canEdit={canEdit} />
   }
   if (target.kind === 'spec') {
     return <SpecEditor projectId={projectId} canEdit={canEdit} />

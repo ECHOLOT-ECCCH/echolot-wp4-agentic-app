@@ -122,7 +122,7 @@ export function LeftPane({ project }: { project: Project }) {
 
         <DocumentList projectId={project.id} />
 
-        <ConversionLinks projectId={project.id} />
+        <ConversionLinks projectId={project.id} sourceType={project.source_type} />
 
         {collapsible && (
           <div className="flex items-center gap-2">

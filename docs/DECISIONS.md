@@ -1004,3 +1004,22 @@ unchanged: their review happens in the middle pane and the sidebar was not the c
 state is derived (persisted choice, then this visit's upload, then "no documents yet") rather
 than synchronised in an effect, so nothing collapses under the lexicographer's cursor when the
 first document finishes parsing.
+
+## 2026-09-22 User test finding: the PDF sidebar shows the structure profile, not a mapping
+
+The "Conversion" section (Mapping, Specification) was rendered for PDF projects too, where a
+mapping means nothing and nothing writes the specification; the owner found it empty on the
+Šega project. Now:
+- PDF projects show a **Structuring** section: **Profile** (the structure profile the agent
+  agrees with the lexicographer and stores in the project settings: source language, target
+  languages, what an entry contains and how it is printed, entry id prefix) and
+  **Specification**. Mapping is XML-only.
+- The profile is editable in the middle pane (`ProfileEditor`): `GET/PUT
+  /api/projects/{id}/structure-profile` (editors; PDF projects only). The editor says that a
+  change makes the next sample or full structuring call the model again for every entry,
+  because the profile is part of the structuring cache key. A `project.updated` event, sent by
+  the endpoint and by the agent's profile store, refreshes the sidebar and the editor.
+- The specification tools moved from the XML toolset into `tools/spec.py` (`spec_toolset`),
+  registered for both project types; the PDF workflow prompt tells the agent to keep the
+  specification in step with the profile (`contents` is the short version the structurer reads
+  on every entry, the specification is the lexicographer's full record).

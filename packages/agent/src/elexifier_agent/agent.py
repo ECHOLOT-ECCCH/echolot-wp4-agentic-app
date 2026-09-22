@@ -17,6 +17,7 @@ from elexifier_agent.tools.dev import dev_toolset
 from elexifier_agent.tools.pdf import pdf_toolset
 from elexifier_agent.tools.project import project_toolset
 from elexifier_agent.tools.sandbox import sandbox_toolset
+from elexifier_agent.tools.spec import spec_toolset
 from elexifier_agent.tools.xml import xml_toolset
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
@@ -74,7 +75,7 @@ def _is_run_tool(ctx: RunContext[AgentDeps], tool: ToolDefinition) -> bool:
 
 def toolsets_for(source_type: str, *, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]:
     """Toolsets are filtered by project type to keep the model's context small."""
-    toolsets: list[AbstractToolset[AgentDeps]] = [project_toolset]
+    toolsets: list[AbstractToolset[AgentDeps]] = [project_toolset, spec_toolset]
     if source_type == "xml":
         toolsets.extend([xml_toolset, conversion_toolset])
     elif source_type == "pdf":

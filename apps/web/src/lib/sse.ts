@@ -54,6 +54,10 @@ export function useProjectEvents(projectId: string, onEvent?: (event: ProjectEve
             void queryClient.invalidateQueries({ queryKey: keys.runs(projectId) })
           }
           break
+        case 'project.updated':
+          void queryClient.invalidateQueries({ queryKey: keys.project(projectId) })
+          void queryClient.invalidateQueries({ queryKey: keys.profile(projectId) })
+          break
         case 'steps.changed':
           void queryClient.invalidateQueries({ queryKey: keys.steps(projectId) })
           // live previews apply the steps: every open entry converts again

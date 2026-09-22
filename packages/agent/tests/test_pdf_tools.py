@@ -12,6 +12,18 @@ from .test_xml_tools import call_tool
 def test_pdf_prompt_section(pdf_fixture: Fixture) -> None:
     prompt = render_system_prompt(pdf_fixture.deps)
     assert "pdf_segment" in prompt and "xml_test_xpath" not in prompt
+    assert "spec_update" in prompt  # the specification is kept for PDF dictionaries too
+
+
+async def test_spec_tools_work_in_pdf_projects(pdf_fixture: Fixture) -> None:
+    empty = await call_tool(pdf_fixture, "spec_read", {})
+    assert empty["summary"].startswith("The conversion spec is empty")
+    saved = await call_tool(
+        pdf_fixture, "spec_update", {"markdown": "# Šega\n- headwords in Arial Bold 8 pt"}
+    )
+    assert saved["summary"] == "Conversion spec updated to version 1"
+    again = await call_tool(pdf_fixture, "spec_read", {})
+    assert again["data"]["version"] == 1 and "Arial Bold" in again["data"]["markdown"]
 
 
 async def test_pdf_analyze_and_segment(pdf_fixture: Fixture) -> None:

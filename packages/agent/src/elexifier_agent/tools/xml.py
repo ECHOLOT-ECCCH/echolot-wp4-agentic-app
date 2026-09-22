@@ -23,7 +23,7 @@ from elexifier_agent.tools._entries import (
     pick_entries,
     reader_for,
 )
-from elexifier_core.db.models import ConversionSpec, Mapping
+from elexifier_core.db.models import Mapping
 from elexifier_pipeline.xml.dmlexifier import MappingError
 from elexifier_pipeline.xml.mapping import (
     check_mapping,
@@ -454,72 +454,6 @@ async def mapping_explain(ctx: RunContext[AgentDeps]) -> ToolReturn:
         ToolResult(
             summary=f"Mapping version {mapping.version} explained",
             data={"version": mapping.version, "explanation": text},
-        )
-    )
-
-
-# --- conversion spec ----------------------------------------------------------------------
-
-
-async def _latest_spec(db: Any, project_id: Any) -> ConversionSpec | None:
-    return (
-        await db.execute(
-            select(ConversionSpec)
-            .where(ConversionSpec.project_id == project_id)
-            .order_by(ConversionSpec.version.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-
-
-@xml_toolset.tool
-async def spec_read(ctx: RunContext[AgentDeps]) -> ToolReturn:
-    """Read the conversion specification: the running record of every decision (what a source
-    element means, how values are mapped, what is dropped and why)."""
-    async with ctx.deps.session() as db:
-        spec = await _latest_spec(db, ctx.deps.project.id)
-    if spec is None:
-        return to_tool_return(
-            ToolResult(summary="The conversion spec is empty. Start it with spec_update.")
-        )
-    return to_tool_return(
-        ToolResult(
-            summary=f"Conversion spec version {spec.version} ({len(spec.markdown)} characters)",
-            data={"version": spec.version, "markdown": spec.markdown},
-            ui_actions=[UiAction(type="open_spec")],
-        )
-    )
-
-
-@xml_toolset.tool
-async def spec_update(ctx: RunContext[AgentDeps], markdown: str) -> ToolReturn:
-    """Replace the conversion specification with a new full version (Markdown). Record decisions
-    as they are made: source structure, entry element, each mapping rule in plain words, value
-    translations, known problems and what was decided about them.
-
-    Args:
-        markdown: The complete specification text.
-    """
-    text = markdown.strip()
-    if not text:
-        return error_result("the specification text is empty")
-    async with ctx.deps.session() as db:
-        latest = await _latest_spec(db, ctx.deps.project.id)
-        version = (latest.version + 1) if latest else 1
-        db.add(
-            ConversionSpec(
-                project_id=ctx.deps.project.id,
-                version=version,
-                markdown=text,
-                updated_by=ctx.deps.user.id,
-            )
-        )
-        await db.commit()
-    return to_tool_return(
-        ToolResult(
-            summary=f"Conversion spec updated to version {version}",
-            data={"version": version, "characters": len(text)},
-            ui_actions=[UiAction(type="open_spec")],
         )
     )
 

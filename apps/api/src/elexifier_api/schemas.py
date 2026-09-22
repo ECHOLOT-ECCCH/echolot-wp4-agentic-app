@@ -371,6 +371,23 @@ class SpecIn(BaseModel):
     markdown: str = Field(max_length=200_000)
 
 
+class StructureProfileIn(BaseModel):
+    """What the structurer is told about a PDF dictionary before every entry (PLAN M2.6)."""
+
+    source_language: str = Field(default="unknown", max_length=32)
+    target_languages: list[str] = Field(default_factory=list, max_length=10)
+    contents: str = Field(default="", max_length=20_000)
+    entry_id_prefix: str = Field(default="e", max_length=16, pattern=r"^[A-Za-z_][A-Za-z0-9_.-]*$")
+
+
+class StructureProfileOut(BaseModel):
+    source_language: str
+    target_languages: list[str]
+    contents: str
+    entry_id_prefix: str
+    stored: bool = False  # False: nothing saved yet, these are the defaults
+
+
 # --- annotations (PDF entry spans) --------------------------------------------------------------
 
 

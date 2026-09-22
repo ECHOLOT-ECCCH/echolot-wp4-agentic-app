@@ -10,6 +10,7 @@ export type PreviewTarget =
   | { kind: 'span'; runId: string; convertedId: string; documentId: string | null }
   | { kind: 'mapping'; version?: number }
   | { kind: 'spec' }
+  | { kind: 'profile' }
   | { kind: 'none' }
 
 interface PreviewState {
@@ -27,6 +28,7 @@ interface PreviewState {
   openSpan: (runId: string, convertedId: string, documentId: string | null) => void
   openMapping: (version?: number) => void
   openSpec: () => void
+  openProfile: () => void
   apply: (action: UiAction) => void
   clear: () => void
 }
@@ -52,6 +54,7 @@ export const usePreview = create<PreviewState>((set) => ({
   openMapping: (version) =>
     set((s) => ({ target: { kind: 'mapping', version }, revision: s.revision + 1 })),
   openSpec: () => set((s) => ({ target: { kind: 'spec' }, revision: s.revision + 1 })),
+  openProfile: () => set((s) => ({ target: { kind: 'profile' }, revision: s.revision + 1 })),
   apply: (action) =>
     set((s) => {
       const next = targetFor(action)

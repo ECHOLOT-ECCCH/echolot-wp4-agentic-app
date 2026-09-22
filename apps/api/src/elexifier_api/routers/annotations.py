@@ -53,6 +53,8 @@ from elexifier_api.schemas import (
     RunDetailOut,
     SegmentOut,
     SegmentRequest,
+    StructureProfileIn,
+    StructureProfileOut,
     StructureRequest,
 )
 from elexifier_core.db.models import Annotation, AnnotationStatus, Document, ProjectRole
@@ -577,6 +579,7 @@ async def structure_document(
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
         if body.profile:
             project.settings = {**(project.settings or {}), "structure_profile": merged}
+            await publish(db, project_id, "project.updated", {"what": "structure_profile"})
         audit.record(db, user.id, "run.structure_full", queued.id, project=str(project_id))
         await db.flush()
         return RunDetailOut.model_validate(queued)
@@ -598,6 +601,7 @@ async def structure_document(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     if body.profile:
         project.settings = {**(project.settings or {}), "structure_profile": merged}
+        await publish(db, project_id, "project.updated", {"what": "structure_profile"})
     audit.record(
         db,
         user.id,
@@ -672,3 +676,47 @@ async def accept_rest(
     audit.record(db, user.id, "annotation.accept_rest", document.id, count=updated)
     await db.flush()
     return {"updated": updated, **(await annotation_counts(db, document.id))}
+
+
+# --- the structure profile (what the structurer is told about the dictionary) -----------------
+
+
+def _profile_out(settings: dict[str, Any] | None) -> StructureProfileOut:
+    stored = dict((settings or {}).get("structure_profile") or {})
+    try:
+        profile = StructureProfile.model_validate(stored)
+    except ValidationError:
+        profile = StructureProfile()
+    return StructureProfileOut(**profile.model_dump(), stored=bool(stored))
+
+
+@router.get("/structure-profile", response_model=StructureProfileOut)
+async def get_structure_profile(
+    project_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> StructureProfileOut:
+    """The profile the agent agreed with the lexicographer (defaults when none is stored)."""
+    project, _role = await get_project_or_404(db, project_id, user)
+    return _profile_out(project.settings)
+
+
+@router.put("/structure-profile", response_model=StructureProfileOut)
+async def put_structure_profile(
+    project_id: uuid.UUID, body: StructureProfileIn, db: DbSession, user: CurrentUser
+) -> StructureProfileOut:
+    """Replace the profile. The next sample or full structuring uses it (and, as the profile is
+    part of the cache key, calls the model again for every entry)."""
+    project, _role = await get_project_or_404(db, project_id, user, ProjectRole.EDITOR.value)
+    if project.source_type != "pdf":
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "The structure profile belongs to PDF projects"
+        )
+    profile = StructureProfile(
+        source_language=body.source_language.strip() or "unknown",
+        target_languages=[t.strip() for t in body.target_languages if t.strip()],
+        contents=body.contents.strip(),
+        entry_id_prefix=body.entry_id_prefix.strip() or "e",
+    )
+    project.settings = {**(project.settings or {}), "structure_profile": profile.model_dump()}
+    audit.record(db, user.id, "profile.saved", project.id, project=str(project_id))
+    await publish(db, project_id, "project.updated", {"what": "structure_profile"})
+    return StructureProfileOut(**profile.model_dump(), stored=True)

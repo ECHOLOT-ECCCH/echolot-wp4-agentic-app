@@ -435,6 +435,15 @@ export interface MappingCheck {
   summary: string | null
 }
 
+/** What the structurer is told about a PDF dictionary before every entry. */
+export interface StructureProfile {
+  source_language: string
+  target_languages: string[]
+  contents: string
+  entry_id_prefix: string
+  stored: boolean
+}
+
 export interface SpecRecord {
   version: number
   markdown: string

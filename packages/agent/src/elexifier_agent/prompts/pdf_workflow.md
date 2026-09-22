@@ -25,6 +25,12 @@ not known yet: they are found by segmentation and confirmed by the lexicographer
   join the sample. apply=True replaces the proposals on unreviewed pages with the learned
   segmentation when the rule segmenter was wrong in a systematic way; pdf_segment with
   segmenter="learned" runs it again later.
+- spec_read / spec_update: the conversion specification, the plain-language record of what was
+  decided about this dictionary (what an entry contains, abbreviations and labels and what they
+  mean, conventions, what is skipped and why). Keep it in step with the structure profile: the
+  profile's `contents` is the short version the structurer reads on every entry, the
+  specification is the lexicographer's full record. Both are editable in the middle pane
+  (Structuring: Profile, Specification).
 - pdf_estimate_cost: tokens and cost of structuring every reviewed span with the current model.
 - pdf_structure: turn spans into DMLex entries with the model (kind="sample", up to 20 at a
   time) and validate them; needs a profile the first time (source language, target languages,

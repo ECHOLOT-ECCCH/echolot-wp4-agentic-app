@@ -30,6 +30,7 @@ import type {
   ReviewOut,
   SegmentResult,
   StepRecord,
+  StructureProfile,
   SourceType,
   SpecRecord,
   User,
@@ -70,6 +71,7 @@ export const keys = {
   mapping: (projectId: string, version: string) =>
     ['projects', projectId, 'mappings', version] as const,
   spec: (projectId: string) => ['projects', projectId, 'spec'] as const,
+  profile: (projectId: string) => ['projects', projectId, 'structure-profile'] as const,
   steps: (projectId: string) => ['projects', projectId, 'steps'] as const,
   members: (projectId: string) => ['projects', projectId, 'members'] as const,
   conversations: (projectId: string) => ['projects', projectId, 'conversations'] as const,
@@ -297,10 +299,35 @@ export function useConvertedEntry(projectId: string, entryId: string | null, run
   })
 }
 
-export function useMappings(projectId: string) {
+export function useMappings(projectId: string, enabled = true) {
   return useQuery({
     queryKey: keys.mappings(projectId),
     queryFn: () => api<MappingSummary[]>(`/api/projects/${projectId}/mappings`),
+    enabled,
+  })
+}
+
+/** The structure profile of a PDF project (defaults with stored=false until one is saved). */
+export function useStructureProfile(projectId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.profile(projectId),
+    queryFn: () => api<StructureProfile>(`/api/projects/${projectId}/structure-profile`),
+    enabled,
+  })
+}
+
+export function useSaveStructureProfile(projectId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: Omit<StructureProfile, 'stored'>) =>
+      api<StructureProfile>(`/api/projects/${projectId}/structure-profile`, {
+        method: 'PUT',
+        json: body,
+      }),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(keys.profile(projectId), profile)
+      void queryClient.invalidateQueries({ queryKey: keys.project(projectId) })
+    },
   })
 }
 

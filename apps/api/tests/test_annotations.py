@@ -411,3 +411,59 @@ async def test_full_structuring_flags_merged_spans_from_the_structurer(
         flagged["total"] == 1
         and flagged["items"][0]["payload"]["structurer"]["run_id"] == second["id"]
     )
+
+
+async def test_structure_profile_endpoints(
+    client: httpx.AsyncClient, logged_in: LoggedIn, app_state: AppState
+) -> None:
+    logged_in.apply(client)
+    pid, doc_id = await _pdf_project(client)
+    base = f"/api/projects/{pid}"
+    empty = (await client.get(f"{base}/structure-profile")).json()
+    assert empty == {
+        "source_language": "unknown",
+        "target_languages": [],
+        "contents": "",
+        "entry_id_prefix": "e",
+        "stored": False,
+    }
+    saved = await client.put(
+        f"{base}/structure-profile",
+        json={
+            "source_language": " en ",
+            "target_languages": ["sl", " ", "de"],
+            "contents": "Bold headwords, numbered senses.",
+            "entry_id_prefix": "sega",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == {
+        "source_language": "en",
+        "target_languages": ["sl", "de"],
+        "contents": "Bold headwords, numbered senses.",
+        "entry_id_prefix": "sega",
+        "stored": True,
+    }
+    assert (await client.get(f"{base}/structure-profile")).json()["stored"] is True
+    bad = await client.put(f"{base}/structure-profile", json={"entry_id_prefix": "1 bad"})
+    assert bad.status_code == 422
+
+    # a structuring call merges its own values over the stored profile and stores the result
+    await client.post(f"{base}/documents/{doc_id}/segment", json={})
+    run = await client.post(
+        f"{base}/documents/{doc_id}/structure",
+        json={"structurer": "rule", "n": 2, "profile": {"target_languages": ["fr"]}},
+    )
+    assert run.status_code == 200, run.text
+    profile = run.json()["scope"]["profile"]
+    assert profile["source_language"] == "en" and profile["target_languages"] == ["fr"]
+    assert profile["entry_id_prefix"] == "sega"
+    assert (await client.get(f"{base}/structure-profile")).json()["target_languages"] == ["fr"]
+
+    # XML projects have no profile to save
+    xml_pid = (await client.post("/api/projects", json={"name": "X", "source_type": "xml"})).json()[
+        "id"
+    ]
+    assert (
+        await client.put(f"/api/projects/{xml_pid}/structure-profile", json={})
+    ).status_code == 422
