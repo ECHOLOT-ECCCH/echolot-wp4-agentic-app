@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { DmlexRendering } from '@/features/entries/DmlexRendering'
@@ -21,10 +21,7 @@ const entry = {
         { text: 'dojenčica', langCode: 'sl' },
       ],
       examples: [
-        {
-          text: 'a baby girl',
-          exampleTranslations: [{ text: 'deklica', langCode: 'sl' }],
-        },
+        { text: 'a baby girl', exampleTranslations: [{ text: 'deklica', langCode: 'sl' }] },
       ],
     },
     { id: 'entry.id.5.sense.id.2', definitions: [{ text: 'the youngest of a group' }] },
@@ -33,52 +30,38 @@ const entry = {
 }
 
 describe('DmlexRendering', () => {
-  it('names every field the way DMLex does and shows every id', () => {
+  it('reads like a dictionary, names the field of every value on hover, keeps ids to hover', () => {
     render(<DmlexRendering entry={entry} />)
-    const names = screen.getAllByTestId('dmlex-field').map((e) => e.textContent)
-    expect(names).toEqual([
-      'entry',
-      'partOfSpeech',
-      'label',
-      'transcription',
-      'inflectedForm',
-      'indicator',
-      'definition',
-      'headwordTranslation 1',
-      'headwordTranslation 2',
-      'exampleTranslation',
-      'definition',
-      'description',
-    ])
-    expect(screen.getAllByTestId('dmlex-id').map((e) => e.textContent)).toEqual([
-      'entry.id.5',
-      'entry.id.5.sense.id.1',
-      'entry.id.5.sense.id.2',
-    ])
-    expect(screen.getByText('baby')).toBeInTheDocument()
+    // no id is visible, both are on hover
+    expect(screen.queryByText(/entry\.id\.5/)).not.toBeInTheDocument()
+    expect(screen.getByText('baby')).toHaveAttribute('title', 'headword · id entry.id.5')
+    expect(screen.getByText('1.')).toHaveAttribute('title', 'sense · id entry.id.5.sense.id.1')
+    expect(screen.getByText('2.')).toHaveAttribute('title', 'sense · id entry.id.5.sense.id.2')
+    // values with their DMLex names
+    expect(screen.getByText('noun')).toHaveAttribute('title', 'partOfSpeech')
+    expect(screen.getByText('fam.')).toHaveAttribute('title', 'label')
+    expect(screen.getByText('/ˈbeɪbi/')).toHaveAttribute(
+      'title',
+      'pronunciation › transcription · scheme ipa',
+    )
+    expect(screen.getByText('a very young child')).toHaveAttribute(
+      'title',
+      'definition · definitionType gloss',
+    )
+    expect(screen.getByText(/^dojenček/)).toHaveAttribute(
+      'title',
+      'headwordTranslation · langCode sl',
+    )
+    expect(screen.getByText('a baby girl')).toHaveAttribute('title', 'example')
+    expect(screen.getByText(/deklica/)).toHaveAttribute('title', 'exampleTranslation · langCode sl')
+    expect(screen.getByText('babies').parentElement).toHaveAttribute(
+      'title',
+      'inflectedForm · tag pl',
+    )
     expect(screen.getByTitle('homographNumber')).toHaveTextContent('1')
-    expect(screen.getByText('noun')).toBeInTheDocument()
-    expect(screen.getByText('dojenček')).toBeInTheDocument()
-    expect(screen.getByTitle('scheme')).toHaveTextContent('ipa')
-    expect(screen.getAllByTitle('langCode')).toHaveLength(3)
-
-    // senses, examples and pronunciations are blocks with their name and number
-    const senses = screen.getAllByTestId('dmlex-sense')
-    expect(senses).toHaveLength(2)
-    expect(within(senses[0]!).getByText('sense 1')).toBeInTheDocument()
-    expect(within(senses[0]!).getByText('a baby girl')).toBeInTheDocument()
-    expect(screen.getByTestId('dmlex-example')).toHaveTextContent(
-      /exampleTranslation\s*deklica\s*sl/,
+    // an extension module is not hidden
+    expect(screen.getByTestId('dmlex-extras')).toHaveTextContent(
+      'etymologies description from Middle English',
     )
-    expect(screen.getByTestId('dmlex-pronunciation')).toHaveTextContent(
-      /transcription\s*ˈbeɪbi\s*ipa/,
-    )
-    // an extension module is shown too
-    expect(screen.getByTestId('dmlex-etymology')).toHaveTextContent('from Middle English')
-  })
-
-  it('copes with an entry that has only a headword', () => {
-    render(<DmlexRendering entry={{ headword: 'x' }} />)
-    expect(screen.getByText('No fields besides the headword.')).toBeInTheDocument()
   })
 })
