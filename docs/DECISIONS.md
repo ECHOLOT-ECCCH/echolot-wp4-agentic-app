@@ -991,3 +991,16 @@ schema validation, a few milliseconds, so:
   issues and where cross-entry checks happen.
 - Not done: an issue marker per entry in the navigator, which would need converting every
   entry on each mapping save (fine for small documents, a job for the large ones); backlog.
+
+## 2026-09-22 User test finding: the XML sidebar shows the essentials
+
+The owner asked for a quieter sidebar in XML projects. It now shows the document(s) and the
+conversion links (mapping, specification); files (with the upload area), steps, runs and
+members sit behind "Show more", with a one-line summary ("3 files · 2 runs · 1 step ·
+members") while collapsed. A fresh project with nothing uploaded yet opens with the upload
+area, an upload in the current visit keeps the files in view, and an explicit choice is
+remembered per project in the browser (`elx.leftpane.more.<project>`). PDF projects are
+unchanged: their review happens in the middle pane and the sidebar was not the complaint. The
+state is derived (persisted choice, then this visit's upload, then "no documents yet") rather
+than synchronised in an effect, so nothing collapses under the lexicographer's cursor when the
+first document finishes parsing.
