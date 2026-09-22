@@ -64,17 +64,17 @@ export function EntryView({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs">
-        <span className="font-medium">{entry.data.headword ?? '(no headword)'}</span>
-        <span className="text-muted-foreground">entry {entry.data.ordinal + 1}</span>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs whitespace-nowrap">
+        <span className="truncate font-medium">{entry.data.headword ?? '(no headword)'}</span>
+        <span className="text-muted-foreground shrink-0">entry {entry.data.ordinal + 1}</span>
         {runMode && runOutputs[0] && (
-          <span className="text-muted-foreground" data-testid="output-origin">
+          <span className="text-muted-foreground min-w-0 truncate" data-testid="output-origin">
             · From run · mapping v{runOutputs[0].mapping_version}
             {runOutputs.length > 1 ? ` · ${runOutputs.length} output entries` : ''}
           </span>
         )}
         {!runMode && live && (
-          <span className="text-muted-foreground" data-testid="output-origin">
+          <span className="text-muted-foreground min-w-0 truncate" data-testid="output-origin">
             · Live · mapping v{live.mapping_version}
             {live.steps.length > 0
               ? ` · ${live.steps.length} step${live.steps.length === 1 ? '' : 's'}`
@@ -83,7 +83,12 @@ export function EntryView({
           </span>
         )}
         {runId !== null && latest !== null && (
-          <Button variant="ghost" size="xs" onClick={() => setShowRun((v) => !v)}>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="shrink-0"
+            onClick={() => setShowRun((v) => !v)}
+          >
             {runMode ? `Show live (v${latest})` : 'Show run output'}
           </Button>
         )}
@@ -91,7 +96,7 @@ export function EntryView({
           <Tabs
             value={view}
             onValueChange={(value) => setView(value as OutputView)}
-            className="ml-auto"
+            className="ml-auto shrink-0"
           >
             <TabsList className="h-7">
               <TabsTrigger value="rendered" className="text-xs">
