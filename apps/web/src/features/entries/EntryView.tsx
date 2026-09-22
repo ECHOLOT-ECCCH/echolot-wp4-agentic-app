@@ -131,7 +131,7 @@ export function EntryView({
                 resourceIssues={live.resource_issues}
               />
             )}
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="flex min-h-0 flex-1 flex-col overflow-auto">
               {loading ? (
                 <p className="text-muted-foreground p-3 text-sm">Converting…</p>
               ) : previewError ? (
@@ -150,10 +150,12 @@ export function EntryView({
                 <p className="text-muted-foreground p-3 text-sm">
                   {runMode ? 'This run did not include this entry.' : 'Nothing to show yet.'}
                 </p>
-              ) : (
+              ) : view === 'rendered' ? (
                 outputs.map((output) => (
                   <ConvertedOutput key={output.key} output={output} view={view} />
                 ))
+              ) : (
+                <CodeOutputs outputs={outputs} view={view} />
               )}
             </div>
           </div>
@@ -191,7 +193,44 @@ function LiveNotes({
   )
 }
 
+/** The XML or JSON of one or more output entries in a single editor that fills the rest of
+ *  the column (long entries scroll inside it, like the source on the other side); the issues
+ *  of every output sit above, labelled by output when there are several. */
+export function CodeOutputs({ outputs, view }: { outputs: OutputLike[]; view: 'xml' | 'json' }) {
+  const several = outputs.length > 1
+  const issues = outputs.flatMap((output, index) =>
+    output.issues.map((issue) =>
+      several ? { ...issue, path: `output ${index + 1}: ${issue.path}` } : issue,
+    ),
+  )
+  const content =
+    view === 'xml'
+      ? outputs.map((output) => output.xml).join('\n\n')
+      : JSON.stringify(several ? outputs.map((output) => output.dmlex) : outputs[0]?.dmlex, null, 2)
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="code-outputs">
+      {issues.length > 0 && (
+        <div className="max-h-40 shrink-0 overflow-auto border-b bg-amber-50/60 px-3 py-2 dark:bg-amber-950/20">
+          <IssueList issues={issues} />
+        </div>
+      )}
+      <div className="min-h-0 flex-1">
+        <TextPreview
+          file={
+            view === 'xml'
+              ? { name: 'entry.xml', mime: 'application/xml' }
+              : { name: 'entry.json', mime: 'application/json' }
+          }
+          content={content}
+        />
+      </div>
+    </div>
+  )
+}
+
+/** One output entry: the readable rendering with its issues, or its code filling the column. */
 export function ConvertedOutput({ output, view }: { output: OutputLike; view: OutputView }) {
+  if (view !== 'rendered') return <CodeOutputs outputs={[output]} view={view} />
   return (
     <div className="flex flex-col border-b last:border-b-0">
       {output.issues.length > 0 && (
@@ -199,20 +238,7 @@ export function ConvertedOutput({ output, view }: { output: OutputLike; view: Ou
           <IssueList issues={output.issues} />
         </div>
       )}
-      {view === 'rendered' && <DmlexRendering entry={output.dmlex} />}
-      {view === 'xml' && (
-        <div className="h-[28rem]">
-          <TextPreview file={{ name: 'entry.xml', mime: 'application/xml' }} content={output.xml} />
-        </div>
-      )}
-      {view === 'json' && (
-        <div className="h-[28rem]">
-          <TextPreview
-            file={{ name: 'entry.json', mime: 'application/json' }}
-            content={JSON.stringify(output.dmlex, null, 2)}
-          />
-        </div>
-      )}
+      <DmlexRendering entry={output.dmlex} />
     </div>
   )
 }

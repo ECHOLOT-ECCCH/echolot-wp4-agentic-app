@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { EntryView } from '@/features/entries/EntryView'
+import { CodeOutputs, EntryView } from '@/features/entries/EntryView'
 import { mockApi, renderWithProviders } from '@/test/utils'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -26,8 +26,8 @@ const converted = {
   issue_count: 1,
   issues: [
     {
-      severity: 'error',
-      source: 'schema',
+      severity: 'error' as const,
+      source: 'schema' as const,
       code: 'schema',
       path: 'sense[1]/indicator',
       message: 'duplicated indicator',
@@ -126,5 +126,27 @@ describe('EntryView', () => {
     ])
     renderWithProviders(<EntryView projectId="p1" entryId="e1" runId={null} />)
     expect(await screen.findByText(/No mapping yet/)).toBeInTheDocument()
+  })
+})
+
+describe('CodeOutputs', () => {
+  it('puts every output entry into one editor that fills the column, issues labelled', () => {
+    const second = {
+      ...converted,
+      xml: '<entry id="entry.id.6">…</entry>',
+      dmlex: { ...converted.dmlex, id: 'entry.id.6' },
+      issues: [{ ...converted.issues[0]!, message: 'second output issue' }],
+    }
+    const { container } = renderWithProviders(
+      <CodeOutputs outputs={[converted, second]} view="xml" />,
+    )
+    const editors = container.querySelectorAll('.cm-content')
+    expect(editors).toHaveLength(1)
+    expect(editors[0]?.textContent).toContain('entry.id.5')
+    expect(editors[0]?.textContent).toContain('entry.id.6')
+    expect(screen.getByText(/output 1: sense\[1\]\/indicator/)).toBeInTheDocument()
+    expect(screen.getByText('second output issue')).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="code-outputs"]')?.className).toContain('flex-1')
+    expect(container.querySelector('.h-\\[28rem\\]')).toBeNull()
   })
 })

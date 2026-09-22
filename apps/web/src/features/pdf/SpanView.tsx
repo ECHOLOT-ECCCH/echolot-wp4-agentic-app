@@ -163,9 +163,9 @@ export function SpanView({
             <p className="text-muted-foreground bg-muted/40 border-b px-3 py-1 text-[11px] uppercase">
               DMLex output
             </p>
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div className="flex min-h-0 flex-1 flex-col overflow-auto">
               {output.notes.length > 0 && (
-                <ul className="border-b px-3 py-2 text-xs">
+                <ul className="shrink-0 border-b px-3 py-2 text-xs">
                   {output.notes.map((note, i) => (
                     <li key={i} className="text-muted-foreground">
                       · {String(note)}
