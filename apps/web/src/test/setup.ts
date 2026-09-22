@@ -1,4 +1,9 @@
 import '@testing-library/jest-dom/vitest'
+import { configure } from '@testing-library/react'
+
+// findBy*/waitFor default to 1 s, which a busy machine running twelve test files in parallel
+// can miss on a re-render after a fetch; the tests wait for real data, not for timers
+configure({ asyncUtilTimeout: 5000 })
 
 // jsdom lacks matchMedia (used by sonner) and IntersectionObserver (used by the PDF viewer).
 if (!window.matchMedia) {
