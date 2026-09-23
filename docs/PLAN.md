@@ -830,8 +830,21 @@ model. Design fixed here:
   Apple Silicon or an 8 GB GPU runs 4-8B (samples at once, a full run overnight); CPU-only
   servers do previews and samples, not full runs. 4-bit weights need about 0.5-0.6 GB per
   billion parameters plus KV cache; 3-20 GB of disk per model.
+- The agent can be local too (owner's question, 2026-09-23), for institutions that need
+  privacy or offline operation rather than savings: the conversation is a few dozen turns per
+  dictionary and, with caching, a small fraction of the structuring cost. Talking about the
+  dictionary works at 27-32B (Gemma 3 27B, Qwen3-32B, GaMS-27B for Slovene); driving the
+  tools and writing or repairing the mapping is where a local model falls behind the frontier
+  and needs more turns and more of the lexicographer's checking. The platform's deterministic
+  checks (mapping_write refuses errors, samples and the live preview show the real output)
+  are what make a weaker agent viable. Candidates for the agent role on one 24 GB GPU:
+  gpt-oss-20b (Apache 2.0, built for tool use, ~16 GB) and Qwen3-30B-A3B; with 48-80 GB,
+  Llama 3.3 70B or gpt-oss-120b. Benchmark: the Oxford flow (source to a clean, valid DMLex
+  sample through the chat), counting turns and tool calls per candidate against the API
+  model. Default recommendation stays: API model for the agent, local for structuring.
 - Order of work: eval harness + Ollama profile + native output (about a day), then the
-  two-model split (half a day), then, with numbers in hand, the fine-tuning item.
+  two-model split (half a day), then, with numbers in hand, the fine-tuning item; the local
+  agent option is covered by the same split and documented with its hardware floor.
 
 ## 14. Verification
 
