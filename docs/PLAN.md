@@ -25,11 +25,13 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 
 ## 1. Status
 
-- Current milestone: M3 is built and verified on the dev stack (12d); the owner's in-depth
-  user test with a real model comes next, then M4 Hardening (expand section 13 into a
-  checklist when starting). M2's live acceptance with a model (M2.7 cost check, M2.8 model
-  part) is part of that user test. M1 is complete.
-- Next task: owner's user test, then M4.1
+- Current milestone: M3 is complete (all of 12d ticked, tag `m3`, 2026-09-16); since then the
+  owner's user test, with fixes landed as they were reported (see DECISIONS 2026-09-21/22).
+  Next is M4 Hardening: expand section 13 into a checklist 12e when starting, with the local
+  model items (added 2026-09-23) first. M2's live acceptance with a model (M2.7 cost check,
+  M2.8 model part) remains the owner's to run; it becomes the reference measurement for the
+  local-model harness. M1 is complete.
+- Next task: M4.1 (write the 12e checklist, then the local-model evaluation harness)
 - Blockers: live-model work needs API credits on the owner's Anthropic console account (prepaid
   balance or auto-reload; a Claude subscription does not cover API keys). The M1.10 session spent the
   balance twice; prompt caching is enabled since then. `make dev-infra` provides Postgres, Keycloak
@@ -38,7 +40,7 @@ Definition of done for a task: acceptance check passed, `make check` green, docs
 - Inputs from the owner (2026-09-15) in `legacy/`: `dmlexifier.py` (XML to DMLex converter driven by a
   nested JSON mapping), `dmlex.xsd` (XSD 1.1, namespaced), `validate.py`, the DMLex 1.0 specification
   (HTML), and `oxford.xml` (102-entry bilingual sample, root `<oxford>`, entries `<se>`).
-- Last update: 2026-09-16 (M3 verified on the dev stack, tag m3)
+- Last update: 2026-09-23 (local model planned as the first M4 work)
 
 Update this block at the end of every task.
 
@@ -793,6 +795,43 @@ Acceptance: the agent writes a post-processing snippet for a quirky XML, the use
 
 ### M4 Hardening
 Scope: conversation compaction, usage dashboards per user and project, project sharing, audit views, rate limits, backups documented and tested, SSO federation guide (SAML brokering, SATOSA proxy for eduGAIN-scale federations), optional push to Lexonomy, i18n scaffolding, OCR adapter hook.
+
+Added 2026-09-23 (owner's decision after the M3 user test), to be the first M4 items:
+
+**Local model shipped alongside the app.** Purpose: take the volume work, PDF structuring
+(one call per entry: Šega ≈ 6.8 M input / 2.8 M output tokens on the API), off the paid model
+and keep dictionary text on the institution's server; the conversation stays on a frontier
+model. Design fixed here:
+- Two models per project: an *agent model* (conversation, mapping, tools) and a *structuring
+  model*; either may be local or an API model.
+- Serving: an Ollama service behind a `local-llm` Compose profile as the shipped default
+  (OpenAI-compatible endpoint, GGUF, CPU/GPU/Metal, JSON-schema output; on a Mac it runs
+  natively, Docker sees no GPU there), a vLLM profile for one-GPU production servers. Weights
+  are not bundled in images: pulled on first start, or a GGUF dropped into a volume for
+  air-gapped installs. Weight licences listed in the docs (Qwen and Mistral Small Apache 2.0,
+  Gemma and Llama under their own terms, GaMS to check).
+- The app side: a "Local" provider preset on the existing `openai_compatible` provider that
+  lists the server's models and detects capabilities (tools, vision, context) instead of
+  asking; the structurer uses native JSON-schema output (Pydantic AI `NativeOutput`,
+  constrained decoding on the server) for local models instead of tool-call output, which
+  small models do badly; concurrency per backend (Ollama serves one request at a time unless
+  `OLLAMA_NUM_PARALLEL` is set, vLLM wants many in flight); the cost estimate shows time for a
+  local model, from the speed measured on the first batch; prices zero.
+- Size is chosen by measurement, not benchmarks: an evaluation harness structures the same
+  sample (50 spans) with the reference API model and with a local candidate, diffs field by
+  field, and reports agreement and time. Expected from what is known in September 2026:
+  7-9B is the floor for a general model (Qwen3-8B; Gemma 3 12B and Qwen3-14B comfortable;
+  27-32B near-frontier on this narrow task; GaMS 9B/12B/27B for Slovene-heavy content);
+  3-4B becomes effective once fine-tuned on the pairs the app already accumulates (span text,
+  the reference output, the lexicographer's corrections), which is the follow-up item. Vision
+  (Qwen2.5-VL-7B, Gemma 3 12B) only when scans arrive; born-digital PDFs are text-only.
+- Hardware documented in self-hosting: one 24 GB GPU is the institution target (8-14B with
+  vLLM structures Šega in under an hour; a 32B 4-bit runs at moderate speed); a laptop with
+  Apple Silicon or an 8 GB GPU runs 4-8B (samples at once, a full run overnight); CPU-only
+  servers do previews and samples, not full runs. 4-bit weights need about 0.5-0.6 GB per
+  billion parameters plus KV cache; 3-20 GB of disk per model.
+- Order of work: eval harness + Ollama profile + native output (about a day), then the
+  two-model split (half a day), then, with numbers in hand, the fine-tuning item.
 
 ## 14. Verification
 
