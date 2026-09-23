@@ -842,6 +842,10 @@ model. Design fixed here:
   Llama 3.3 70B or gpt-oss-120b. Benchmark: the Oxford flow (source to a clean, valid DMLex
   sample through the chat), counting turns and tool calls per candidate against the API
   model. Default recommendation stays: API model for the agent, local for structuring.
+  Constraint (owner, 2026-09-23): no access to an 80 GB card at present; the development
+  target is what a laptop (Apple Silicon) and at most one consumer 24 GB GPU can run, so the
+  harness and the shipped defaults are built and measured for 4-14B structuring models and a
+  20-32B agent; the 70B / gpt-oss-120b tier stays documented for institutions, unmeasured.
 - Order of work: eval harness + Ollama profile + native output (about a day), then the
   two-model split (half a day), then, with numbers in hand, the fine-tuning item; the local
   agent option is covered by the same split and documented with its hardware floor.
