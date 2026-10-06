@@ -41,6 +41,8 @@ Log in with `dev@example.com` / `dev` (imported Keycloak realm).
 
 ## Run the whole stack with Docker
 
+Server sizing, ports and what to generate before the first start: [docs/self-hosting.md](docs/self-hosting.md#requirements).
+
 ```bash
 cp .env.example .env            # then set ELX_SECRET_KEY and ELX_SESSION_SECRET to real values
 docker compose -f deploy/compose/docker-compose.yml up -d --build

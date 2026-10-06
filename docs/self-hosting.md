@@ -15,6 +15,80 @@ institution's own deployment.
 | garage | `dxflrs/garage` | S3-compatible object storage for uploaded and generated files |
 | keycloak | `quay.io/keycloak/keycloak` | Identity provider: local accounts, ORCID/GitHub login, institutional SAML/OIDC federation |
 
+## Requirements
+
+Measured on the dev stack and the production Compose file (September 2026); the stack is seven
+containers: Caddy (web + TLS + reverse proxy), API, worker, sandbox runner, PostgreSQL 16,
+Garage (S3), Keycloak 26.
+
+**Machine.** A Linux VM, x86_64 or arm64 (the images build for both), with Docker Engine 24+
+and Compose v2; Ubuntu 24.04 LTS or Debian 12 are the tested bases. No GPU: nothing in the
+current stack uses one (a GPU matters only for the local model planned in M4). Nested
+virtualisation is not needed. The VM must allow Docker to run containers with cgroup limits
+(any standard KVM/Xen/Hyper-V VM does; some container-based "VMs" such as LXC/OpenVZ do not).
+
+| | Minimum (try-out, 2-3 users) | Recommended (institution, ~10 concurrent users) |
+|---|---|---|
+| vCPU | 2 | 4-8 |
+| RAM | 4 GB | 8-16 GB |
+| Disk | 40 GB SSD | 100 GB SSD, data on its own volume |
+
+Where the numbers come from:
+- Idle memory is about 1 GB: Keycloak ~600 MB, PostgreSQL ~100 MB, API ~150 MB, Garage,
+  worker, runner and Caddy a few tens of MB each.
+- Peaks are in the worker: 397 MB RSS while validating the full output of a 149 MB / 88,575-entry
+  XML export (xmlschema holds the whole 28 MB result in memory); ~80 MB for PDF layout
+  extraction; every sandbox snippet may take up to 2 GB and 2 CPUs (its own limits, one run at
+  a time per worker). Uploads stream to storage at constant memory. So 4 GB runs everything one
+  job at a time; 8 GB keeps the UI responsive while a full run, a structuring job and a snippet
+  overlap; 16 GB if several lexicographers run heavy jobs at once.
+- CPU: the heavy jobs are single-threaded per job: PDF layout about 110 ms per page (a 1,267-page
+  dictionary in 2.3 minutes), XSD 1.1 validation of a large export 3-4 minutes, the conversion
+  itself seconds. Model-driven structuring waits on the provider, not on the CPU. Two vCPUs
+  serve a small team; more vCPUs help only with concurrent jobs (one worker process runs one job
+  at a time: scale with worker replicas, `docker compose up -d --scale worker=2`).
+- Disk: images about 3 GB (API/worker 750 MB, Keycloak 460 MB, PostgreSQL 470 MB, sandbox image
+  365 MB, runner 260 MB, Garage and web under 100 MB) plus 1-2 GB of build cache when built on
+  the VM. Data: uploads (up to `MAX_UPLOAD_MB`, default 2 GB per file), derived files (PDF page
+  layouts: roughly the size of the PDF's text layer, 60 MB for the 1,267-page dictionary),
+  outputs (two files per full run, kept per run), the PostgreSQL volume (entries, spans,
+  converted entries as JSONB) and Keycloak. Budget about 5x the size of the dictionaries you
+  expect to hold; the dev stack with the samples, the 149 MB export and the 1,267-page PDF uses
+  about 0.6 GB of object storage.
+
+**Network.**
+- Inbound: 80 and 443 to Caddy (Let's Encrypt needs both reachable from the internet; behind an
+  institutional proxy, terminate TLS there and set `SITE_ADDRESS=:80`). Keycloak needs its own
+  hostname with TLS (`KEYCLOAK_URL`), either a second Caddy site or the same proxy; 8080 must
+  not be exposed directly.
+- DNS: an A/AAAA record for the app (`SITE_ADDRESS`) and one for Keycloak.
+- Outbound HTTPS: to the model providers the lexicographers use (api.anthropic.com,
+  api.openai.com, openrouter.ai, generativelanguage.googleapis.com, or an institutional
+  OpenAI-compatible endpoint), to the image registries (Docker Hub, quay.io, ghcr.io) and to
+  Let's Encrypt. Sandbox containers themselves have no network at all.
+- Nothing else listens publicly; PostgreSQL, Garage and the runner stay on the Compose network.
+
+**Docker specifics.**
+- The runner mounts `/var/run/docker.sock` and creates the sandbox containers as siblings; build
+  the sandbox image on the VM once (`make sandbox-image`, or
+  `docker build -t elexifier-sandbox:local packages/sandbox/image`) and after every change to
+  `packages/sandbox/image/Dockerfile`. See *Sandbox* below for gVisor (`runsc`) in production.
+- Images are built from the repository (`docker compose ... up -d --build`); there is no public
+  registry yet. Building needs about 2 GB of free disk and a few minutes; on a small VM build
+  elsewhere and `docker save`/`docker load`, or add a registry to CI.
+- Keep the Docker data root on the same SSD as the volumes; `postgres-data` and `garage-data`
+  are the volumes to back up (see *Backups*).
+
+**Secrets to generate before the first start** (`.env`): `ELX_SECRET_KEY` (Fernet),
+`ELX_SESSION_SECRET`, `OIDC_CLIENT_SECRET` (set the same value on the Keycloak client),
+`KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_ACCESS_KEY`/`S3_SECRET_KEY`,
+`SANDBOX_RUNNER_TOKEN`. Delete the imported dev users (`dev@example.com`, `admin@example.com`)
+from the realm.
+
+**A concrete starting point.** A 4 vCPU / 8 GB / 100 GB SSD cloud VM (the class that costs
+EUR 10-20 a month) runs the whole stack for a department; grow RAM before CPU, and add a second
+worker when full runs start queueing behind each other.
+
 ## First start (local, http://localhost)
 
 ```bash
