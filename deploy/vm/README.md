@@ -27,10 +27,19 @@ Sizing, ports and the design of the stack are in [`docs/self-hosting.md`](../../
 ## 2. What you need at hand
 
 - A GitHub account with access to the repository and a **classic** personal access token with
-  the single scope **`read:packages`** (GitHub → Settings → Developer settings → Personal
-  access tokens → Tokens (classic)). The images are private; fine-grained tokens do not work
-  with `ghcr.io`. The token is stored on the server by `docker login` (root's
-  `~/.docker/config.json`); it can only read packages.
+  the single scope **`read:packages`**: GitHub → Settings → Developer settings → Personal
+  access tokens → **Tokens (classic)** → Generate new token (classic). The page opens on
+  *Fine-grained tokens* by default; those start with `github_pat_` and `ghcr.io` answers
+  `denied: denied` to them at login. A classic token starts with `ghp_`. The images are
+  private, so the scope is needed to pull them (a token without it still *logs in*, and then
+  every pull says `denied`). The token is stored on the server by `docker login` (root's
+  `~/.docker/config.json`); it can only read packages. Check it on the server before anything
+  else:
+
+  ```bash
+  sudo docker login ghcr.io -u <github user>      # paste the token as the password
+  sudo docker manifest inspect ghcr.io/andrazrepar/elexifier-deploy:main > /dev/null && echo token OK
+  ```
 - The domain, if any.
 
 ## 3. Install
@@ -156,7 +165,8 @@ console (realm elexifier → Clients → elexifier-web → Valid redirect URIs: 
 
 | Symptom | Cause and fix |
 |---|---|
-| `docker login` fails, or `pull access denied` | The token is not a classic token, or lacks `read:packages`, or the account has no access to the repository. |
+| `docker login` says `denied: denied` | The token is a fine-grained one (`github_pat_…`), or the GitHub password was pasted; create a classic token (`ghp_…`). |
+| Login succeeds but every pull says `denied` | The classic token lacks the `read:packages` scope, or the account has no access to the repository. |
 | `manifest unknown` for a tag | That tag was never published: CI has not finished for the latest push, or the git tag was not pushed. `update.sh main` goes back to the latest `main`. |
 | No certificate / browser warning | DNS does not point at the server, or 80/443 are not reachable from the internet. `docker compose logs caddy`. Behind an institutional proxy that does TLS, set `SITE_ADDRESS=:80` and keep the `https://` URLs. |
 | Login ends in an error from Keycloak about the redirect URI | `SITE_URL` in `.env` and the client's redirect URIs in Keycloak disagree; fix the URIs in the admin console. |
