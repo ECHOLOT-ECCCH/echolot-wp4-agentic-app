@@ -55,9 +55,9 @@ with a password too and confirms:
 ssh <user>@<server> 'cat > install.sh && chmod +x install.sh && echo copied' < deploy/vm/install.sh
 ```
 
-**Without SSH access from your machine** (for instance only the Proxmox console): the script
-is also inside the deployment bundle image, so four lines typed at the VM's console bootstrap
-everything with nothing copied over:
+**Without copying anything** (the simplest path when file transfer is awkward; works in an
+`ssh` session as well as at the Proxmox console): the script is also inside the deployment
+bundle image, so four lines typed *on the server* bootstrap everything:
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
