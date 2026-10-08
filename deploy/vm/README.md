@@ -71,7 +71,7 @@ bundle image, so four lines typed *on the server* bootstrap everything:
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
 sudo docker login ghcr.io -u <github user>          # paste the read:packages token
-sudo docker create --name b ghcr.io/andrazrepar/elexifier-deploy:main /none && sudo docker cp b:/bundle/install.sh . && sudo docker rm b
+sudo docker create --name bundle ghcr.io/andrazrepar/elexifier-deploy:main /none && sudo docker cp bundle:/bundle/install.sh . && sudo docker rm bundle
 sudo ./install.sh
 ```
 
