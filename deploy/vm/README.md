@@ -35,11 +35,28 @@ Sizing, ports and the design of the stack are in [`docs/self-hosting.md`](../../
 
 ## 3. Install
 
-From a machine that has the repository (only this one file is copied):
+From a machine that has the repository (only this one file is copied; password logins are
+fine, both commands prompt for it):
 
 ```bash
-scp deploy/vm/install.sh <user>@<server>:
-ssh <user>@<server> sudo ./install.sh
+scp deploy/vm/install.sh <user>@<server>:        # note the trailing colon
+ssh -t <user>@<server> sudo ./install.sh          # -t: a terminal for sudo and the questions
+```
+
+Two things that look like "nothing happens": without the trailing colon, `scp` quietly copies
+the script to a *local* file named `<user>@<server>` instead of the server; and if the server
+is reachable only from the institution's network, `scp`/`ssh` hang for a minute before
+"Operation timed out", so connect to the VPN first (or use the console, below).
+
+**Without SSH access from your machine** (for instance only the Proxmox console): the script
+is also inside the deployment bundle image, so four lines typed at the VM's console bootstrap
+everything with nothing copied over:
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo docker login ghcr.io -u <github user>          # paste the read:packages token
+sudo docker create --name b ghcr.io/andrazrepar/elexifier-deploy:main /none && sudo docker cp b:/bundle/install.sh . && sudo docker rm b
+sudo ./install.sh
 ```
 
 The script asks for the domain (or empty), the GitHub user and the token, then:

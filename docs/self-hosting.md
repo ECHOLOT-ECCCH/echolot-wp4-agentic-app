@@ -132,7 +132,7 @@ fine-grained tokens do not work with `ghcr.io`).
 
 ```bash
 scp deploy/vm/install.sh you@server:          # once, from a machine with the repository
-ssh you@server sudo ./install.sh
+ssh -t you@server sudo ./install.sh
 ```
 
 `install.sh` asks for the domain, the GitHub user and the token, then: installs Docker if
