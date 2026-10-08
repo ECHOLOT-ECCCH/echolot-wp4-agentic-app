@@ -10,7 +10,7 @@ PROFILE ?=
 WEB := apps/web
 NODE_MIN := 22
 
-.PHONY: help setup check-node dev-infra dev-infra-down api web worker runner sandbox-image check test e2e migration upgrade test-db images up down logs garage-init
+.PHONY: help setup check-node dev-infra dev-infra-down api web worker runner sandbox-image check test e2e migration upgrade test-db images up down logs garage-init secrets
 
 help:
 	@echo "Targets:"
@@ -32,6 +32,7 @@ help:
 	@echo "  up / down       start or stop the production compose stack"
 	@echo "  logs            follow production stack logs"
 	@echo "  garage-init     bootstrap the dev Garage node (PROFILE=s3)"
+	@echo "  secrets         print freshly generated secrets for a deployment .env"
 
 check-node:
 	@v=$$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0); \
@@ -111,3 +112,6 @@ garage-init:
 	  S3_ACCESS_KEY=GK0000000000000000000000dev \
 	  S3_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000dev \
 	  uv run python -m elexifier_core.garage_bootstrap
+
+secrets:
+	@python3 deploy/compose/gen_secrets.py

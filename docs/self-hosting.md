@@ -79,24 +79,45 @@ Where the numbers come from:
 - Keep the Docker data root on the same SSD as the volumes; `postgres-data` and `garage-data`
   are the volumes to back up (see *Backups*).
 
-**Secrets to generate before the first start** (`.env`): `ELX_SECRET_KEY` (Fernet),
-`ELX_SESSION_SECRET`, `OIDC_CLIENT_SECRET` (set the same value on the Keycloak client),
-`KEYCLOAK_ADMIN_PASSWORD`, `POSTGRES_PASSWORD`, `S3_ACCESS_KEY`/`S3_SECRET_KEY`,
-`SANDBOX_RUNNER_TOKEN`. Delete the imported dev users (`dev@example.com`, `admin@example.com`)
-from the realm.
+**Secrets:** generate them before the first start, see *Secrets* below.
 
 **A concrete starting point.** A 4 vCPU / 8 GB / 100 GB SSD cloud VM (the class that costs
 EUR 10-20 a month) runs the whole stack for a department; grow RAM before CPU, and add a second
 worker when full runs start queueing behind each other.
+
+## Secrets
+
+Nine values in `.env`, all generated, all set before the first `docker compose up`:
+
+```bash
+make secrets            # or: python3 deploy/compose/gen_secrets.py   (standard library only)
+```
+
+prints a ready-to-paste block. What each one is:
+
+| Variable | Purpose | Notes |
+|---|---|---|
+| `ELX_SECRET_KEY` | Fernet key that encrypts the lexicographers' provider API keys at rest | **Never lose it**: without it the stored keys are unreadable. Comma-separated list for rotation (new key first). Back it up with the database. |
+| `ELX_SESSION_SECRET` | Signs the session cookie | Changing it logs everyone out. |
+| `POSTGRES_PASSWORD` | Database password | Set once; changing it later means changing it in PostgreSQL too. |
+| `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD` | Keycloak's bootstrap admin | Used at `KEYCLOAK_URL`/admin. |
+| `OIDC_CLIENT_SECRET` | The app's OIDC client secret | **Lives in two places:** `.env` and the Keycloak client `elexifier-web` (realm `elexifier` → Clients → Credentials). The realm import ships `dev-client-secret`; edit `deploy/compose/keycloak/realm-elexifier.json` before the first start or set it in the admin console right after. |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | Credentials `garage-init` imports into Garage on the first start | Garage requires `GK` + 24 hex characters and a 64-hex secret, which the generator produces. |
+| `GARAGE_ADMIN_TOKEN` | Garage's admin API, used by `garage-init` | |
+| `SANDBOX_RUNNER_TOKEN` | Shared token between the API and the sandbox runner | |
+
+Only `ELX_SECRET_KEY` and `ELX_SESSION_SECRET` are enforced (the Compose file refuses to start
+without them); the others silently fall back to the development defaults (`elexifier`,
+`admin`, `dev-client-secret`, …) when missing, so set all of them deliberately. Then delete the
+imported development users (`dev@example.com`, `admin@example.com`) from the realm, and set
+`ELX_ENABLE_TEST_MODEL=0`.
 
 ## First start (local, http://localhost)
 
 ```bash
 git clone <this repository> elexifier && cd elexifier
 cp .env.example .env
-# generate real secrets
-python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"   # -> ELX_SECRET_KEY
-python3 -c "import secrets; print(secrets.token_urlsafe(48))"                                 # -> ELX_SESSION_SECRET
+make secrets            # paste the output into .env, replacing the development values
 docker compose -f deploy/compose/docker-compose.yml up -d --build
 ```
 
