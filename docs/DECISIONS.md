@@ -1126,3 +1126,21 @@ for a pilot (passwords travel unencrypted) and that a public address with a DNS 
 Let's Encrypt certificate from Caddy by itself. The owner's server was unblocked with the same
 two `kcadm` commands by hand. Verified locally against a production stack laid out like
 `/opt/elexifier`: `none` for an http site, `external` for an https one.
+
+## 2026-10-08 Project export and import
+
+The owner wants the projects of the development stack on the new server. The local database
+holds 103 projects, 96 of them leftovers of the browser tests, plus 47 test credentials, so a
+whole-database copy was the wrong tool; user ids differ between instances (Keycloak subjects),
+and provider keys are encrypted with the instance's own key. `elexifier_core.portability`
+exports one project to a tar.gz (`tables/<name>.jsonl` for the seventeen project-scoped
+tables in foreign-key order, `storage/<key>` for every object the rows point at: sources,
+outputs, artifacts, page layouts, the learned segmenter; regenerable page images are left out;
+a manifest with the schema revision) and imports it with the original ids under a chosen owner:
+every column that references `users` is pointed at the importer, a membership row is added,
+`default_model` is cleared because credential ids do not travel; memberships, sessions,
+credentials, audit rows and queue state are not carried. Refused when the schema revisions
+differ or the project exists. Round-trip test: a PDF project with spans and decisions, a
+structured sample, a step and a conversation is exported, deleted with its objects, imported
+under another user, and comes back with identical counts, the owner remapped, and usable
+through the API. Also the way to back up or hand over a single project.

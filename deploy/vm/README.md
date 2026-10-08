@@ -154,7 +154,32 @@ Changing the address later: edit `SITE_URL`, `SITE_ADDRESS`, `KEYCLOAK_URL` in `
 Keycloak database), and add the new URL to the Keycloak client's redirect URIs in the admin
 console (realm elexifier → Clients → elexifier-web → Valid redirect URIs: `https://<new>/*`).
 
-## 7. Backups
+## 7. Moving a project between instances
+
+A project (its files, documents, spans, mappings, runs, steps, conversations) can be exported
+on one instance and imported on another, for instance from a laptop's development stack to the
+server, with its ids preserved. Provider keys do not travel (they are encrypted with the
+exporting instance's key; the owner enters theirs once and picks the model per project again),
+and the importing user becomes the owner.
+
+On the exporting side (a development checkout):
+
+```bash
+uv run python -m elexifier_core.portability export "Šega poslovni slovar" --out sega.tgz
+```
+
+Copy the file to the server (`scp sega.tgz andrazr@<server>:`), then on the server, as the
+user who will own it (they must have logged in to the site at least once):
+
+```bash
+cd /opt/elexifier
+sudo docker compose exec -T api python -m elexifier_core.portability import - --owner you@example.org < ~/sega.tgz
+```
+
+Both sides must run the same database schema revision (update the older one first); an
+archive is refused when the project already exists on the target.
+
+## 8. Backups
 
 - Database: `cd /opt/elexifier && docker compose exec -T postgres pg_dumpall -U elexifier | gzip > /var/backups/elexifier-$(date +%F).sql.gz`
   (both the app and the Keycloak database).
@@ -164,7 +189,7 @@ console (realm elexifier → Clients → elexifier-web → Valid redirect URIs: 
 - A Proxmox VM backup of the whole machine is a good second line (crash-consistent); the dumps
   are the clean restore path.
 
-## 8. If something goes wrong
+## 9. If something goes wrong
 
 | Symptom | Cause and fix |
 |---|---|
@@ -178,7 +203,7 @@ console (realm elexifier → Clients → elexifier-web → Valid redirect URIs: 
 | The app says the sandbox is unavailable | `docker compose logs sandbox-runner`; the sandbox image is pulled by `install.sh`/`update.sh`, `docker images | grep sandbox` shows it. |
 | Everything else | `docker compose ps` (health column), `docker compose logs <service>`, and `curl -s https://<domain>/healthz`. Send the output with the report. |
 
-## 9. Removing
+## 10. Removing
 
 `cd /opt/elexifier && docker compose down -v` stops everything and **deletes the data
 volumes**; `rm -rf /opt/elexifier` removes the configuration. Leave out `-v` to keep the data.

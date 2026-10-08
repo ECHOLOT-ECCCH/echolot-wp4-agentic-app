@@ -248,6 +248,15 @@ When a Procrastinate upgrade ships new SQL migrations, apply them with
 `docker compose exec api procrastinate --app elexifier_core.jobs.app schema --migrations-path`
 before restarting the worker.
 
+## Moving a project between instances
+
+`python -m elexifier_core.portability export <project> --out file.tgz` on one instance and
+`… import file.tgz --owner <e-mail>` on another move one project with its rows and stored
+objects, ids preserved, under a new owner; provider credentials and memberships do not travel
+and the project's model choice is cleared. The schema revisions must match. On a server:
+`docker compose exec -T api python -m elexifier_core.portability import - --owner … < file.tgz`.
+The runbook (`deploy/vm/README.md`, *Moving a project between instances*) has the steps.
+
 ## Backups
 
 - Database: `docker compose exec postgres pg_dump -U elexifier elexifier | gzip > elexifier-$(date +%F).sql.gz`
