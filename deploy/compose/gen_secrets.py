@@ -46,6 +46,8 @@ def main() -> None:
         f"S3_ACCESS_KEY=GK{secrets.token_hex(12)}",
         f"S3_SECRET_KEY={secrets.token_hex(32)}",
         f"GARAGE_ADMIN_TOKEN={secrets.token_hex(32)}",
+        "# Garage's node-to-node secret (32 bytes hex); set once, before the first start.",
+        f"GARAGE_RPC_SECRET={secrets.token_hex(32)}",
         "",
         "# API <-> sandbox runner.",
         f"SANDBOX_RUNNER_TOKEN={secrets.token_hex(32)}",

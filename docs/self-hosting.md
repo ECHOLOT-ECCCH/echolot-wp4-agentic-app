@@ -93,7 +93,7 @@ worker when full runs start queueing behind each other.
 
 ## Secrets
 
-Nine values in `.env`, all generated, all set before the first `docker compose up`:
+Ten values in `.env`, all generated, all set before the first `docker compose up`:
 
 ```bash
 make secrets            # or: python3 deploy/compose/gen_secrets.py   (standard library only)
@@ -109,7 +109,8 @@ prints a ready-to-paste block. What each one is:
 | `KEYCLOAK_ADMIN`, `KEYCLOAK_ADMIN_PASSWORD` | Keycloak's bootstrap admin | Used at `KEYCLOAK_URL`/admin. |
 | `OIDC_CLIENT_SECRET` | The app's OIDC client secret | **Lives in two places:** `.env` and the Keycloak client `elexifier-web` (realm `elexifier` → Clients → Credentials). The realm import ships `dev-client-secret`; edit `deploy/compose/keycloak/realm-elexifier.json` before the first start or set it in the admin console right after. |
 | `S3_ACCESS_KEY`, `S3_SECRET_KEY` | Credentials `garage-init` imports into Garage on the first start | Garage requires `GK` + 24 hex characters and a 64-hex secret, which the generator produces. |
-| `GARAGE_ADMIN_TOKEN` | Garage's admin API, used by `garage-init` | |
+| `GARAGE_ADMIN_TOKEN` | Garage's admin API, used by `garage-init` | Garage reads it from the environment (nothing in the config file). |
+| `GARAGE_RPC_SECRET` | Garage's node-to-node secret, 32 bytes hex | Set before the first start; the single node is never reachable on that port from outside the Docker network. |
 | `SANDBOX_RUNNER_TOKEN` | Shared token between the API and the sandbox runner | |
 
 Only `ELX_SECRET_KEY` and `ELX_SESSION_SECRET` are enforced (the Compose file refuses to start

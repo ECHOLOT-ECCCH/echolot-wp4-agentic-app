@@ -48,6 +48,10 @@ services:
   garage:
     image: dxflrs/garage:v2.3.0
     restart: unless-stopped
+    environment:
+      # the secrets stay out of the config file; both are read by Garage from the environment
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-0000000000000000000000000000000000000000000000000000000000000000}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-dev-garage-admin-token}
     volumes:
       - ./garage/garage-compose.toml:/etc/garage.toml:ro
       - garage-meta:/var/lib/garage/meta

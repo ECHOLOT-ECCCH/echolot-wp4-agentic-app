@@ -170,6 +170,7 @@ console (realm elexifier → Clients → elexifier-web → Valid redirect URIs: 
 | `manifest unknown` for a tag | That tag was never published: CI has not finished for the latest push, or the git tag was not pushed. `update.sh main` goes back to the latest `main`. |
 | No certificate / browser warning | DNS does not point at the server, or 80/443 are not reachable from the internet. `docker compose logs caddy`. Behind an institutional proxy that does TLS, set `SITE_ADDRESS=:80` and keep the `https://` URLs. |
 | Login ends in an error from Keycloak about the redirect URI | `SITE_URL` in `.env` and the client's redirect URIs in Keycloak disagree; fix the URIs in the admin console. |
+| `garage-init` stays `Waiting` for two minutes and `api` never starts | `docker compose logs garage-init`: `garage admin API not reachable` with 401s means `GARAGE_ADMIN_TOKEN` in `.env` does not match what Garage runs with (bundles before 2026-10-08 had the token fixed in the config file; set `GARAGE_ADMIN_TOKEN=dev-garage-admin-token` in `.env` or update). |
 | The app says the sandbox is unavailable | `docker compose logs sandbox-runner`; the sandbox image is pulled by `install.sh`/`update.sh`, `docker images | grep sandbox` shows it. |
 | Everything else | `docker compose ps` (health column), `docker compose logs <service>`, and `curl -s https://<domain>/healthz`. Send the output with the report. |
 

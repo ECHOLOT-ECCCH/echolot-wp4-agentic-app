@@ -1095,3 +1095,19 @@ The owner has a Proxmox VM and wants neither the repository nor a build toolchai
   `gen_secrets.py` plus the site URLs, realm patch, pull, up, health wait) and `update.sh`
   (bundle + images for `IMAGE_TAG`, re-patch, `up -d --remove-orphans`, prune; a tag argument
   pins or rolls back). Both re-exec under sudo and live in the bundle, so they update themselves.
+
+## 2026-10-08 First server install: Garage's admin token was fixed in the config file
+
+On the owner's VM, `garage-init` stayed "Waiting" for two minutes and the API never started:
+`install.sh` generates a random `GARAGE_ADMIN_TOKEN`, but the Garage config shipped in the
+bundle had `admin_token = "dev-garage-admin-token"` (and a fixed `rpc_secret`), so the
+bootstrap's requests were refused until its retries ran out. The local verification had passed
+only because it used the default token. Now the config file carries no secrets: the garage
+service receives `GARAGE_ADMIN_TOKEN` and `GARAGE_RPC_SECRET` from the environment (supported
+by Garage since v0.8.2; the keys were removed from the file so there is no precedence question),
+`gen_secrets.py` generates both (ten values), and the Compose defaults keep the old development
+values so an existing installation keeps working after an update. Verified from empty volumes
+with random secrets: bootstrap, API health, and an 89 KB upload stored in and read back from
+Garage. The owner's server was unblocked meanwhile by setting the development token in `.env`.
+Lesson: the from-source test and the install path must run with *generated* secrets, not the
+defaults; `install.sh` is now the thing to test, not the Compose file alone.
