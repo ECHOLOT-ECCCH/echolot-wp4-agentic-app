@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     sandbox_runner_url: str = "http://localhost:8010"
     sandbox_runner_token: str = "dev-runner-token"
     sandbox_runtime: Literal["runc", "runsc"] = "runc"
-    sandbox_image: str = "elexifier-sandbox:local"  # built by `make sandbox-image`
+    sandbox_image: str = "elexifier/sandbox:local"  # built by `make sandbox-image`
 
     # Development conveniences
     elx_enable_test_model: bool = False

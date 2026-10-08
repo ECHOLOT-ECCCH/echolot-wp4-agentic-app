@@ -709,7 +709,7 @@ from the lexicographer's decisions gives a second opinion on PDF pages. Design n
   run between the conversion pass and the write/validate pass, in samples and in full runs.
 
 - [x] M3.1 Runner executes code. `packages/sandbox`: `execute(request) -> RunResponse` with
-  docker-py against `SANDBOX_IMAGE` (default `elexifier-sandbox:local`, built by `make
+  docker-py against `SANDBOX_IMAGE` (default `elexifier/sandbox:local`, built by `make
   sandbox-image` from `packages/sandbox/image/Dockerfile`): container per 7.12 (network none,
   user 1000, read-only rootfs, tmpfs /tmp, cap_drop ALL, no-new-privileges, pids, memory and
   CPU limits, `runtime=runsc` when `SANDBOX_RUNTIME=runsc`), inputs from storage into the tar,

@@ -5,7 +5,7 @@ unexport VIRTUAL_ENV
 .DEFAULT_GOAL := help
 
 COMPOSE_DEV := docker compose -f deploy/compose/docker-compose.dev.yml
-COMPOSE_PROD := docker compose -f deploy/compose/docker-compose.yml
+COMPOSE_PROD := docker compose --env-file .env -f deploy/compose/docker-compose.yml
 PROFILE ?=
 WEB := apps/web
 NODE_MIN := 22
@@ -67,7 +67,7 @@ runner:
 	uv run uvicorn elexifier_sandbox.runner.main:app --port 8010
 
 sandbox-image:
-	docker build -t $${SANDBOX_IMAGE:-elexifier-sandbox:local} packages/sandbox/image
+	docker build -t $${SANDBOX_IMAGE:-elexifier/sandbox:local} packages/sandbox/image
 
 test:
 	uv run pytest

@@ -1,7 +1,9 @@
 # Production-style stack: one command for the hosted instance and for institutions self-hosting.
-#   cp .env.example .env   (set real secrets, SITE_URL/SITE_ADDRESS and KEYCLOAK_URL for a domain)
-#   docker compose -f deploy/compose/docker-compose.yml up -d --build
+#   From source:  cp .env.example .env; make secrets; make images sandbox-image up   (compose reads .env from the
+#                 compose file's directory, so from the repository root pass --env-file .env, as the Makefile does)
+#   On a server:  deploy/vm/install.sh (published images, IMAGE_PREFIX=ghcr.io/<owner>/elexifier- IMAGE_TAG=main)
 # Connection URLs between services are fixed here; secrets and public URLs come from .env.
+# Keycloak is served by Caddy under /idp of the site, so one hostname and one certificate do.
 name: elexifier
 
 x-api-env: &api-env
@@ -10,8 +12,8 @@ x-api-env: &api-env
   ELX_SECRET_KEY: ${ELX_SECRET_KEY:?set ELX_SECRET_KEY in .env}
   ELX_SESSION_SECRET: ${ELX_SESSION_SECRET:?set ELX_SESSION_SECRET in .env}
   PUBLIC_URL: ${SITE_URL:-http://localhost}
-  OIDC_ISSUER: ${KEYCLOAK_URL:-http://localhost:8080}/realms/elexifier
-  OIDC_INTERNAL_ISSUER: http://keycloak:8080/realms/elexifier
+  OIDC_ISSUER: ${KEYCLOAK_URL:-http://localhost/idp}/realms/elexifier
+  OIDC_INTERNAL_ISSUER: http://keycloak:8080/idp/realms/elexifier
   OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-elexifier-web}
   OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-dev-client-secret}
   STORAGE_BACKEND: s3
@@ -57,7 +59,7 @@ services:
       retries: 20
 
   garage-init:
-    image: elexifier/api:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-elexifier/}api:${IMAGE_TAG:-local}
     depends_on:
       garage:
         condition: service_healthy
@@ -82,13 +84,16 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: elexifier
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-elexifier}
-      KC_HOSTNAME: ${KEYCLOAK_URL:-http://localhost:8080}
+      KC_HOSTNAME: ${KEYCLOAK_URL:-http://localhost/idp}
+      KC_HTTP_RELATIVE_PATH: /idp
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HTTP_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
       KC_HEALTH_ENABLED: "true"
+    # Reached through Caddy at ${KEYCLOAK_URL}; this direct port is for troubleshooting only
+    # and bound to the loopback interface by default.
     ports:
-      - "${KEYCLOAK_PORT:-8080}:8080"
+      - "${KEYCLOAK_PORT:-127.0.0.1:8080}:8080"
     volumes:
       - ./keycloak/realm-elexifier.json:/opt/keycloak/data/import/realm-elexifier.json:ro
     depends_on:
@@ -99,7 +104,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile.api
-    image: elexifier/api:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-elexifier/}api:${IMAGE_TAG:-local}
     restart: unless-stopped
     environment:
       <<: *api-env
@@ -111,7 +116,7 @@ services:
         condition: service_completed_successfully
 
   worker:
-    image: elexifier/api:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-elexifier/}api:${IMAGE_TAG:-local}
     restart: unless-stopped
     command: ["python", "-m", "elexifier_core.worker", "worker"]
     environment:
@@ -130,13 +135,14 @@ services:
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile.sandbox-runner
-    image: elexifier/sandbox-runner:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-elexifier/}sandbox-runner:${IMAGE_TAG:-local}
     restart: unless-stopped
     environment:
       <<: *api-env
-      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-elexifier-sandbox:local}
+      SANDBOX_IMAGE: ${IMAGE_PREFIX:-elexifier/}sandbox:${IMAGE_TAG:-local}
     # The runner is the only service with the daemon socket; snippets run in sibling containers
-    # created from SANDBOX_IMAGE (build it on the host: `make sandbox-image`).
+    # created from SANDBOX_IMAGE, which must be present on the host: `make sandbox-image` when
+    # building from source, pulled by deploy/vm/update.sh on a server.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
@@ -144,7 +150,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile.web
-    image: elexifier/web:${IMAGE_TAG:-local}
+    image: ${IMAGE_PREFIX:-elexifier/}web:${IMAGE_TAG:-local}
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}

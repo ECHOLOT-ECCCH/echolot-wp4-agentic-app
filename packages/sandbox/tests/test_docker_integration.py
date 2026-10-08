@@ -17,7 +17,7 @@ from elexifier_sandbox.runner.execute import (
     execute,
 )
 
-IMAGE = os.environ.get("SANDBOX_IMAGE", "elexifier-sandbox:local")
+IMAGE = os.environ.get("SANDBOX_IMAGE", "elexifier/sandbox:local")
 
 pytestmark = pytest.mark.docker
 

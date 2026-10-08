@@ -3,6 +3,12 @@
 {$SITE_ADDRESS::80} {
 	encode zstd gzip
 
+	# Keycloak lives under /idp (KC_HTTP_RELATIVE_PATH), so the site needs one hostname and
+	# one certificate; its admin console is /idp/admin/.
+	handle /idp/* {
+		reverse_proxy keycloak:8080
+	}
+
 	@backend path /api/* /auth/* /healthz
 	handle @backend {
 		reverse_proxy api:8000 {

@@ -1070,3 +1070,28 @@ name as a tooltip (`headwordTranslation · langCode sl`, `definition · definiti
 the headword (entry id) and over a sense number (sense id). Fields outside the core and
 crosslingual modules are still shown compactly with their names, so nothing the mapping
 produced is hidden. Used by the entry view and the PDF span view.
+
+## 2026-10-08 Deployment to a server: published images and a bundle image
+
+The owner has a Proxmox VM and wants neither the repository nor a build toolchain on it.
+- CI publishes five images to the GitHub Container Registry on every push to `main` (tags
+  `main`, `sha-<commit>`) and for git tags: api, web, sandbox-runner, the sandbox image, and
+  `elexifier-deploy`, a `FROM scratch` image holding the Compose file, the Keycloak realm, the
+  Postgres and Garage config and the scripts. A server extracts it with `docker create` +
+  `docker cp`, so the only credential on the server is a registry token: a **classic** PAT with
+  `read:packages` (fine-grained PATs and GitHub App tokens do not work with ghcr.io as of
+  2025, per GitHub's community discussions #38467 and #171423). Images are `linux/amd64`; an
+  arm64 server builds from source.
+- The Compose file is the same for both paths: `IMAGE_PREFIX` (default `elexifier/`, the local
+  build names) and `IMAGE_TAG` (default `local`) select the images; the local sandbox image is
+  now `elexifier/sandbox:local` so that `${IMAGE_PREFIX}sandbox:${IMAGE_TAG}` names it in both
+  worlds.
+- One hostname: Keycloak runs with `KC_HTTP_RELATIVE_PATH=/idp` and Caddy proxies `/idp/*` to
+  it, so a site needs one DNS record and one certificate; `/auth/*` stays the app's own login
+  flow. Keycloak's port 8080 binds to loopback by default. `deploy/vm/patch_realm.py` sets the
+  client secret and the site's redirect URIs in the realm file and drops the development users
+  before the first import (the import happens once, on an empty Keycloak database).
+- `install.sh` (copied once with scp; Docker install, registry login, bundle, `.env` from
+  `gen_secrets.py` plus the site URLs, realm patch, pull, up, health wait) and `update.sh`
+  (bundle + images for `IMAGE_TAG`, re-patch, `up -d --remove-orphans`, prune; a tag argument
+  pins or rolls back). Both re-exec under sudo and live in the bundle, so they update themselves.

@@ -7,13 +7,19 @@ institution's own deployment.
 
 | Service | Image | Role |
 |---|---|---|
-| caddy | built from `deploy/compose/Dockerfile.web` | Serves the web app, proxies `/api`, `/auth`, `/healthz` to the API, automatic HTTPS for a domain |
-| api | built from `deploy/compose/Dockerfile.api` | FastAPI application; applies database migrations on start |
-| worker | same image as api | Background jobs (conversions, PDF processing) |
-| sandbox-runner | built from `deploy/compose/Dockerfile.sandbox-runner` | Runs agent-written snippets in isolated containers (milestone 3) |
+| caddy | `ghcr.io/<owner>/elexifier-web` (`deploy/compose/Dockerfile.web`) | Serves the web app, proxies `/api`, `/auth`, `/healthz` to the API and `/idp` to Keycloak, automatic HTTPS for a domain |
+| api | `ghcr.io/<owner>/elexifier-api` (`deploy/compose/Dockerfile.api`) | FastAPI application; applies database migrations on start |
+| worker | same image as api | Background jobs (conversions, PDF processing, structuring) |
+| sandbox-runner | `ghcr.io/<owner>/elexifier-sandbox-runner` | Runs agent-written snippets in sibling containers made from `elexifier-sandbox` |
 | postgres | `postgres:16` | Application data, job queue, Keycloak database |
 | garage | `dxflrs/garage` | S3-compatible object storage for uploaded and generated files |
-| keycloak | `quay.io/keycloak/keycloak` | Identity provider: local accounts, ORCID/GitHub login, institutional SAML/OIDC federation |
+| keycloak | `quay.io/keycloak/keycloak` | Identity provider under `/idp` of the site: local accounts, ORCID/GitHub login, institutional SAML/OIDC federation |
+
+The app images are published by CI to the GitHub Container Registry on every push to `main`
+(tags `main` and `sha-<commit>`) and for every git tag (`m3`, …), for `linux/amd64`; a fifth
+image, `elexifier-deploy`, carries the deployment bundle (Compose file, Keycloak realm, scripts)
+so that a server needs nothing but Docker and a registry token. An arm64 server builds from
+source instead (*Running from source*).
 
 ## Requirements
 
@@ -71,7 +77,7 @@ Where the numbers come from:
 **Docker specifics.**
 - The runner mounts `/var/run/docker.sock` and creates the sandbox containers as siblings; build
   the sandbox image on the VM once (`make sandbox-image`, or
-  `docker build -t elexifier-sandbox:local packages/sandbox/image`) and after every change to
+  `docker build -t elexifier/sandbox:local packages/sandbox/image`) and after every change to
   `packages/sandbox/image/Dockerfile`. See *Sandbox* below for gVisor (`runsc`) in production.
 - Images are built from the repository (`docker compose ... up -d --build`); there is no public
   registry yet. Building needs about 2 GB of free disk and a few minutes; on a small VM build
@@ -112,35 +118,85 @@ without them); the others silently fall back to the development defaults (`elexi
 imported development users (`dev@example.com`, `admin@example.com`) from the realm, and set
 `ELX_ENABLE_TEST_MODEL=0`.
 
-## First start (local, http://localhost)
+## Deploying to a server
+
+Prerequisites: a VM as in *Requirements* with Ubuntu 24.04 or Debian 12; a DNS name pointing
+at it with ports 80 and 443 reachable (or no DNS name: plain http on the server's address,
+for a campus-internal try-out); outbound HTTPS; a GitHub account with access to the repository
+and a **classic** personal access token with the `read:packages` scope (the images are private;
+fine-grained tokens do not work with `ghcr.io`).
+
+```bash
+scp deploy/vm/install.sh you@server:          # once, from a machine with the repository
+ssh you@server sudo ./install.sh
+```
+
+`install.sh` asks for the domain, the GitHub user and the token, then: installs Docker if
+missing, logs in to `ghcr.io`, unpacks the deployment bundle into `/opt/elexifier`, writes
+`/opt/elexifier/.env` with freshly generated secrets (see *Secrets*) and the site URLs, patches
+the Keycloak realm for the site (client secret, redirect URIs, no development users), pulls the
+images and starts the stack. Non-interactive:
+`DOMAIN=dictionaries.example.org GHCR_USER=me GHCR_TOKEN=ghp_… sudo -E ./install.sh`.
+Re-running it is safe: an existing `.env` is kept.
+
+Afterwards: the site is at `https://<domain>`, Keycloak's admin console at
+`https://<domain>/idp/admin/` (credentials `KEYCLOAK_ADMIN*` in `.env`); create user accounts
+there or enable self-registration, and every user adds their model provider key under Settings
+in the app. Keycloak's own port 8080 is bound to the server's loopback interface only.
+
+Updating:
+
+```bash
+sudo /opt/elexifier/update.sh            # the current main
+sudo /opt/elexifier/update.sh m4         # pin a release tag (or sha-<commit> to roll back)
+```
+
+`update.sh` fetches the bundle and the images for `IMAGE_TAG` (kept in `.env`), re-applies the
+realm patch, restarts the services whose image changed (the API applies migrations on start)
+and prunes old images. A weekly cron line (`0 5 * * 1 /opt/elexifier/update.sh`) keeps a
+server on `main`; pin a tag instead if changes should be reviewed first.
+
+What is where: `/opt/elexifier` holds `docker-compose.yml`, `.env`, `keycloak/`, `postgres/`,
+`garage/` and the scripts; data lives in the Docker volumes `elexifier_postgres-data`,
+`elexifier_garage-data`, `elexifier_garage-meta`, `elexifier_caddy-data`; logs with
+`cd /opt/elexifier && docker compose logs -f --tail=100`.
+
+## Running from source (local, http://localhost)
 
 ```bash
 git clone <this repository> elexifier && cd elexifier
 cp .env.example .env
 make secrets            # paste the output into .env, replacing the development values
-docker compose -f deploy/compose/docker-compose.yml up -d --build
+make images sandbox-image up        # = docker compose --env-file .env -f deploy/compose/docker-compose.yml ...
 ```
 
-Open http://localhost and sign in with `dev@example.com` / `dev` (users imported from
-`deploy/compose/keycloak/realm-elexifier.json`; delete them for a real deployment). The Keycloak
-admin console is at http://localhost:8080 (`KEYCLOAK_ADMIN` / `KEYCLOAK_ADMIN_PASSWORD`).
+(Compose reads `.env` from the Compose file's directory, so from the repository root pass
+`--env-file .env`, as the Makefile targets do.)
+
+Open http://localhost and sign in
+with `dev@example.com` / `dev` (users imported from `deploy/compose/keycloak/realm-elexifier.json`;
+`deploy/vm/patch_realm.py` removes them and sets the client secret for a real deployment). The
+Keycloak admin console is at http://localhost/idp/admin/ (`KEYCLOAK_ADMIN` /
+`KEYCLOAK_ADMIN_PASSWORD`).
 
 ## A real domain
 
-In `.env`:
+One hostname is enough: Caddy serves the app and proxies Keycloak under `/idp`, so one DNS name
+and one certificate cover both. In `.env`:
 
 ```
 SITE_URL=https://dictionaries.example.org
 SITE_ADDRESS=dictionaries.example.org
-KEYCLOAK_URL=https://auth.example.org
+KEYCLOAK_URL=https://dictionaries.example.org/idp
 ```
 
-Caddy obtains certificates for `SITE_ADDRESS` automatically (ports 80 and 443 must be reachable).
-Put Keycloak behind TLS too: either run a second Caddy site for `auth.example.org` proxying to
-`keycloak:8080` (Keycloak is configured with `KC_PROXY_HEADERS=xforwarded`), or terminate TLS with
-your existing reverse proxy. Then add `https://dictionaries.example.org/*` to the client's redirect
-URIs in the Keycloak admin console (realm `elexifier`, client `elexifier-web`) and set a new client
-secret (`OIDC_CLIENT_SECRET`).
+Caddy obtains the certificate automatically (ports 80 and 443 must be reachable from the
+internet). Behind an institutional reverse proxy that terminates TLS, keep `SITE_URL` and
+`KEYCLOAK_URL` as the public `https://` addresses and set `SITE_ADDRESS=:80`. The Keycloak client
+needs the site in its redirect URIs and the real client secret: `install.sh`/`update.sh` do this
+with `deploy/vm/patch_realm.py` before the first start; for a from-source deployment run it by
+hand on `deploy/compose/keycloak/realm-elexifier.json` before the first `up`, or set both in the
+admin console afterwards (realm `elexifier`, client `elexifier-web`).
 
 ## Identity
 
@@ -169,9 +225,13 @@ set `ELX_SECRET_KEY=<new>,<old>`, redeploy, and re-encrypt stored credentials; t
 
 ## Upgrades
 
+On a server installed with `install.sh`: `sudo /opt/elexifier/update.sh` (see *Deploying to a
+server*). From source:
+
 ```bash
 git pull
-docker compose -f deploy/compose/docker-compose.yml up -d --build
+make images up          # docker compose --env-file .env -f deploy/compose/docker-compose.yml up -d --build
+make sandbox-image      # when packages/sandbox/image changed
 ```
 
 The API applies Alembic migrations and creates the job-queue schema on start (`RUN_MIGRATIONS=1`).
@@ -186,6 +246,8 @@ before restarting the worker.
 - Files: sync the Garage bucket with any S3 client, for example
   `rclone sync garage:elexifier /backups/elexifier-files` using the access key from `.env`.
 - Secrets: keep `.env` safe; without `ELX_SECRET_KEY` stored provider keys cannot be decrypted.
+- A VM snapshot (Proxmox vzdump, cloud snapshots) of the whole server is crash-consistent and
+  fine as a second line; the database dump is the clean restore path.
 
 ## Sandbox
 
@@ -197,7 +259,7 @@ Docker socket; it never bind-mounts host paths (inputs go in and outputs come ou
 daemon's archive API), so it works as a sibling container.
 
 - Build the image on the Docker host before the first run: `make sandbox-image` (or
-  `docker build -t elexifier-sandbox:local packages/sandbox/image`); `SANDBOX_IMAGE` names it.
+  `docker build -t elexifier/sandbox:local packages/sandbox/image`); `SANDBOX_IMAGE` names it.
   Rebuild it after changing `packages/sandbox/image/Dockerfile` (the libraries snippets may
   import: lxml, pdfplumber, pypdfium2, jsonschema, xmlschema, saxonche).
 - `GET http://sandbox-runner:8010/healthz` reports whether the daemon answers and the image is
@@ -217,7 +279,7 @@ daemon's archive API), so it works as a sibling container.
   (https://gvisor.dev/docs/user_guide/install/), register it with the daemon
   (`/etc/docker/daemon.json`: `{"runtimes": {"runsc": {"path": "/usr/bin/runsc"}}}`),
   restart Docker, check `docker info --format '{{json .Runtimes}}'` lists `runsc` and that
-  `docker run --rm --runtime=runsc elexifier-sandbox:local python -c 'print(1)'` prints 1, then
+  `docker run --rm --runtime=runsc elexifier/sandbox:local python -c 'print(1)'` prints 1, then
   set `SANDBOX_RUNTIME=runsc` in `.env` and restart the runner. Every run then gets a user-space
   kernel between the snippet and the host. Docker Desktop (macOS, Windows) has no `runsc`;
   development stays on `runc`.

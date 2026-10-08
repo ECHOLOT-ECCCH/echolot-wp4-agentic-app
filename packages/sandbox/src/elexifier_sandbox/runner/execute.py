@@ -38,7 +38,7 @@ WORK = "/work"
 
 @dataclass
 class ExecutionSettings:
-    image: str = "elexifier-sandbox:local"
+    image: str = "elexifier/sandbox:local"
     runtime: str | None = None  # "runsc" to run under gVisor
     tmp_size_mb: int = 256
 
