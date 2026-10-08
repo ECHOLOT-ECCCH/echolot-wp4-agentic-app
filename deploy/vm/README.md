@@ -43,10 +43,17 @@ scp deploy/vm/install.sh <user>@<server>:        # note the trailing colon
 ssh -t <user>@<server> sudo ./install.sh          # -t: a terminal for sudo and the questions
 ```
 
-Two things that look like "nothing happens": without the trailing colon, `scp` quietly copies
-the script to a *local* file named `<user>@<server>` instead of the server; and if the server
-is reachable only from the institution's network, `scp`/`ssh` hang for a minute before
-"Operation timed out", so connect to the VPN first (or use the console, below).
+Three things that look like "nothing happens": `scp` prints *nothing* when it succeeds (check
+with `ssh <user>@<server> ls -l install.sh`); without the trailing colon it quietly copies the
+script to a *local* file named `<user>@<server>` instead; and if the server is reachable only
+from the institution's network, `scp`/`ssh` hang for a minute before "Operation timed out",
+so connect to the VPN first (or use the console, below). If `scp` itself misbehaves (some
+servers disable the SFTP subsystem it uses), send the file through `ssh` instead; this works
+with a password too and confirms:
+
+```bash
+ssh <user>@<server> 'cat > install.sh && chmod +x install.sh && echo copied' < deploy/vm/install.sh
+```
 
 **Without SSH access from your machine** (for instance only the Proxmox console): the script
 is also inside the deployment bundle image, so four lines typed at the VM's console bootstrap
