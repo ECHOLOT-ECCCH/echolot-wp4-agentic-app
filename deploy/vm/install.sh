@@ -99,6 +99,7 @@ for i in $(seq 1 60); do
   if docker compose exec -T api curl -fsS http://localhost:8000/healthz >/dev/null 2>&1; then break; fi
   sleep 3
 done
+./keycloak_ssl.sh
 docker compose ps
 
 cat <<EOF

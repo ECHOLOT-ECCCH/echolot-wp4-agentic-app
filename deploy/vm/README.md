@@ -22,7 +22,10 @@ Sizing, ports and the design of the stack are in [`docs/self-hosting.md`](../../
   if Let's Encrypt is to issue the certificate). Nothing else listens publicly.
 - **A DNS name** pointing at the server, e.g. `dictionaries.example.org`. Without one the
   install falls back to plain `http://<server address>`, good enough for a first try inside
-  the campus network; add the name later by editing `.env` (see 6).
+  the campus network (the scripts then switch off Keycloak's "HTTPS required" rule for the
+  realms, since Keycloak refuses plain http from anything but localhost and private
+  networks; passwords travel unencrypted, so keep that to a pilot). Add the name later by
+  editing `.env` (see 6); the rule is switched back on.
 
 ## 2. What you need at hand
 
@@ -170,6 +173,7 @@ console (realm elexifier → Clients → elexifier-web → Valid redirect URIs: 
 | `manifest unknown` for a tag | That tag was never published: CI has not finished for the latest push, or the git tag was not pushed. `update.sh main` goes back to the latest `main`. |
 | No certificate / browser warning | DNS does not point at the server, or 80/443 are not reachable from the internet. `docker compose logs caddy`. Behind an institutional proxy that does TLS, set `SITE_ADDRESS=:80` and keep the `https://` URLs. |
 | Login ends in an error from Keycloak about the redirect URI | `SITE_URL` in `.env` and the client's redirect URIs in Keycloak disagree; fix the URIs in the admin console. |
+| Keycloak shows "We are sorry… HTTPS required" | The site runs on plain http at a public address and the realm still requires SSL: `sudo /opt/elexifier/keycloak_ssl.sh` (install.sh and update.sh run it; bundles before 2026-10-08 did not). |
 | `garage-init` stays `Waiting` for two minutes and `api` never starts | `docker compose logs garage-init`: `garage admin API not reachable` with 401s means `GARAGE_ADMIN_TOKEN` in `.env` does not match what Garage runs with (bundles before 2026-10-08 had the token fixed in the config file; set `GARAGE_ADMIN_TOKEN=dev-garage-admin-token` in `.env` or update). |
 | The app says the sandbox is unavailable | `docker compose logs sandbox-runner`; the sandbox image is pulled by `install.sh`/`update.sh`, `docker images | grep sandbox` shows it. |
 | Everything else | `docker compose ps` (health column), `docker compose logs <service>`, and `curl -s https://<domain>/healthz`. Send the output with the report. |

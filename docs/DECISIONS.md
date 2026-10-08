@@ -1111,3 +1111,18 @@ with random secrets: bootstrap, API health, and an 89 KB upload stored in and re
 Garage. The owner's server was unblocked meanwhile by setting the development token in `.env`.
 Lesson: the from-source test and the install path must run with *generated* secrets, not the
 defaults; `install.sh` is now the thing to test, not the Compose file alone.
+
+## 2026-10-08 First server install: "HTTPS required" from Keycloak on a public address
+
+The VM has a public address (194.249.x.x) and no domain yet, so the site runs on plain http.
+Keycloak's realms default to *require SSL = external*: http is accepted from localhost and
+private networks only, which is why the local test on http://localhost never showed it, and
+every browser on the VPN got "We are sorry… HTTPS required" (the master realm's admin console
+too). `deploy/vm/keycloak_ssl.sh` now sets *require SSL* for both realms from the site's
+scheme (`none` for http, `external` for https) through `kcadm.sh` inside the Keycloak
+container; `install.sh` and `update.sh` run it after the stack is healthy, so a pilot on plain
+http works and a later domain switches the rule back on. The runbook says plainly that http is
+for a pilot (passwords travel unencrypted) and that a public address with a DNS name gets a
+Let's Encrypt certificate from Caddy by itself. The owner's server was unblocked with the same
+two `kcadm` commands by hand. Verified locally against a production stack laid out like
+`/opt/elexifier`: `none` for an http site, `external` for an https one.

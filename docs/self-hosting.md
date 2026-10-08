@@ -197,7 +197,11 @@ KEYCLOAK_URL=https://dictionaries.example.org/idp
 
 Caddy obtains the certificate automatically (ports 80 and 443 must be reachable from the
 internet). Behind an institutional reverse proxy that terminates TLS, keep `SITE_URL` and
-`KEYCLOAK_URL` as the public `https://` addresses and set `SITE_ADDRESS=:80`. The Keycloak client
+`KEYCLOAK_URL` as the public `https://` addresses and set `SITE_ADDRESS=:80`. Without a
+domain the site runs on plain http; Keycloak then refuses logins from anything but localhost
+and private networks ("HTTPS required"), so `deploy/vm/keycloak_ssl.sh` sets the realms'
+*require SSL* to `none` for an http site and back to `external` for an https one
+(`install.sh` and `update.sh` run it). The Keycloak client
 needs the site in its redirect URIs and the real client secret: `install.sh`/`update.sh` do this
 with `deploy/vm/patch_realm.py` before the first start; for a from-source deployment run it by
 hand on `deploy/compose/keycloak/realm-elexifier.json` before the first `up`, or set both in the
