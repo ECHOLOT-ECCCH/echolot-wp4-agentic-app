@@ -18,6 +18,19 @@ if [ "$(id -u)" -ne 0 ]; then exec sudo -E "$0" "$@"; fi
 
 say() { printf '\n== %s\n' "$*"; }
 
+say "Base tools"
+if command -v apt-get >/dev/null 2>&1; then
+  missing=()
+  for tool in curl python3 ca-certificates; do
+    if ! command -v "${tool%%-*}" >/dev/null 2>&1 && [ "$tool" != ca-certificates ]; then missing+=("$tool"); fi
+  done
+  [ -d /etc/ssl/certs ] || missing+=(ca-certificates)
+  if [ ${#missing[@]} -gt 0 ]; then
+    apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${missing[@]}"
+  fi
+fi
+command -v python3 >/dev/null 2>&1 || { echo "python3 is required (apt install python3)"; exit 1; }
+
 say "Docker"
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh

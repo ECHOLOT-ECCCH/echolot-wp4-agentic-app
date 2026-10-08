@@ -6,4 +6,4 @@ COPY deploy/compose/docker-compose.yml deploy/compose/gen_secrets.py /bundle/
 COPY deploy/compose/keycloak /bundle/keycloak
 COPY deploy/compose/postgres /bundle/postgres
 COPY deploy/compose/garage /bundle/garage
-COPY deploy/vm/install.sh deploy/vm/update.sh deploy/vm/patch_realm.py /bundle/
+COPY deploy/vm/install.sh deploy/vm/update.sh deploy/vm/patch_realm.py deploy/vm/README.md /bundle/

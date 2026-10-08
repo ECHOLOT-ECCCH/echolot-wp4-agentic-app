@@ -120,6 +120,10 @@ imported development users (`dev@example.com`, `admin@example.com`) from the rea
 
 ## Deploying to a server
 
+The step-by-step runbook for the operator, with what the server needs, the install, updates,
+backups and troubleshooting, is [`deploy/vm/README.md`](../deploy/vm/README.md) (also unpacked
+to `/opt/elexifier/README.md` on the server). In short:
+
 Prerequisites: a VM as in *Requirements* with Ubuntu 24.04 or Debian 12; a DNS name pointing
 at it with ports 80 and 443 reachable (or no DNS name: plain http on the server's address,
 for a campus-internal try-out); outbound HTTPS; a GitHub account with access to the repository

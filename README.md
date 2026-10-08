@@ -41,7 +41,7 @@ Log in with `dev@example.com` / `dev` (imported Keycloak realm).
 
 ## Run the whole stack with Docker
 
-Server sizing, secrets and the one-script install from the published images: [docs/self-hosting.md](docs/self-hosting.md) (*Requirements*, *Secrets*, *Deploying to a server*).
+Installing on a server from the published images: the runbook [deploy/vm/README.md](deploy/vm/README.md); sizing, secrets and the design of the stack: [docs/self-hosting.md](docs/self-hosting.md).
 
 ```bash
 cp .env.example .env            # then set ELX_SECRET_KEY and ELX_SESSION_SECRET to real values
