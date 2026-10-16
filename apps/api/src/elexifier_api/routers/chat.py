@@ -288,7 +288,7 @@ async def chat(
                 await session.commit()
 
     try:
-        return await state.runtime.dispatch_chat(
+        response = await state.runtime.dispatch_chat(
             request,
             deps=deps,
             model=model,
@@ -301,6 +301,10 @@ async def chat(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Malformed chat request (messages)"
         ) from exc
+    # the answer streams; a reverse proxy in front (nginx) must pass it on as it is produced
+    response.headers.setdefault("X-Accel-Buffering", "no")
+    response.headers.setdefault("Cache-Control", "no-cache")
+    return response
 
 
 def _deferrer(state: AppState) -> Callable[[str, dict[str, Any]], Awaitable[int | None]]:

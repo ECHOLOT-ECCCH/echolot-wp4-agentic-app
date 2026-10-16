@@ -1144,3 +1144,35 @@ differ or the project exists. Round-trip test: a PDF project with spans and deci
 structured sample, a step and a conversation is exported, deleted with its objects, imported
 under another user, and comes back with identical counts, the owner remapped, and usable
 through the API. Also the way to back up or hand over a single project.
+
+## 2026-10-16 The site's name is served by the institution's reverse proxy
+
+`beta.elexifier.ijs.si` is a CNAME to `elexisfrontend.ijs.si` (194.249.231.96, nginx 1.20),
+not to the VM (194.249.231.48), and the VM is not reachable from the internet at all, so Caddy
+cannot obtain a certificate itself: the institution's proxy terminates TLS and forwards to the
+VM, which is the normal campus setup. Changes so the stack behaves behind such a proxy:
+- Caddy trusts the proxy for `X-Forwarded-*` (`trusted_proxies static private_ranges
+  {$TRUSTED_PROXY_CIDR}`; for untrusted clients Caddy replaces the forwarded address with the
+  proxy's and the scheme with `http`). Keycloak 26 with `KC_HOSTNAME` set to the full https
+  URL derives its links and its require-SSL check from that URL, not from the request, so the
+  headers decide what the visitor's address is (logs, brute-force detection) and whether
+  Keycloak marks its cookies Secure; the "HTTPS required" page appears only while
+  `KEYCLOAK_URL` is still an http address. One CIDR is configurable because a Caddyfile
+  environment placeholder is a single token; private ranges are trusted always.
+- `keycloak_ssl.sh` also sets the app client's redirect URIs and root URL from `SITE_URL`
+  (merged with the existing ones) and its secret from `OIDC_CLIENT_SECRET`: the realm file is
+  only read on the first start, so a changed site or secret must be applied to the running
+  Keycloak; the runbook no longer sends the operator to the admin console for it.
+- The chat stream answers with `X-Accel-Buffering: no` and `Cache-Control: no-cache`, like the
+  event stream already did, so an nginx in front does not buffer it even when
+  `proxy_buffering` was left on.
+- The runbook describes both ways to give the site a name (direct with Caddy's certificate,
+  or behind the proxy with an nginx virtual host to hand to the administrator) and the `.env`
+  lines for each; `update.sh` applies the change end to end.
+- Verified without a server: a production stack configured as the proxied https site, a local
+  Caddy with a self-signed certificate playing the institution's nginx (TLS, `Host` and
+  `X-Forwarded-*` as nginx sends them) and a curl login round trip: login start, Keycloak's
+  form, the credentials, the callback, `/api/me`, the project list and logout, all on the https
+  name, while the containers could not resolve that name at all (the API reaches Keycloak only
+  through `OIDC_INTERNAL_ISSUER`). The first attempt failed in the token exchange on the client
+  secret, which is why the script now aligns it as well.

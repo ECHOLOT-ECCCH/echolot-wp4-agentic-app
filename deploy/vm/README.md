@@ -149,10 +149,63 @@ docker compose restart api worker           # after editing .env
 docker compose down && docker compose up -d # full restart
 ```
 
-Changing the address later: edit `SITE_URL`, `SITE_ADDRESS`, `KEYCLOAK_URL` in `.env`, run
-`sudo /opt/elexifier/update.sh` (it re-patches the realm file, which only matters for a fresh
-Keycloak database), and add the new URL to the Keycloak client's redirect URIs in the admin
-console (realm elexifier → Clients → elexifier-web → Valid redirect URIs: `https://<new>/*`).
+Changing the address later: edit `SITE_URL`, `SITE_ADDRESS`, `KEYCLOAK_URL` (and, behind a
+reverse proxy, `TRUSTED_PROXY_CIDR`) in `.env` and run `sudo /opt/elexifier/update.sh`; it
+restarts what the change touches and tells Keycloak about the new site (require-SSL rule and
+the client's redirect URIs). The two ways to give the site a name:
+
+**A. The server is reachable from the internet on ports 80 and 443.** A DNS record points at
+it, `.env` gets `SITE_URL=https://<name>`, `SITE_ADDRESS=<name>`,
+`KEYCLOAK_URL=https://<name>/idp`, and Caddy obtains the certificate itself.
+
+**B. The server is reachable only from the campus or a VPN** (the usual case): the name is
+served by the institution's public reverse proxy, which holds the certificate and forwards to
+the server. Ask the proxy's administrator for a virtual host for the name; for nginx:
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name beta.elexifier.ijs.si;                 # the site's name
+    ssl_certificate     /etc/letsencrypt/live/beta.elexifier.ijs.si/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/beta.elexifier.ijs.si/privkey.pem;
+    client_max_body_size 2g;                           # dictionary uploads
+    location / {
+        proxy_pass http://194.249.231.48:80;           # the Elexifier server
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection "";
+        proxy_read_timeout 3600s;                      # chat streams and job events stay open
+        proxy_send_timeout 3600s;
+        proxy_buffering off;                           # streamed answers arrive as produced
+        proxy_request_buffering off;                   # uploads stream through
+    }
+}
+server {
+    listen 80;
+    server_name beta.elexifier.ijs.si;
+    return 301 https://$host$request_uri;
+}
+```
+
+(Apache or HAProxy need the same: the whole host forwarded to the server's port 80, the
+`X-Forwarded-*` headers, long read timeouts, no response buffering, a 2 GB body limit.) Then
+on the server, in `/opt/elexifier/.env`:
+
+```
+SITE_URL=https://beta.elexifier.ijs.si
+SITE_ADDRESS=:80
+KEYCLOAK_URL=https://beta.elexifier.ijs.si/idp
+TRUSTED_PROXY_CIDR=194.249.231.96/32      # the proxy's address: its X-Forwarded-* are trusted
+```
+
+and `sudo /opt/elexifier/update.sh`. Check with `curl -s https://<name>/healthz` and a login.
+`TRUSTED_PROXY_CIDR` makes Caddy pass the proxy's `X-Forwarded-*` headers through, so Keycloak,
+the API and the logs see the visitor's address and the https scheme (login cookies marked
+Secure); without it every visitor appears to come from the proxy. After the switch the server
+answers by its name: a visit to the bare address is sent to the name as soon as it logs in.
 
 ## 7. Moving a project between instances
 
@@ -197,8 +250,10 @@ archive is refused when the project already exists on the target.
 | Login succeeds but every pull says `denied` | The classic token lacks the `read:packages` scope, or the account has no access to the repository. |
 | `manifest unknown` for a tag | That tag was never published: CI has not finished for the latest push, or the git tag was not pushed. `update.sh main` goes back to the latest `main`. |
 | No certificate / browser warning | DNS does not point at the server, or 80/443 are not reachable from the internet. `docker compose logs caddy`. Behind an institutional proxy that does TLS, set `SITE_ADDRESS=:80` and keep the `https://` URLs. |
-| Login ends in an error from Keycloak about the redirect URI | `SITE_URL` in `.env` and the client's redirect URIs in Keycloak disagree; fix the URIs in the admin console. |
-| Keycloak shows "We are sorry… HTTPS required" | The site runs on plain http at a public address and the realm still requires SSL: `sudo /opt/elexifier/keycloak_ssl.sh` (install.sh and update.sh run it; bundles before 2026-10-08 did not). |
+| Keycloak shows "We are sorry… HTTPS required" | The site runs on plain http at a public address and the realm still requires SSL: `sudo /opt/elexifier/keycloak_ssl.sh` (install.sh and update.sh run it; bundles before 2026-10-08 did not). Behind a reverse proxy with an https site it means `KEYCLOAK_URL` in `.env` is still the http address: set `https://<name>/idp` and run `update.sh`. |
+| The name shows another server's page or a 404 (`Server: nginx` while the app runs Caddy) | DNS points at the institution's proxy and that proxy has no virtual host for the name yet (section 6, B). `dig +short <name>` shows where the name goes. |
+| Login fails with "Invalid parameter: redirect_uri" | The site's URL is missing from the Keycloak client; `sudo /opt/elexifier/keycloak_ssl.sh` adds `SITE_URL/*`. |
+| Keycloak accepts the password but the app says "Login could not be completed" | `docker compose logs api` shows `oidc.exchange_failed` with `unauthorized_client`: Keycloak's client secret differs from `OIDC_CLIENT_SECRET` in `.env` (for example after the realm was imported again); `sudo /opt/elexifier/keycloak_ssl.sh` sets it from `.env`. |
 | `garage-init` stays `Waiting` for two minutes and `api` never starts | `docker compose logs garage-init`: `garage admin API not reachable` with 401s means `GARAGE_ADMIN_TOKEN` in `.env` does not match what Garage runs with (bundles before 2026-10-08 had the token fixed in the config file; set `GARAGE_ADMIN_TOKEN=dev-garage-admin-token` in `.env` or update). |
 | The app says the sandbox is unavailable | `docker compose logs sandbox-runner`; the sandbox image is pulled by `install.sh`/`update.sh`, `docker images | grep sandbox` shows it. |
 | Everything else | `docker compose ps` (health column), `docker compose logs <service>`, and `curl -s https://<domain>/healthz`. Send the output with the report. |

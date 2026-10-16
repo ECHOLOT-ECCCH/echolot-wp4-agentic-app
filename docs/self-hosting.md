@@ -196,9 +196,14 @@ KEYCLOAK_URL=https://dictionaries.example.org/idp
 ```
 
 Caddy obtains the certificate automatically (ports 80 and 443 must be reachable from the
-internet). Behind an institutional reverse proxy that terminates TLS, keep `SITE_URL` and
-`KEYCLOAK_URL` as the public `https://` addresses and set `SITE_ADDRESS=:80`. Without a
-domain the site runs on plain http; Keycloak then refuses logins from anything but localhost
+internet). Behind an institutional reverse proxy that terminates TLS (the usual case for a
+server that is reachable only from the campus), keep `SITE_URL` and `KEYCLOAK_URL` as the
+public `https://` addresses, set `SITE_ADDRESS=:80`, and set `TRUSTED_PROXY_CIDR` to the
+proxy's address so that Caddy passes the proxy's `X-Forwarded-Proto/Host/For` on to Keycloak
+and the API instead of replacing them (private ranges are trusted always). The proxy forwards
+the whole host to the server's port 80 with those headers, long read timeouts, no response
+buffering and a 2 GB body limit; the runbook has an nginx example. Without a domain the site
+runs on plain http; Keycloak then refuses logins from anything but localhost
 and private networks ("HTTPS required"), so `deploy/vm/keycloak_ssl.sh` sets the realms'
 *require SSL* to `none` for an http site and back to `external` for an https one
 (`install.sh` and `update.sh` run it). The Keycloak client

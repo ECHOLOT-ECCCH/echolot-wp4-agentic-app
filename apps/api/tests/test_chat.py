@@ -198,6 +198,9 @@ async def test_chat_attaches_selection_context(
     ]
     resp = await client.post(f"/api/projects/{pid}/conversations/{cid}/chat", json=body)
     assert resp.status_code == 200, resp.text
+    # the stream must not be buffered by a reverse proxy in front (nginx honours this header)
+    assert resp.headers["x-accel-buffering"] == "no"
+    assert resp.headers["cache-control"] == "no-cache"
     stored = (await client.get(f"/api/projects/{pid}/conversations/{cid}/messages")).json()
     user = stored[0]
     kinds = [p["type"] for p in user["parts"]]
