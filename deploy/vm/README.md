@@ -190,6 +190,15 @@ server {
 }
 ```
 
+If you administer that nginx yourself (CentOS/Rocky): save only the first `server` block as
+`/etc/nginx/conf.d/<name>.conf`, with `listen 80;` in place of the `listen 443 …` line and
+without the two `ssl_` lines, run `nginx -t && systemctl reload nginx`, and check that
+`curl -s http://<name>/healthz` shows the app's JSON (a 502 on a host with SELinux enforcing
+means `setsebool -P httpd_can_network_connect 1` is missing). Then
+`certbot --nginx -d <name> --redirect` obtains the certificate and turns the block into the
+https one above plus the redirect (`dnf install certbot python3-certbot-nginx` if absent);
+check `curl -s https://<name>/healthz`. Switch the server's `.env` below only after that works.
+
 (Apache or HAProxy need the same: the whole host forwarded to the server's port 80, the
 `X-Forwarded-*` headers, long read timeouts, no response buffering, a 2 GB body limit.) Then
 on the server, in `/opt/elexifier/.env`:
