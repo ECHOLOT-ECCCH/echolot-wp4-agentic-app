@@ -237,3 +237,23 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   about 4 s (`PREFECT_RUNNER_POLL_FREQUENCY=2`) and uploaded 50 results.
 - `~/.prefect` on the dev machine predates this work (ECHOLOT); the tests and the checks here ran
   with `PREFECT_HOME` in a scratch directory where a server was involved.
+
+## 2026-10-27 Prefect executor (M2.2)
+
+- `PrefectExecutor` (httpx, no Prefect import): deployment id looked up once by name and cached
+  (forgotten on a 404 when creating a flow run), flow runs named `echolot-<run id prefix>` and
+  tagged `echolot`, cancel as `set_state` CANCELLING (the serving runner then kills the
+  process and reports CANCELLED). Basic auth as Prefect's client sends it:
+  `Authorization: Basic base64(auth_string)`.
+- Prefect wraps a flow's exception ("Flow run encountered an exception: RunFailed: …"); the
+  prefix is stripped so the run's error reads in the runner's words. A flow run that no longer
+  exists reports CRASHED; an unreachable server or a refused request raises `ExecutorError`,
+  which the poller logs and retries on its next pass.
+- The live tests switch to the Prefect executor with `ECHO_TEST_PREFECT_API_URL`; the fake
+  service then listens on `ECHO_TEST_FAKE_SERVICE_PORT`, which the runner's `services.toml`
+  names. Against a local Prefect 3.8.8 server with `serve` (poll frequency 1 s), the run tests
+  (5, the token test skipped: it reads the local executor's params file) and the run-tool tests
+  (6) pass: sample, full run with a failing record, rows, export, retry, cancel, setup failure.
+- Regression caught on the way: moving the live fixture into `conftest.py` in M1.5 had cut the
+  main run scenario test out of `test_runs.py` (make check stayed green with five tests). It is
+  restored from `da9606a`, and the test lists of all test files were compared with M1.4.

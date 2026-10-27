@@ -4,8 +4,13 @@ real HTTP and calls a fake service (docs/PLAN.md M1.4)."""
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
+import os
 import uuid
+
+import pytest
 
 from echolot_app.db import Database
 from echolot_app.viewing import Viewing, describe_viewing
@@ -13,6 +18,68 @@ from echolot_app.viewing import Viewing, describe_viewing
 from .conftest import UPPER, Live
 
 
+async def test_sample_and_full_run_rows_export_and_retry(live: Live) -> None:
+    await live.script(UPPER)
+    base = f"/api/workspaces/{live.workspace_id}/runs"
+
+    sample = await live.run(limit=10, purpose="try ten")
+    assert sample["status"] in ("queued", "running")
+    assert sample["progress"]["total"] == 10
+    assert sample["services"] == ["upper"] and sample["script_version"] == 1
+    done = await live.wait(sample["id"])
+    assert done["status"] == "done", done
+    assert done["counts"] == {"total": 10, "ok": 10, "error": 0}
+    assert done["started_at"] and done["finished_at"]
+
+    full = await live.wait((await live.run(concurrency=8))["id"])
+    assert full["status"] == "done"
+    assert full["counts"] == {"total": 50, "ok": 49, "error": 1}
+
+    page = (
+        await live.client.get(f"{base}/{full['id']}/rows", params={"offset": 16, "limit": 3})
+    ).json()
+    assert page["total"] == 50 and page["input_columns"] == ["name", "born"]
+    assert page["output_columns"] == ["upper", "length"]
+    first, failed, _third = page["rows"]
+    assert first["input"] == {"name": "person 16", "born": "1916"}
+    assert first["output"] == {"upper": "PERSON 16", "length": 9}
+    assert failed["row"] == 17 and failed["status"] == "error"
+    assert failed["error"] == "ServiceError: 502 from upper: upstream failed (after 2 attempts)"
+    errors = (await live.client.get(f"{base}/{full['id']}/rows", params={"status": "error"})).json()
+    assert errors["total"] == 1 and errors["rows"][0]["input"]["name"] == "boom"
+
+    exported = await live.client.get(f"{base}/{full['id']}/export")
+    assert exported.headers["content-type"].startswith("text/csv")
+    table = list(csv.reader(io.StringIO(exported.text)))
+    assert table[0] == ["name", "born", "upper", "length", "status", "error"]
+    assert table[1] == ["person 0", "1900", "PERSON 0", "8", "ok", ""]
+    assert table[18][:2] == ["boom", "1917"] and table[18][4] == "error"
+    assert len(table) == 51
+    jsonl = await live.client.get(f"{base}/{full['id']}/export", params={"format": "jsonl"})
+    assert json.loads(jsonl.text.splitlines()[0])["output"]["upper"] == "PERSON 0"
+
+    retry = await live.client.post(f"{base}/{full['id']}/retry-failed")
+    assert retry.status_code == 201
+    assert retry.json()["selected_rows"] == 1 and retry.json()["parent_run_id"] == full["id"]
+    retried = await live.wait(retry.json()["id"])
+    assert retried["counts"] == {"total": 1, "ok": 0, "error": 1}
+    rows = (await live.client.get(f"{base}/{retried['id']}/rows")).json()["rows"]
+    assert [r["row"] for r in rows] == [17]
+
+    listed = (await live.client.get(base)).json()
+    assert [r["id"] for r in listed] == [retried["id"], full["id"], sample["id"]]
+    results = (
+        await live.client.get(
+            f"/api/workspaces/{live.workspace_id}/files", params={"kind": "result"}
+        )
+    ).json()
+    assert len(results) == 3 and results[0]["meta"]["format"] == "jsonl"
+
+
+@pytest.mark.skipif(
+    bool(os.environ.get("ECHO_TEST_PREFECT_API_URL")),
+    reason="reads the LocalExecutor's params file for the token",
+)
 async def test_the_runner_endpoints_need_the_run_token(live: Live) -> None:
     await live.script(UPPER)
     run = await live.wait((await live.run(limit=2))["id"])

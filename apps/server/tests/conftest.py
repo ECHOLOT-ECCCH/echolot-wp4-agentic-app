@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
 import threading
 import uuid
@@ -175,12 +176,21 @@ class FakeService(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def fake_service() -> Iterator[str]:
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), FakeService)
+    # against a real Prefect runner the port is fixed: its services.toml must name it
+    port = int(os.environ.get("ECHO_TEST_FAKE_SERVICE_PORT", "0"))
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), FakeService)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
         yield f"http://127.0.0.1:{httpd.server_address[1]}"
     finally:
         httpd.shutdown()
+
+
+def prefect_settings() -> dict[str, Any]:
+    """With ECHO_TEST_PREFECT_API_URL set, the live tests run through a real Prefect server and
+    a runner serving run-script/default (docs/PLAN.md M2.2); the default is the LocalExecutor."""
+    api = os.environ.get("ECHO_TEST_PREFECT_API_URL")
+    return {"executor": "prefect", "prefect_api_url": api} if api else {}
 
 
 @dataclass
@@ -256,6 +266,7 @@ async def live(tmp_path: Path, fake_service: str) -> AsyncIterator[Live]:
         local_services_file=services,
         run_poll_interval_s=0.1,
         log_level="WARNING",
+        **prefect_settings(),
     )
     application = create_app(settings)
     server = uvicorn.Server(uvicorn.Config(application, log_level="warning"))

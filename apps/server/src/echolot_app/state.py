@@ -9,6 +9,7 @@ from echolot_app.db import Database
 from echolot_app.runs.executor import Executor
 from echolot_app.runs.local import LocalExecutor
 from echolot_app.runs.poller import Poller
+from echolot_app.runs.prefect import PrefectExecutor
 from echolot_app.settings import Settings
 from echolot_app.storage import LocalStorage
 
@@ -25,7 +26,12 @@ class AppState:
 
 def build_executor(settings: Settings) -> Executor:
     if settings.executor == "prefect":
-        raise NotImplementedError("the Prefect executor arrives with M2.2")
+        auth = settings.prefect_auth_string
+        return PrefectExecutor(
+            settings.prefect_api_url,
+            settings.prefect_deployment,
+            auth.get_secret_value() if auth else None,
+        )
     return LocalExecutor(settings.data_dir / "runner", settings.local_services_file)
 
 

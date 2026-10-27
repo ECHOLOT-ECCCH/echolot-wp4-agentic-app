@@ -31,10 +31,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M2.2. M1.7 is waiting for a model key (none is configured on this machine); M1 is
+- Next task: M2.3. M1.7 is waiting for a model key (none is configured on this machine); M1 is
   otherwise complete.
-- M2.1 done: the `run-script` flow and `serve`, docs/runner-host.md; a flow run created by hand
-  on a local Prefect 3.8.8 server completed. CI has not run yet (nothing pushed).
+- M2.2 done: `PrefectExecutor`; the live run and run-tool tests pass through a local Prefect
+  3.8.8 server (`ECHO_TEST_PREFECT_API_URL`). CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -529,7 +529,7 @@ Goal: runs execute on the Prefect deployment next to the services.
     `PREFECT_API_URL`, `PREFECT_API_AUTH_STRING`, start, and lowering
     `PREFECT_RUNNER_POLL_FREQUENCY` (default 10 s) for snappier samples.
   - Acceptance: a run created from the Prefect UI with a hand-written `params` completes.
-- [ ] M2.2 `PrefectExecutor` over REST per 7.6, with the state mapping of 7.5.
+- [x] M2.2 `PrefectExecutor` over REST per 7.6, with the state mapping of 7.5.
   - Tests with `httpx.MockTransport` covering every state type, a missing deployment and basic
     auth.
   - Acceptance: the tests pass; `ECHO_EXECUTOR=prefect` against a local Prefect server runs the
