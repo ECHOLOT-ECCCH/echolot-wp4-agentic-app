@@ -1,0 +1,19 @@
+[project]
+name = "echolot-runner"
+version = "0.1.0"
+description = "ECHOLOT workbench runner: executes a workspace script per record (docs/PLAN.md 7.1-7.4)"
+requires-python = ">=3.12"
+license = "MIT"
+# Kept small: this package is installed on the runner host, next to the services.
+dependencies = [
+    "httpx>=0.27",
+    "rapidfuzz>=3",
+]
+
+[project.optional-dependencies]
+# the Prefect flow and serve entry point (M2); pin to the version the Prefect server runs
+flow = ["prefect>=3"]
+
+[build-system]
+requires = ["uv_build>=0.7.0,<1.0"]
+build-backend = "uv_build"

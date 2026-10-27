@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M1.3.
-- M1.2 done: versioned scripts with contract checks, `script_read`/`script_write`, the script
-  editor (save as new version, version switcher). CI has not run yet (nothing pushed).
+- Next task: M1.4.
+- M1.3 done: `runner/` (`echolot_runner`): harness, service client, CLI; tested with mock
+  transports and as a real subprocess against real HTTP servers. CI has not run yet.
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -139,7 +139,8 @@ apps/server/src/echolot_app/
   agent/tools/{files,task,services,scripts,runs,dev}.py
   agent/prompts/system.md
 runner/src/echolot_runner/
-  harness.py  context.py  services.py  cli.py  flow.py  serve.py
+  harness.py  context.py  services.py  params.py  cli.py  flow.py  serve.py
+runner/runner_tests/           # not "tests": two test packages of one name clash in pytest
 runner/services.example.toml
 services/                      # agent-facing service docs, one Markdown file per service
   echolot.md
@@ -475,7 +476,7 @@ run, full run, results, export.
   - `ScriptView` with save-as-new-version and a version switcher; `open_script`.
   - Acceptance: a bad script is rejected with a precise message; a user edit becomes version
     n+1 authored by `user`.
-- [ ] M1.3 Runner package. `runner/` (`echolot_runner`, no dependency on the app):
+- [x] M1.3 Runner package. `runner/` (`echolot_runner`, no dependency on the app):
   - `harness.run(params)` per 7.2–7.4: download the input, load the script into a fresh module,
     call `setup`, then `process` per record in a `ThreadPoolExecutor(concurrency)`.
   - Per-record errors are caught with the exception type and message (traceback to the log).

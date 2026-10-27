@@ -1,0 +1,12 @@
+# Services a script may call through ctx.service("<name>") (docs/PLAN.md 7.7).
+# Copy to services.toml on the runner host. Secrets are not written here: key_env names the
+# environment variable holding the key, and the runner adds it as the auth_header.
+
+[echolot]
+url = "http://127.0.0.1:5000"
+auth_header = "X-API-Key"
+key_env = "ECHOLOT_API_KEY"
+concurrency = 4
+timeout_s = 70
+retry_statuses = [502]
+retries = 3

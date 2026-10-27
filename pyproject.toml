@@ -7,13 +7,15 @@ license = "MIT"
 # The root depends on every member so a plain `uv sync` installs the whole workspace.
 dependencies = [
     "echolot-app",
+    "echolot-runner",
 ]
 
 [tool.uv.workspace]
-members = ["apps/server"]
+members = ["apps/server", "runner"]
 
 [tool.uv.sources]
 echolot-app = { workspace = true }
+echolot-runner = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -28,7 +30,7 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["apps/server/src"]
+src = ["apps/server/src", "runner/src"]
 extend-exclude = ["docs", "*.md"]
 
 [tool.ruff.lint]
@@ -46,13 +48,13 @@ pythonVersion = "3.12"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "standard"
-include = ["apps/server"]
+include = ["apps/server", "runner"]
 exclude = ["**/node_modules", "**/__pycache__", "**/.venv"]
 reportMissingImports = true
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
-testpaths = ["apps/server/tests"]
+testpaths = ["apps/server/tests", "runner/runner_tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-q --import-mode=importlib"

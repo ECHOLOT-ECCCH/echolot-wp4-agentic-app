@@ -134,3 +134,25 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - `GET .../scripts` lists summaries without code; `GET .../scripts/{n|latest}` has the code.
   A saved user edit is version n+1 with author `user`; the agent sees "written by the user" in
   its workspace block and in `script_read`.
+
+## 2026-10-27 Runner package (M1.3)
+
+- `runner/` depends on httpx and rapidfuzz only; Prefect is the optional extra `flow` (M2). uv
+  locks extras too, so `uv.lock` carries Prefect 3.8.8 and its tree without installing it, and
+  the shared resolution pins websockets to 16.1 for the whole workspace.
+- Records are processed on a thread pool with a bounded window (`concurrency × 4` in flight);
+  results are written as the oldest pending record finishes, so the file is in `_row` order
+  without holding all results in memory.
+- Per-service concurrency is a semaphore inside `ServiceClient`, shared by all threads, so a run
+  with `concurrency=16` against a service limited to 3 never has more than 3 calls in flight.
+- Retries apply to the service's `retry_statuses`, timeouts and transport errors, with backoff
+  `backoff_s × 2^n`; other 4xx/5xx fail the record at once. Errors read
+  `ServiceError: 502 from echolot: <body excerpt> (after 3 attempts)`. Keys are only put in
+  headers; `services.toml` rejects unknown keys, so an inline `api_key` is refused.
+- `ctx.service(name)` for a name outside the run's services fails that record; a run service
+  missing from the host's `services.toml`, or its key variable unset, fails the run before any
+  record (no partial work against a misconfigured host).
+- A record error keeps `type: message` in `_error`; the first 20 tracebacks go to the run log.
+  `process` must return a dict without `_` keys, otherwise that record fails.
+- Test packages: the runner's are in `runner/runner_tests/`, because two packages named
+  `tests` clash in one pytest session.
