@@ -121,3 +121,16 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - The editor keeps a draft only while the user is editing; a newer stored version (the agent
   wrote meanwhile) replaces the text when there is no draft, otherwise the header says so and
   offers "Discard mine".
+
+## 2026-10-27 Scripts (M1.2)
+
+- `check_script` (AST only, nothing is executed in the app): `process` must be a top-level
+  `def` (not `async def`) taking `(record, ctx)`; extra parameters need defaults. `setup`, if
+  present, takes `(ctx)`. Every `.service(...)` call needs a literal string as its first
+  argument; the names, in order of first use, are stored on the version and shown as badges
+  (and later on the approval card). Errors name the line and what is wrong.
+- Versions are numbered per workspace (`max + 1`); the unique constraint turns a concurrent
+  double write into an error rather than two versions 3. Good enough for the POC.
+- `GET .../scripts` lists summaries without code; `GET .../scripts/{n|latest}` has the code.
+  A saved user edit is version n+1 with author `user`; the agent sees "written by the user" in
+  its workspace block and in `script_read`.

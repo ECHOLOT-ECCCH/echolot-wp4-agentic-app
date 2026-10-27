@@ -6,5 +6,7 @@ export const TOOL_LABELS: Record<string, string> = {
   distinct_values: 'Collecting distinct values',
   task_read: 'Reading the task notes',
   task_update: 'Updating the task notes',
+  script_read: 'Reading the script',
+  script_write: 'Writing the script',
   demo_requires_approval: 'Demo action (needs approval)',
 }

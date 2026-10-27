@@ -80,3 +80,18 @@ export interface ToolResultPayload {
 export function isRecordsFile(file: FileRecord): boolean {
   return Boolean(file.meta.format) && typeof file.meta.record_count === 'number'
 }
+
+export interface ScriptSummary {
+  id: string
+  version: number
+  note: string | null
+  author: 'agent' | 'user'
+  services: string[]
+  sha256: string
+  created_at: string
+}
+
+export interface ScriptRecord extends ScriptSummary {
+  workspace_id: string
+  code: string
+}

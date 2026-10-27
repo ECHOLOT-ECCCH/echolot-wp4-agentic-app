@@ -78,3 +78,23 @@ class ConversationOut(ApiModel):
 
 class MessagesIn(BaseModel):
     messages: list[dict[str, Any]]
+
+
+class ScriptIn(BaseModel):
+    code: str = Field(max_length=600_000)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ScriptSummary(ApiModel):
+    id: uuid.UUID
+    version: int
+    note: str | None
+    author: str
+    services: list[str]
+    sha256: str
+    created_at: datetime
+
+
+class ScriptOut(ScriptSummary):
+    workspace_id: uuid.UUID
+    code: str

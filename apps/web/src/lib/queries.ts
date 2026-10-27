@@ -11,6 +11,8 @@ import type {
   Conversation,
   FileRecord,
   RecordsPage,
+  ScriptRecord,
+  ScriptSummary,
   TaskNotes,
   UiAction,
   Workspace,
@@ -23,6 +25,9 @@ export const keys = {
   records: (workspaceId: string, fileId: string, offset: number, limit: number) =>
     ['workspaces', workspaceId, 'files', fileId, 'records', { offset, limit }] as const,
   task: (workspaceId: string) => ['workspaces', workspaceId, 'task'] as const,
+  scripts: (workspaceId: string) => ['workspaces', workspaceId, 'scripts'] as const,
+  script: (workspaceId: string, version: number | 'latest') =>
+    ['workspaces', workspaceId, 'scripts', version] as const,
   conversations: (workspaceId: string) => ['workspaces', workspaceId, 'conversations'] as const,
   messages: (workspaceId: string, conversationId: string) =>
     ['workspaces', workspaceId, 'conversations', conversationId, 'messages'] as const,
@@ -102,6 +107,34 @@ export function useSaveTask(workspaceId: string) {
   })
 }
 
+export function useScripts(workspaceId: string) {
+  return useQuery({
+    queryKey: keys.scripts(workspaceId),
+    queryFn: () => api<ScriptSummary[]>(`${base(workspaceId)}/scripts`),
+  })
+}
+
+export function useScript(workspaceId: string, version: number | null) {
+  return useQuery({
+    queryKey: keys.script(workspaceId, version ?? 0),
+    queryFn: () => api<ScriptRecord>(`${base(workspaceId)}/scripts/${version}`),
+    enabled: version !== null,
+    staleTime: Infinity, // a version never changes
+  })
+}
+
+export function useSaveScript(workspaceId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { code: string; note?: string }) =>
+      api<ScriptRecord>(`${base(workspaceId)}/scripts`, { method: 'POST', json: body }),
+    onSuccess: (script) => {
+      queryClient.setQueryData(keys.script(workspaceId, script.version), script)
+      void queryClient.invalidateQueries({ queryKey: keys.scripts(workspaceId), exact: true })
+    },
+  })
+}
+
 export function useConversations(workspaceId: string) {
   return useQuery({
     queryKey: keys.conversations(workspaceId),
@@ -128,11 +161,14 @@ export function refreshAfterAction(
     void queryClient.invalidateQueries({ queryKey: keys.task(workspaceId) })
   } else if (action.type === 'open_file') {
     void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId) })
+  } else if (action.type === 'open_script') {
+    void queryClient.invalidateQueries({ queryKey: keys.scripts(workspaceId), exact: true })
   }
 }
 
-/** Refetch what an agent turn can change: the files and the task notes. */
+/** Refetch what an agent turn can change: files, task notes, script versions. */
 export function refreshAfterTurn(queryClient: QueryClient, workspaceId: string) {
   void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId), exact: true })
   void queryClient.invalidateQueries({ queryKey: keys.task(workspaceId) })
+  void queryClient.invalidateQueries({ queryKey: keys.scripts(workspaceId), exact: true })
 }

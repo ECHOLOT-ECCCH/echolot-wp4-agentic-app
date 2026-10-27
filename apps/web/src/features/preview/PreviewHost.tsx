@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Pager, RecordsTable } from '@/features/preview/RecordsTable'
 import { TextPreview } from '@/features/preview/TextPreview'
+import { ScriptView } from '@/features/scripts/ScriptView'
 import { TaskEditor } from '@/features/task/TaskEditor'
 import { ApiError, api, fileContentUrl, fileDownloadUrl } from '@/lib/api'
 import { formatBytes, formatCount } from '@/lib/format'
@@ -30,8 +31,11 @@ export function PreviewHost({ workspaceId }: { workspaceId: string }) {
   if (target.kind === 'task') {
     return <TaskEditor workspaceId={workspaceId} />
   }
+  if (target.kind === 'script') {
+    return <ScriptView workspaceId={workspaceId} version={target.version} />
+  }
   if (target.kind !== 'file') {
-    return <Empty title="Not available yet" body="Scripts and runs arrive with milestone M1." />
+    return <Empty title="Not available yet" body="Runs arrive with milestone M1.4." />
   }
   const file = files.data?.find((f) => f.id === target.fileId)
   if (!file) {

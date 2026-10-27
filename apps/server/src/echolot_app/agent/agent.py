@@ -13,8 +13,10 @@ from sqlalchemy import select
 from echolot_app.agent.deps import AgentDeps
 from echolot_app.agent.tools.dev import dev_toolset
 from echolot_app.agent.tools.files import files_toolset
+from echolot_app.agent.tools.scripts import scripts_toolset
 from echolot_app.agent.tools.task import task_toolset
 from echolot_app.db import File, FileKind, Workspace
+from echolot_app.scripts import latest_script
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
 
@@ -38,6 +40,7 @@ async def workspace_block(deps: AgentDeps) -> str:
         lines.append(f"- Description: {deps.workspace.description}")
     async with deps.session() as db:
         workspace = await db.get(Workspace, deps.workspace.id)
+        script = await latest_script(db, deps.workspace.id)
         files = (
             (
                 await db.execute(
@@ -58,6 +61,12 @@ async def workspace_block(deps: AgentDeps) -> str:
             lines.append(f"  - {f.name} ({detail}), file_id {f.id}")
     else:
         lines.append("- No input files yet.")
+    if script is None:
+        lines.append("- Script: none yet")
+    else:
+        who = "you" if script.author == "agent" else "the user"
+        services = ", ".join(script.services) or "no services"
+        lines.append(f"- Script: version {script.version}, written by {who}, uses {services}")
     task = workspace.task_md.strip() if workspace else ""
     if not task:
         lines.append("- Task notes: not written yet")
@@ -69,7 +78,7 @@ async def workspace_block(deps: AgentDeps) -> str:
 
 
 def toolsets_for(*, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]:
-    toolsets: list[AbstractToolset[AgentDeps]] = [files_toolset, task_toolset]
+    toolsets: list[AbstractToolset[AgentDeps]] = [files_toolset, task_toolset, scripts_toolset]
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets

@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M1.2.
-- M1.1 done: `task_read`/`task_update`, the notes in the instructions block, the editor follows
-  the agent's writes. CI has the check and e2e jobs but has not run yet (nothing pushed).
+- Next task: M1.3.
+- M1.2 done: versioned scripts with contract checks, `script_read`/`script_write`, the script
+  editor (save as new version, version switcher). CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -470,7 +470,7 @@ run, full run, results, export.
 - [x] M1.1 Task notes. `task_read` and `task_update` (lifted spec tools); `TaskEditor` in the
   middle pane; `open_task`. Acceptance: the agent records a decision and the editor shows it;
   a user edit is visible to the agent on the next turn.
-- [ ] M1.2 Scripts.
+- [x] M1.2 Scripts.
   - The `scripts` table; `script_read` and `script_write` with the validation of 7.1.
   - `ScriptView` with save-as-new-version and a version switcher; `open_script`.
   - Acceptance: a bad script is rejected with a precise message; a user edit becomes version
