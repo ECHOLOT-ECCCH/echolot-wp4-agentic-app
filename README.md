@@ -15,11 +15,14 @@ the right.
 
 ## Status
 
-Cut down from the Elexifier app (dictionary conversion; last commit `98999b1`). Milestone M0
-is built: workspaces, file upload with a paged records view, task notes, and the agent chat
-with approvals. Scripts and runs (M1) and Prefect (M2) are next. See
+Cut down from the Elexifier app (dictionary conversion; last commit `98999b1`). Built and
+tested: workspaces, file upload with a paged records view, task notes, the agent chat with
+approvals, versioned scripts, runs on a local executor or a Prefect deployment (the runner in
+`runner/`), results with reconciliation candidates, per-row decisions and CSV/JSONL export.
+Still open: the checks with a real model and the owner's own data (M1.7, M3.1, M3.4). See
 [docs/PLAN.md](docs/PLAN.md) for the architecture, contracts, milestones and current status,
-and [docs/DECISIONS.md](docs/DECISIONS.md) for the decision log.
+[docs/DECISIONS.md](docs/DECISIONS.md) for the decision log, and
+[docs/runner-host.md](docs/runner-host.md) for setting up the runner next to the services.
 
 ## Requirements
 
