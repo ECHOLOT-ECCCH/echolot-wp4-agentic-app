@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M0 (skeleton).
-- Next task: M0.4.
-- M0.3 done: workspaces (with task notes), files with streaming upload, normalization of
-  CSV/TSV/JSON/JSONL to records, paged records.
+- Next task: M0.5.
+- M0.4 done: the agent with the file tools, the lifted runtime, conversations and the streaming
+  chat endpoint with persistence and approvals (test model).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -437,7 +437,7 @@ approvals, on SQLite, with no auth and no infrastructure.
   - Tests for the formats (BOM, semicolon CSV, quoted newlines, ragged rows reported in meta).
   - Acceptance: upload a 100 MB CSV with flat API memory; `records?offset=1000&limit=50` returns
     the right rows.
-- [ ] M0.4 Agent and chat.
+- [x] M0.4 Agent and chat.
   - Lift per section 11.
   - `agent.py` with `output_type=[str, DeferredToolRequests]` and `max_tokens` 16384.
   - A new `prompts/system.md` (section 13).

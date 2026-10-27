@@ -62,3 +62,19 @@ class RecordsPage(BaseModel):
     offset: int
     columns: list[str]
     records: list[RecordOut]
+
+
+class ConversationCreate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+
+
+class ConversationOut(ApiModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    title: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class MessagesIn(BaseModel):
+    messages: list[dict[str, Any]]

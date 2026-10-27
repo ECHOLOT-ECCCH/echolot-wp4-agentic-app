@@ -62,3 +62,17 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - The runner's input line is `{"_row": n, "record": {...}}` (PLAN 7.3 updated).
 - Measured: a 100 MB, 678,651-row CSV uploads and normalizes in 3.4 s with server RSS flat at
   74–76 MB; a page at offset 1,000 answers in 21 ms.
+
+## 2026-10-27 Agent and chat (M0.4)
+
+- pydantic-ai-slim 2.62 (Elexifier ran 2.43). `VercelAIAdapter(sdk_version=7)`, `from_request`,
+  `build_run_input`, `dump_messages(..., sdk_version=7)` and `run_stream(on_complete=...)` are
+  unchanged, so `runtime.py` is lifted as is; the approval tests pass unchanged in substance.
+- The model comes from `ECHO_MODEL_*` (`model_from_settings`); a provider that cannot be built
+  answers 400 naming the settings. No per-turn model override, no usage records.
+- `ui_messages.py` keeps normalization, `restore_attachments` and the viewing note; the PDF
+  region and entry context chips are gone. Viewing kinds: file (with an optional row), task,
+  script; run follows in M1.4.
+- The workspace block in the instructions lists up to 20 input files with their record counts
+  and file ids, and whether task notes exist, so the model rarely needs `list_files` first.
+- Tool tests drive the real agent with a scripted `FunctionModel` (`tests/conftest.call_tool`).
