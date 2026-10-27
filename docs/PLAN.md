@@ -31,10 +31,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M1.7 (needs the owner's model key and a local ECHOLOT; see below).
-- M1.6 done: runs in the left pane, the run view (progress, counts, results before inputs,
-  error filter, CSV/JSONL export, retry, cancel), Run 20 / Run all in the script editor; e2e
-  covers script → sample → results → export. CI has not run yet (nothing pushed).
+- Next task: M2.2. M1.7 is waiting for a model key (none is configured on this machine); M1 is
+  otherwise complete.
+- M2.1 done: the `run-script` flow and `serve`, docs/runner-host.md; a flow run created by hand
+  on a local Prefect 3.8.8 server completed. CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -521,7 +521,7 @@ run, full run, results, export.
 
 Goal: runs execute on the Prefect deployment next to the services.
 
-- [ ] M2.1 Flow and serve.
+- [x] M2.1 Flow and serve.
   - `runner/flow.py`: `@flow(name="run-script") def run_script(params: dict) -> dict` calling the
     harness.
   - `runner/serve.py`: `run_script.serve(name="default")`, as ECHOLOT does.

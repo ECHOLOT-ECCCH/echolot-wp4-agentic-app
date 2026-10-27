@@ -691,6 +691,7 @@ dependencies = [
 dev = [
     { name = "asgi-lifespan" },
     { name = "httpx" },
+    { name = "prefect" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -707,6 +708,7 @@ requires-dist = [
 dev = [
     { name = "asgi-lifespan", specifier = ">=2" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "prefect", specifier = ">=3.7" },
     { name = "pyright", specifier = ">=1.1.380" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },

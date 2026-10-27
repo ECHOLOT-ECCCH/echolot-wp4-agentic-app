@@ -219,3 +219,21 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - Walk-through with a fake reconciler on :5099 (`services.toml` and a service doc in a scratch
   directory): a script calling `ctx.service("fakerecon")` ran on 20 records from the UI, 19 ok
   and 1 error (the fake's 502 after two attempts), with Retry 1 failed, CSV and JSONL offered.
+
+## 2026-10-27 Flow and serve (M2.1)
+
+- `echolot_runner.flow.run_script` (flow `run-script`, `persist_result=False`, no retries) calls
+  the harness; the harness's `echolot_runner` log lines are forwarded to the flow run's logger.
+  `python -m echolot_runner.serve` serves deployment `default` with `limit=RUNNER_MAX_RUNS`
+  (default 4).
+- Prefect 3.8.8 is in the root dev group (type checks, tests) and the runner's `flow` extra; the
+  app does not import it. Its client side (`serve`, the runner) imports without the server API.
+- Prefect 3.8.8's server cannot start with FastAPI ≥ 0.150 (`Body(min_items=...)`), and the
+  workspace has FastAPI 0.162 for the app. So the flow is unit-tested through `run_script.fn`
+  (no server, no run context), and a dev Prefect server runs in its own environment:
+  `uvx --from 'prefect==3.8.8' --with 'fastapi<0.150' prefect server start` (docs/runner-host.md).
+- Acceptance: with that server, `serve` from the workspace venv and a stand-in for the app's
+  runner endpoints, a flow run created through the REST API with hand-written params completed in
+  about 4 s (`PREFECT_RUNNER_POLL_FREQUENCY=2`) and uploaded 50 results.
+- `~/.prefect` on the dev machine predates this work (ECHOLOT); the tests and the checks here ran
+  with `PREFECT_HOME` in a scratch directory where a server was involved.

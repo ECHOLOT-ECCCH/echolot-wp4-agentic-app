@@ -25,6 +25,8 @@ dev = [
     "ruff>=0.6",
     "pyright>=1.1.380",
     "asgi-lifespan>=2",
+    # the runner's flow and its tests; the app itself never imports prefect
+    "prefect>=3.7",
 ]
 
 [tool.ruff]
