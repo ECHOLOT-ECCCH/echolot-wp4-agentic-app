@@ -108,3 +108,16 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   CodeMirror puts its aria-label on the wrapper, so the tests click `.cm-content` inside it.
 - CI: the check job (no services) and the e2e job (Chromium with deps). Not run yet: the
   workflow only runs on GitHub, and nothing has been pushed.
+
+## 2026-10-27 Task notes for the agent (M1.1)
+
+- One text per workspace (`workspaces.task_md`), no versions: scripts are versioned and a run
+  records its script, which is what reproducibility needs.
+- Notes up to 4,000 characters go into the instructions block every turn, quoted, so a user's
+  edit is in the model's context on the next turn without a tool call; longer notes are named
+  and read with `task_read`.
+- Without SSE, the chat refetches what changed: on each `data-ui-action` the target's query
+  (task notes, files), and at the end of a turn the files and task notes.
+- The editor keeps a draft only while the user is editing; a newer stored version (the agent
+  wrote meanwhile) replaces the text when there is no draft, otherwise the header says so and
+  offers "Discard mine".

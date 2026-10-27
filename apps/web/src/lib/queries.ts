@@ -1,7 +1,20 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
-import type { Conversation, FileRecord, RecordsPage, TaskNotes, Workspace } from '@/lib/types'
+import type {
+  Conversation,
+  FileRecord,
+  RecordsPage,
+  TaskNotes,
+  UiAction,
+  Workspace,
+} from '@/lib/types'
 
 export const keys = {
   workspaces: ['workspaces'] as const,
@@ -103,4 +116,23 @@ export function useCreateConversation(workspaceId: string) {
       api<Conversation>(`${base(workspaceId)}/conversations`, { method: 'POST', json: {} }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.conversations(workspaceId) }),
   })
+}
+
+/** Refetch what a tool's ui-action points at: the tool may just have written it. */
+export function refreshAfterAction(
+  queryClient: QueryClient,
+  workspaceId: string,
+  action: UiAction,
+) {
+  if (action.type === 'open_task') {
+    void queryClient.invalidateQueries({ queryKey: keys.task(workspaceId) })
+  } else if (action.type === 'open_file') {
+    void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId) })
+  }
+}
+
+/** Refetch what an agent turn can change: the files and the task notes. */
+export function refreshAfterTurn(queryClient: QueryClient, workspaceId: string) {
+  void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId), exact: true })
+  void queryClient.invalidateQueries({ queryKey: keys.task(workspaceId) })
 }

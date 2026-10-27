@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M1.1.
-- M0.6 done: Playwright smoke (records, chat with an approval, task notes) passes locally; the
-  CI workflow has the check and e2e jobs but has not run yet (nothing pushed).
+- Next task: M1.2.
+- M1.1 done: `task_read`/`task_update`, the notes in the instructions block, the editor follows
+  the agent's writes. CI has the check and e2e jobs but has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -467,7 +467,7 @@ approvals, on SQLite, with no auth and no infrastructure.
 Goal: the whole loop on one machine with `LocalExecutor`: discuss, task notes, script, sample
 run, full run, results, export.
 
-- [ ] M1.1 Task notes. `task_read` and `task_update` (lifted spec tools); `TaskEditor` in the
+- [x] M1.1 Task notes. `task_read` and `task_update` (lifted spec tools); `TaskEditor` in the
   middle pane; `open_task`. Acceptance: the agent records a decision and the editor shows it;
   a user edit is visible to the agent on the next turn.
 - [ ] M1.2 Scripts.

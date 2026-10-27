@@ -1,5 +1,5 @@
 import { SaveIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -15,26 +15,23 @@ out, and what to do when there is no result. The agent keeps these notes up to d
 them whenever something is decided.
 `
 
-/** The workspace's task notes: the agreed description of the per-record function. */
+/** The workspace's task notes: the agreed description of the per-record function. The agent
+ *  writes them too; a newer version replaces the text unless the user has unsaved edits. */
 export function TaskEditor({ workspaceId }: { workspaceId: string }) {
   const task = useTask(workspaceId)
   const save = useSaveTask(workspaceId)
-  const [text, setText] = useState<string | null>(null)
-  const loadedAt = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!task.data) return
-    if (loadedAt.current === task.data.updated_at) return
-    loadedAt.current = task.data.updated_at
-    setText(task.data.markdown || TEMPLATE)
-  }, [task.data])
+  // the text being edited and the stored version it started from
+  const [draft, setDraft] = useState<{ text: string; base: string } | null>(null)
 
   if (task.isError) return <p className="text-destructive p-3 text-sm">{task.error.message}</p>
-  if (task.isPending || text === null)
+  if (task.isPending)
     return <p className="text-muted-foreground p-3 text-sm">Loading task notes…</p>
 
-  const saved = task.data.markdown || TEMPLATE
-  const dirty = text !== saved
+  const stored = task.data.markdown || TEMPLATE
+  const editing = draft !== null && draft.text !== draft.base
+  const text = editing ? draft.text : stored
+  const newerStored = editing && draft.base !== stored
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs">
@@ -42,14 +39,21 @@ export function TaskEditor({ workspaceId }: { workspaceId: string }) {
         <span className="text-muted-foreground">
           {task.data.markdown ? `saved ${formatDate(task.data.updated_at)}` : 'nothing saved yet'}
         </span>
-        <span className="text-muted-foreground ml-auto">{dirty ? 'unsaved changes' : ''}</span>
+        <span className="text-muted-foreground ml-auto">
+          {newerStored ? 'changed meanwhile; saving replaces it' : editing ? 'unsaved changes' : ''}
+        </span>
+        {newerStored && (
+          <Button size="xs" variant="outline" onClick={() => setDraft(null)}>
+            Discard mine
+          </Button>
+        )}
         <Button
           size="xs"
-          disabled={!dirty || save.isPending}
+          disabled={!editing || save.isPending}
           onClick={() =>
             save.mutate(text, {
-              onSuccess: (stored) => {
-                loadedAt.current = stored.updated_at
+              onSuccess: () => {
+                setDraft(null)
                 toast.success('Task notes saved')
               },
               onError: (error) =>
@@ -61,7 +65,12 @@ export function TaskEditor({ workspaceId }: { workspaceId: string }) {
         </Button>
       </div>
       <div className="min-h-0 flex-1">
-        <CodeEditor value={text} onChange={setText} language="markdown" ariaLabel="Task notes" />
+        <CodeEditor
+          value={text}
+          onChange={(next) => setDraft((d) => ({ text: next, base: d?.base ?? stored }))}
+          language="markdown"
+          ariaLabel="Task notes"
+        />
       </div>
     </div>
   )

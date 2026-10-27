@@ -13,6 +13,7 @@ from sqlalchemy import select
 from echolot_app.agent.deps import AgentDeps
 from echolot_app.agent.tools.dev import dev_toolset
 from echolot_app.agent.tools.files import files_toolset
+from echolot_app.agent.tools.task import task_toolset
 from echolot_app.db import File, FileKind, Workspace
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
@@ -23,6 +24,7 @@ WorkbenchAgent = Agent[AgentDeps, AgentOutput]
 # Provider defaults are small (Anthropic: 4096); a script written in one tool call needs more.
 MAX_OUTPUT_TOKENS = 16384
 MAX_FILES_LISTED = 20
+MAX_TASK_IN_PROMPT = 4000  # longer notes: the model reads them with task_read
 
 
 def load_prompt(name: str) -> str:
@@ -56,13 +58,18 @@ async def workspace_block(deps: AgentDeps) -> str:
             lines.append(f"  - {f.name} ({detail}), file_id {f.id}")
     else:
         lines.append("- No input files yet.")
-    has_task = bool(workspace and workspace.task_md.strip())
-    lines.append(f"- Task notes: {'written' if has_task else 'not written yet'}")
+    task = workspace.task_md.strip() if workspace else ""
+    if not task:
+        lines.append("- Task notes: not written yet")
+    elif len(task) <= MAX_TASK_IN_PROMPT:
+        lines += ["- Task notes (the user may have edited them):", '"""', task, '"""']
+    else:
+        lines.append(f"- Task notes: {len(task):,} characters; read them with task_read")
     return "\n".join(lines)
 
 
 def toolsets_for(*, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]:
-    toolsets: list[AbstractToolset[AgentDeps]] = [files_toolset]
+    toolsets: list[AbstractToolset[AgentDeps]] = [files_toolset, task_toolset]
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets

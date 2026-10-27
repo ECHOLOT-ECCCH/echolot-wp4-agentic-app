@@ -1,6 +1,6 @@
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { AssistantChatTransport, useChatRuntime } from '@assistant-ui/react-ai-sdk'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { lastAssistantMessageIsCompleteWithApprovalResponses, type UIMessage } from 'ai'
 import { PlusIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -11,7 +11,13 @@ import { Button } from '@/components/ui/button'
 import { makeGenericToolCard } from '@/features/chat/GenericToolCard'
 import { ApprovalAwareToolGroup } from '@/features/chat/ToolGroup'
 import { api } from '@/lib/api'
-import { keys, useConversations, useCreateConversation } from '@/lib/queries'
+import {
+  keys,
+  refreshAfterAction,
+  refreshAfterTurn,
+  useConversations,
+  useCreateConversation,
+} from '@/lib/queries'
 import type { Workspace } from '@/lib/types'
 import { isUiAction, usePreview } from '@/lib/uiActions'
 
@@ -107,6 +113,7 @@ function LiveThread({
   initialMessages: UIMessage[]
 }) {
   const apply = usePreview((s) => s.apply)
+  const queryClient = useQueryClient()
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
@@ -131,8 +138,14 @@ function LiveThread({
     messages: initialMessages,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     onData: (part) => {
-      if (part.type === 'data-ui-action' && isUiAction(part.data)) apply(part.data)
+      if (part.type === 'data-ui-action' && isUiAction(part.data)) {
+        // what the tool opens may have just changed (task notes written, a file stored)
+        refreshAfterAction(queryClient, workspace.id, part.data)
+        apply(part.data)
+      }
     },
+    // a turn can change anything the left pane shows; refetch it once the answer is complete
+    onFinish: () => refreshAfterTurn(queryClient, workspace.id),
     onError: (error) => toast.error(error.message),
   })
   const components = useMemo(

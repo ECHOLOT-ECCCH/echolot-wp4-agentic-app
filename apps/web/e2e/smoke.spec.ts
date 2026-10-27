@@ -51,6 +51,8 @@ test('chat with the test model and answer an approval', async ({ page }) => {
   await expect(page.getByText(/Approved and performed: demo/).first()).toBeVisible({
     timeout: 30_000,
   })
+  // the test model also wrote the task notes ("a") and opened them in the middle pane
+  await expect(page.getByLabel('Task notes').locator('.cm-content')).toHaveText('a')
   // the conversation survives a reload, with the tool results
   await page.reload()
   // .last(): the conversation title in the picker repeats the first message
