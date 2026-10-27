@@ -1,9 +1,0 @@
-# The deployment bundle: everything a server needs besides .env, shipped as an image so that a
-# server with nothing but Docker and a registry token can install and update itself
-# (deploy/vm/install.sh, deploy/vm/update.sh). Context: repository root.
-FROM scratch
-COPY deploy/compose/docker-compose.yml deploy/compose/gen_secrets.py /bundle/
-COPY deploy/compose/keycloak /bundle/keycloak
-COPY deploy/compose/postgres /bundle/postgres
-COPY deploy/compose/garage /bundle/garage
-COPY deploy/vm/install.sh deploy/vm/update.sh deploy/vm/keycloak_ssl.sh deploy/vm/patch_realm.py deploy/vm/README.md /bundle/

@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M0 (skeleton).
-- Next task: M0.2.
-- M0.1 (this plan, archive of the Elexifier docs) was done in the planning session on 2026-10-27,
-  not yet committed.
+- Next task: M0.3.
+- M0.2 done: `apps/server` (SQLite, local storage, `/healthz`); the Elexifier backend, packages,
+  legacy inputs and deployment files are deleted.
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -332,8 +332,8 @@ model.
   format, columns, record_count, dialect, encoding, records_rel_path)
 - `scripts` (workspace_id, version, code, sha256, note, author agent|user, services json);
   unique (workspace_id, version)
-- `runs` (workspace_id, script_id, input_file_id, parent_run_id, selection json, limit,
-  concurrency, script_params json, status, executor, external_id, token_hash, progress json,
+- `runs` (workspace_id, script_id, input_file_id, parent_run_id, selection json, record_limit,
+  concurrency, script_params json, purpose, status, executor, external_id, token_hash, progress json,
   counts json, result_file_id, error, submitted_by agent|user, started_at, finished_at)
 - `run_decisions` (run_id, row, value json, decided_at) from M3
 - `conversations` (workspace_id, title), `messages` (conversation_id, position, ui_message json),
@@ -412,7 +412,7 @@ approvals, on SQLite, with no auth and no infrastructure.
 - [x] M0.1 Docs reset. Archive the Elexifier docs under `docs/archive/elexifier/`; write this plan,
   `CLAUDE.md`, a fresh `docs/DECISIONS.md` and `docs/BACKLOG.md`; update `README.md`.
   Acceptance: a fresh session following `CLAUDE.md` lands on M0.2.
-- [ ] M0.2 Server skeleton, old backend removed.
+- [x] M0.2 Server skeleton, old backend removed.
   - Create `apps/server` (package `echolot_app`): `settings.py` (pydantic-settings, prefix
     `ECHO_`; `ECHO_DATA_DIR`, `ECHO_MODEL_PROVIDER`, `ECHO_MODEL_ID`, `ECHO_MODEL_API_KEY`,
     `ECHO_MODEL_BASE_URL`, `ECHO_EXECUTOR=local|prefect`, `ECHO_PUBLIC_URL`, the Prefect

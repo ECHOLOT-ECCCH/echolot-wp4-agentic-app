@@ -29,3 +29,19 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   progress and results to the app with a per-run token.
 - Accepted for the POC: scripts run unsandboxed on the runner host after approval, and the app
   has no login (it binds to 127.0.0.1). Hardening is listed in PLAN section 14.
+
+## 2026-10-27 Server skeleton (M0.2)
+
+- Installed: FastAPI 0.162, SQLAlchemy 2.1.6, aiosqlite 0.22.1, pydantic 2.14, pydantic-settings
+  2.16, uvicorn 0.54, structlog 26.1.
+- SQLite pragmas are set on every connection: WAL, `busy_timeout=5000`, `foreign_keys=ON` (the
+  cascades in `db.py` depend on it). Timestamps go through `UTCDateTime`, which stores naive UTC
+  and returns aware UTC; defaults are set in Python (`utcnow`), not as server defaults.
+- `runs.limit` is called `record_limit` (`limit` is an SQL keyword); `runs` also stores the
+  `purpose` shown on the approval card.
+- Storage keeps only `LocalStorage`, rooted at `ECHO_DATA_DIR` next to `app.db`; keys start with
+  `workspaces/`. The Storage protocol and S3 backend can come back from `98999b1` with the
+  object-store data plane.
+- CI is cut to the check job until M0.6 (the old e2e and image publishing referenced deleted
+  files).
+- Dev machine: Node 22 installed with nvm (`nvm use 22`); the default Node there is 20.

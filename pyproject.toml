@@ -1,27 +1,19 @@
 [project]
-name = "elexifier-workspace"
+name = "echolot-workspace"
 version = "0.0.0"
-description = "Workspace root for the Elexifier Agentic App (not a package)"
+description = "Workspace root for the ECHOLOT agentic workbench (not a package)"
 requires-python = ">=3.12"
 license = "MIT"
 # The root depends on every member so a plain `uv sync` installs the whole workspace.
 dependencies = [
-    "elexifier-core",
-    "elexifier-agent",
-    "elexifier-pipeline",
-    "elexifier-api",
-    "elexifier-sandbox",
+    "echolot-app",
 ]
 
 [tool.uv.workspace]
-members = ["apps/api", "packages/*"]
+members = ["apps/server"]
 
 [tool.uv.sources]
-elexifier-core = { workspace = true }
-elexifier-agent = { workspace = true }
-elexifier-pipeline = { workspace = true }
-elexifier-api = { workspace = true }
-elexifier-sandbox = { workspace = true }
+echolot-app = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -31,14 +23,13 @@ dev = [
     "ruff>=0.6",
     "pyright>=1.1.380",
     "asgi-lifespan>=2",
-    "lxml-stubs>=0.5",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["apps/api/src", "packages/core/src", "packages/agent/src", "packages/pipeline/src", "packages/sandbox/src"]
-extend-exclude = ["packages/core/src/elexifier_core/migrations/versions", "docs", "*.md", "legacy"]
+src = ["apps/server/src"]
+extend-exclude = ["docs", "*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ASYNC"]
@@ -55,14 +46,13 @@ pythonVersion = "3.12"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "standard"
-include = ["apps/api", "packages"]
-exclude = ["**/node_modules", "**/__pycache__", "**/.venv", "packages/core/src/elexifier_core/migrations/versions", "legacy"]
+include = ["apps/server"]
+exclude = ["**/node_modules", "**/__pycache__", "**/.venv"]
 reportMissingImports = true
 reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
-testpaths = ["apps/api/tests", "packages/core/tests", "packages/agent/tests", "packages/pipeline/tests", "packages/sandbox/tests"]
+testpaths = ["apps/server/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-q --import-mode=importlib"
-markers = ["docker: needs the Docker daemon and the sandbox image (skipped otherwise)"]
