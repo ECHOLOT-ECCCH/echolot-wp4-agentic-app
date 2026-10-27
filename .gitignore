@@ -46,3 +46,6 @@ legacy/kks/*
 !legacy/kks/spec.json
 !legacy/kks/README.md
 .DS_Store
+
+# The runner host's service list (LocalExecutor reads ./services.toml); see runner/services.example.toml
+/services.toml

@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from echolot_app.db import File
+from echolot_app.db import File, Run, Script
 
 Kind = Literal["file", "task", "script", "run", "none"]
 
@@ -40,6 +40,23 @@ async def describe_viewing(
             data["row"] = viewing.row
             return f"row {viewing.row} of the file {file.name} (file_id {file.id})", data
         return f"the file {file.name} (file_id {file.id})", data
+    if viewing.kind == "run" and viewing.run_id:
+        run = await db.get(Run, viewing.run_id)
+        if run is None or run.workspace_id != workspace_id:
+            return None
+        script = await db.get(Script, run.script_id)
+        source = await db.get(File, run.input_file_id)
+        text = f"run {run.id} ({run.status}"
+        if script is not None:
+            text += f", script v{script.version}"
+        if source is not None:
+            text += f", on {source.name}"
+        text += ")"
+        data["run_id"] = str(run.id)
+        if viewing.row is not None:
+            data["row"] = viewing.row
+            text = f"row {viewing.row} of the results of {text}"
+        return text, data
     if viewing.kind == "task":
         return "the task notes", data
     if viewing.kind == "script":

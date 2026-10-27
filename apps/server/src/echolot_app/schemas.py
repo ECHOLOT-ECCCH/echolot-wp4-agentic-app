@@ -98,3 +98,55 @@ class ScriptSummary(ApiModel):
 class ScriptOut(ScriptSummary):
     workspace_id: uuid.UUID
     code: str
+
+
+class RunCreate(BaseModel):
+    file_id: uuid.UUID
+    script_version: int | None = Field(default=None, ge=1)  # the latest when omitted
+    limit: int | None = Field(default=None, ge=1)
+    concurrency: int | None = Field(default=None, ge=1, le=32)
+    script_params: dict[str, Any] = Field(default_factory=dict)
+    purpose: str | None = Field(default=None, max_length=2000)
+
+
+class RunOut(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    script_version: int | None
+    services: list[str]
+    input_file_id: uuid.UUID
+    input_file_name: str | None
+    parent_run_id: uuid.UUID | None
+    record_limit: int | None
+    selected_rows: int | None
+    concurrency: int
+    script_params: dict[str, Any]
+    purpose: str | None
+    status: str
+    executor: str
+    progress: dict[str, Any]
+    counts: dict[str, Any]
+    result_file_id: uuid.UUID | None
+    error: str | None
+    submitted_by: str
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class RunRow(BaseModel):
+    row: int
+    status: str | None
+    error: str | None
+    ms: int | None
+    input: dict[str, Any]
+    output: dict[str, Any]
+
+
+class RunRowsPage(BaseModel):
+    total: int
+    offset: int
+    run_status: str
+    input_columns: list[str]
+    output_columns: list[str]
+    rows: list[RunRow]

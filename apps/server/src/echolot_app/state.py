@@ -6,6 +6,9 @@ from dataclasses import dataclass
 
 from echolot_app.agent.runtime import AgentRuntime, PydanticAIRuntime
 from echolot_app.db import Database
+from echolot_app.runs.executor import Executor
+from echolot_app.runs.local import LocalExecutor
+from echolot_app.runs.poller import Poller
 from echolot_app.settings import Settings
 from echolot_app.storage import LocalStorage
 
@@ -16,12 +19,24 @@ class AppState:
     db: Database
     storage: LocalStorage
     runtime: AgentRuntime
+    executor: Executor
+    poller: Poller
+
+
+def build_executor(settings: Settings) -> Executor:
+    if settings.executor == "prefect":
+        raise NotImplementedError("the Prefect executor arrives with M2.2")
+    return LocalExecutor(settings.data_dir / "runner", settings.local_services_file)
 
 
 def build_state(settings: Settings) -> AppState:
+    db = Database(settings)
+    executor = build_executor(settings)
     return AppState(
         settings=settings,
-        db=Database(settings),
+        db=db,
         storage=LocalStorage(settings.data_dir),
         runtime=PydanticAIRuntime(),
+        executor=executor,
+        poller=Poller(db, executor, settings.run_poll_interval_s),
     )

@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M1.4.
-- M1.3 done: `runner/` (`echolot_runner`): harness, service client, CLI; tested with mock
-  transports and as a real subprocess against real HTTP servers. CI has not run yet.
+- Next task: M1.5.
+- M1.4 done: `LocalExecutor`, run tokens, runner I/O endpoints, runs API (rows, export, cancel,
+  retry-failed), the poller; tested end to end over real HTTP. CI has not run yet.
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -334,7 +334,8 @@ model.
   format, columns, record_count, dialect, encoding, records_rel_path)
 - `scripts` (workspace_id, version, code, sha256, note, author agent|user, services json);
   unique (workspace_id, version)
-- `runs` (workspace_id, script_id, input_file_id, parent_run_id, selection json, record_limit,
+- `runs` (workspace_id, script_id, input_file_id, parent_run_id, selection json (`{"rows": [...]}`
+  for a retry), record_limit,
   concurrency, script_params json, purpose, status, executor, external_id, token_hash, progress json,
   counts json, result_file_id, error, submitted_by agent|user, started_at, finished_at)
 - `run_decisions` (run_id, row, value json, decided_at) from M3
@@ -488,7 +489,7 @@ run, full run, results, export.
     concurrency cap, an unknown service, `setup` failure fails the run.
   - Acceptance: the tests pass; a sample script runs over a 1,000-line JSONL against a fake
     service.
-- [ ] M1.4 Executors and the runs API.
+- [x] M1.4 Executors and the runs API.
   - The `Executor` protocol and `LocalExecutor` (subprocess, status from the exit code and the
     received result, cancel by terminating it).
   - `tokens.py`; the runner I/O endpoints (7.3); the runs routes (section 9) including rows,

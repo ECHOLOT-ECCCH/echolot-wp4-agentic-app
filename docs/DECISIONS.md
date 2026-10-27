@@ -156,3 +156,29 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   `process` must return a dict without `_` keys, otherwise that record fails.
 - Test packages: the runner's are in `runner/runner_tests/`, because two packages named
   `tests` clash in one pytest session.
+
+## 2026-10-27 Executors and the runs API (M1.4)
+
+- `ExecState.kind` uses Prefect's state type names for both executors, so the mapping of PLAN 7.5
+  lives once (`runs.executor.app_status`). The LocalExecutor reports RUNNING / CANCELLING /
+  COMPLETED / FAILED / CANCELLED from its subprocess, and CRASHED for a run it does not know (the
+  app restarted).
+- The LocalExecutor runs `python -m echolot_runner.cli params.json` in `data/runner/<run id>/`
+  (params file mode 0600, it holds the token), with the app's environment and
+  `RUNNER_SERVICES_FILE=ECHO_LOCAL_SERVICES_FILE` (default `./services.toml`, gitignored). The
+  failure message is the CLI's "run failed: …" line, else the stderr tail.
+- A run is committed before it is submitted (the runner may ask for its input at once). The
+  first progress post moves a queued run to running; the poller never moves a run back to
+  queued (Prefect can still say PENDING for a moment).
+- The runner endpoints answer 404 for an unknown run, a wrong token and a finished run alike.
+- The uploaded results are stored as a `result` file and normalized like an input, so they open
+  as records too; the counts (`total`, `ok`, `error`) are taken from the file, not from the
+  runner's last progress. COMPLETED without a result file is a failed run.
+- Rows join each result line with its input record; the CSV export is input columns, output
+  columns (renamed `<name>_out` on a clash), `status`, `error`, nested values as JSON, built by
+  merging the two row-ordered streams.
+- Retry-failed creates a new run over the failed rows with the latest script and the parent's
+  concurrency and params (`selection = {"rows": [...]}`, `parent_run_id`).
+- Tested over real HTTP: uvicorn on a free port inside the test, a fake service on another, the
+  real runner subprocess: sample, full run with one failing record, rows, error filter, CSV and
+  JSONL export, retry, cancel of a slow run, a failing setup, token checks.
