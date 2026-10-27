@@ -3,32 +3,21 @@ import { PaperclipIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { ToolFallback } from '@/components/assistant-ui/elements/tool-fallback.aui'
-import {
-  type BodyProps,
-  DiffRunsBody,
-  MappingWriteBody,
-  ProfileBody,
-  RunCodeArgs,
-  RunCodeBody,
-  RunConversionBody,
-} from '@/features/chat/toolBodies'
 import { TOOL_LABELS } from '@/features/chat/toolLabels'
 import { fileDownloadUrl } from '@/lib/api'
 import type { ToolResultPayload } from '@/lib/types'
 import { usePreview } from '@/lib/uiActions'
 
-const TOOL_BODIES: Record<string, (props: BodyProps) => React.ReactNode> = {
-  xml_profile: ProfileBody,
-  mapping_write: MappingWriteBody,
-  run_conversion: RunConversionBody,
-  diff_runs: DiffRunsBody,
-  run_code: RunCodeBody,
+export interface BodyProps {
+  data: Record<string, unknown>
+  workspaceId: string
 }
 
+/** Tools whose results deserve more than the summary and the raw data. */
+const TOOL_BODIES: Record<string, (props: BodyProps) => React.ReactNode> = {}
+
 /** Tools whose arguments deserve a readable view (the approval card shows them). */
-const TOOL_ARGS: Record<string, (props: { argsText?: string }) => React.ReactNode> = {
-  run_code: RunCodeArgs,
-}
+const TOOL_ARGS: Record<string, (props: { argsText?: string }) => React.ReactNode> = {}
 
 function isToolResult(value: unknown): value is ToolResultPayload {
   return typeof value === 'object' && value !== null && 'summary' in value
@@ -38,7 +27,7 @@ function isToolResult(value: unknown): value is ToolResultPayload {
  * Renders every tool call the same way: a collapsible card with the summary the tool reported,
  * its structured data, and links to any artifacts. Approval prompts come from the fallback.
  */
-export function makeGenericToolCard(projectId: string): ToolCallMessagePartComponent {
+export function makeGenericToolCard(workspaceId: string): ToolCallMessagePartComponent {
   const GenericToolCard: ToolCallMessagePartComponent = (part) => {
     const {
       toolName,
@@ -79,7 +68,7 @@ export function makeGenericToolCard(projectId: string): ToolCallMessagePartCompo
           )}
           {!cancelled && payload && (
             <ToolResultBody
-              projectId={projectId}
+              workspaceId={workspaceId}
               toolName={toolName}
               payload={payload}
               isError={isError}
@@ -97,12 +86,12 @@ export function makeGenericToolCard(projectId: string): ToolCallMessagePartCompo
 }
 
 function ToolResultBody({
-  projectId,
+  workspaceId,
   toolName,
   payload,
   isError,
 }: {
-  projectId: string
+  workspaceId: string
   toolName: string
   payload: ToolResultPayload
   isError: boolean
@@ -116,7 +105,7 @@ function ToolResultBody({
   return (
     <div className="flex flex-col gap-2 border-t px-3 py-2 text-sm">
       <p className={isError ? 'text-destructive' : ''}>{payload.summary}</p>
-      {Body && <Body data={data} projectId={projectId} />}
+      {Body && <Body data={data} workspaceId={workspaceId} />}
       {payload.artifacts && payload.artifacts.length > 0 && (
         <ul className="flex flex-wrap gap-2">
           {payload.artifacts.map((artifact) => (
@@ -130,7 +119,7 @@ function ToolResultBody({
               </button>{' '}
               <a
                 className="text-muted-foreground text-xs underline"
-                href={fileDownloadUrl(projectId, artifact.file_id)}
+                href={fileDownloadUrl(workspaceId, artifact.file_id)}
               >
                 download
               </a>

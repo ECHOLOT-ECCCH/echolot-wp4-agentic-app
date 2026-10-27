@@ -1,85 +1,37 @@
 import { useQuery } from '@tanstack/react-query'
 import { DownloadIcon, FileSearchIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { DocumentPanel } from '@/features/entries/DocumentPanel'
-import { MappingEditor } from '@/features/mapping/MappingEditor'
-import { SpanView } from '@/features/pdf/SpanView'
-import { RunPanel } from '@/features/runs/RunPanel'
-import { ProfileEditor } from '@/features/pdf/ProfileEditor'
-import { SpecEditor } from '@/features/spec/SpecEditor'
-import { PdfViewer } from '@/features/preview/PdfViewer'
+import { Pager, RecordsTable } from '@/features/preview/RecordsTable'
 import { TextPreview } from '@/features/preview/TextPreview'
+import { TaskEditor } from '@/features/task/TaskEditor'
 import { ApiError, api, fileContentUrl, fileDownloadUrl } from '@/lib/api'
-import { formatBytes, isPdf } from '@/lib/format'
-import { useDocuments, useFiles, useProject } from '@/lib/queries'
+import { formatBytes, formatCount } from '@/lib/format'
+import { PAGE_SIZE, pageStart } from '@/lib/paging'
+import { useFiles, useRecords } from '@/lib/queries'
+import { isRecordsFile, type FileRecord } from '@/lib/types'
 import { usePreview } from '@/lib/uiActions'
 
 const PREVIEW_LIMIT = 5 * 1024 * 1024
 
-export function PreviewHost({ projectId }: { projectId: string }) {
+export function PreviewHost({ workspaceId }: { workspaceId: string }) {
   const target = usePreview((s) => s.target)
-  const revision = usePreview((s) => s.revision)
-  const files = useFiles(projectId)
-  const documents = useDocuments(projectId)
-  const project = useProject(projectId)
-  const canEdit = project.data?.my_role !== 'viewer'
+  const files = useFiles(workspaceId)
 
   if (target.kind === 'none') {
     return (
       <Empty
         title="Nothing selected"
-        body="Pick a file on the left, or ask the agent to show you something. Entries, mappings and reports will open here."
+        body="Pick a file on the left, or ask the agent to show you something. Records, task notes, scripts and runs open here."
       />
     )
   }
-  if (target.kind === 'document') {
-    return (
-      <DocumentPanel
-        projectId={projectId}
-        documentId={target.documentId}
-        entryId={null}
-        runId={null}
-        page={target.page}
-      />
-    )
+  if (target.kind === 'task') {
+    return <TaskEditor workspaceId={workspaceId} />
   }
-  if (target.kind === 'entry') {
-    const documentId =
-      target.documentId ?? documents.data?.find((d) => d.status === 'ready')?.id ?? null
-    if (!documentId) {
-      return <Empty title="Entry" body="The document of this entry is not available." />
-    }
-    return (
-      <DocumentPanel
-        projectId={projectId}
-        documentId={documentId}
-        entryId={target.entryId}
-        runId={target.runId ?? null}
-      />
-    )
-  }
-  if (target.kind === 'run') {
-    return <RunPanel projectId={projectId} runId={target.runId} />
-  }
-  if (target.kind === 'span') {
-    return (
-      <SpanView
-        projectId={projectId}
-        runId={target.runId}
-        convertedId={target.convertedId}
-        documentId={target.documentId}
-      />
-    )
-  }
-  if (target.kind === 'mapping') {
-    return <MappingEditor projectId={projectId} version={target.version} canEdit={canEdit} />
-  }
-  if (target.kind === 'profile') {
-    return <ProfileEditor projectId={projectId} canEdit={canEdit} />
-  }
-  if (target.kind === 'spec') {
-    return <SpecEditor projectId={projectId} canEdit={canEdit} />
+  if (target.kind !== 'file') {
+    return <Empty title="Not available yet" body="Scripts and runs arrive with milestone M1." />
   }
   const file = files.data?.find((f) => f.id === target.fileId)
   if (!file) {
@@ -87,31 +39,22 @@ export function PreviewHost({ projectId }: { projectId: string }) {
       <Empty title="File not found" body="It may have been deleted." />
     )
   }
-  const parsed = documents.data?.find((d) => d.source_file_id === file.id && d.status === 'ready')
-  if (parsed) {
-    // analysed files open in their document view; PDFs keep the page and box of the request
-    return (
-      <DocumentPanel
-        projectId={projectId}
-        documentId={parsed.id}
-        entryId={null}
-        runId={null}
-        page={isPdf(file) ? target.page : undefined}
-      />
-    )
-  }
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3 text-xs">
         <span className="truncate font-medium">{file.name}</span>
-        <span className="text-muted-foreground">{formatBytes(file.size)}</span>
+        <span className="text-muted-foreground">
+          {isRecordsFile(file)
+            ? `${formatCount(file.meta.record_count ?? 0, 'record')} · ${formatBytes(file.size)}`
+            : formatBytes(file.size)}
+        </span>
         <Button
           variant="ghost"
           size="icon-xs"
           className="ml-auto"
           nativeButton={false}
           render={
-            <a href={fileDownloadUrl(projectId, file.id)} aria-label={`Download ${file.name}`} />
+            <a href={fileDownloadUrl(workspaceId, file.id)} aria-label={`Download ${file.name}`} />
           }
         >
           <DownloadIcon />
@@ -119,36 +62,75 @@ export function PreviewHost({ projectId }: { projectId: string }) {
         </Button>
       </div>
       <div className="min-h-0 flex-1">
-        {isPdf(file) ? (
-          <PdfViewer
-            url={fileDownloadUrl(projectId, file.id, true)}
-            page={target.page}
-            bbox={target.bbox}
-            revision={revision}
-          />
+        {isRecordsFile(file) ? (
+          <FileTable key={file.id} workspaceId={workspaceId} file={file} row={target.row} />
+        ) : file.meta.error ? (
+          <Empty title="Not readable as records" body={file.meta.error} />
         ) : file.size > PREVIEW_LIMIT ? (
           <Empty
             title="Too large for a whole-file preview"
-            body="Files above 5 MB are browsed entry by entry once the document has been analysed."
+            body="Files above 5 MB can only be browsed as records (CSV, TSV, JSON, JSONL)."
           />
         ) : (
-          <TextFile projectId={projectId} file={file} />
+          <TextFile workspaceId={workspaceId} file={file} />
         )}
       </div>
     </div>
   )
 }
 
-function TextFile({
-  projectId,
+function FileTable({
+  workspaceId,
   file,
+  row,
 }: {
-  projectId: string
-  file: { id: string; name: string; mime: string }
+  workspaceId: string
+  file: FileRecord
+  row?: number
 }) {
+  const openFile = usePreview((s) => s.openFile)
+  const [paging, setPaging] = useState({ row, offset: row === undefined ? 0 : pageStart(row) })
+  // a row opened by the agent (or a click) brings its page into view
+  if (paging.row !== row) {
+    setPaging({ row, offset: row === undefined ? paging.offset : pageStart(row) })
+  }
+  const offset = paging.offset
+  const setOffset = (next: number) => setPaging((p) => ({ ...p, offset: next }))
+  const page = useRecords(workspaceId, file.id, offset, PAGE_SIZE)
+  const columns = page.data?.columns ?? file.meta.columns ?? []
+  const records = page.data?.records
+
+  useEffect(() => {
+    if (row === undefined || !records) return
+    document.querySelector(`[data-row="${row}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [row, records])
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b px-3">
+        <Pager offset={offset} total={page.data?.total ?? 0} onOffset={setOffset} />
+        {page.isFetching && <span className="text-muted-foreground text-xs">loading…</span>}
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto">
+        {page.isError ? (
+          <Empty title="Cannot show the records" body={page.error.message} />
+        ) : (
+          <RecordsTable
+            columns={columns}
+            rows={records ?? []}
+            selectedRow={row}
+            onSelect={(r) => openFile(file.id, r)}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TextFile({ workspaceId, file }: { workspaceId: string; file: FileRecord }) {
   const content = useQuery({
-    queryKey: ['file-content', projectId, file.id],
-    queryFn: () => api<string>(fileContentUrl(projectId, file.id), { asText: true }),
+    queryKey: ['file-content', workspaceId, file.id],
+    queryFn: () => api<string>(fileContentUrl(workspaceId, file.id), { asText: true }),
     staleTime: 60_000,
   })
   if (content.isPending) return <p className="text-muted-foreground p-3 text-sm">Loading…</p>
@@ -159,7 +141,7 @@ function TextFile({
   return <TextPreview file={file} content={content.data} />
 }
 
-function Empty({ title, body }: { title: string; body: string }) {
+export function Empty({ title, body }: { title: string; body: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
       <FileSearchIcon className="text-muted-foreground size-8" />

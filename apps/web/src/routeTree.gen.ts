@@ -10,53 +10,43 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
-import { Route as SettingsCredentialsRouteImport } from './routes/settings/credentials'
+import { Route as WWorkspaceIdRouteImport } from './routes/w/$workspaceId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
-  id: '/projects/$projectId',
-  path: '/projects/$projectId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsCredentialsRoute = SettingsCredentialsRouteImport.update({
-  id: '/settings/credentials',
-  path: '/settings/credentials',
+const WWorkspaceIdRoute = WWorkspaceIdRouteImport.update({
+  id: '/w/$workspaceId',
+  path: '/w/$workspaceId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
-  '/settings/credentials': typeof SettingsCredentialsRoute
+  '/w/$workspaceId': typeof WWorkspaceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
-  '/settings/credentials': typeof SettingsCredentialsRoute
+  '/w/$workspaceId': typeof WWorkspaceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/projects/$projectId': typeof ProjectsProjectIdRoute
-  '/settings/credentials': typeof SettingsCredentialsRoute
+  '/w/$workspaceId': typeof WWorkspaceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/projects/$projectId' | '/settings/credentials'
+  fullPaths: '/' | '/w/$workspaceId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/projects/$projectId' | '/settings/credentials'
-  id: '__root__' | '/' | '/projects/$projectId' | '/settings/credentials'
+  to: '/' | '/w/$workspaceId'
+  id: '__root__' | '/' | '/w/$workspaceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
-  SettingsCredentialsRoute: typeof SettingsCredentialsRoute
+  WWorkspaceIdRoute: typeof WWorkspaceIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -68,18 +58,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/$projectId': {
-      id: '/projects/$projectId'
-      path: '/projects/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof ProjectsProjectIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/credentials': {
-      id: '/settings/credentials'
-      path: '/settings/credentials'
-      fullPath: '/settings/credentials'
-      preLoaderRoute: typeof SettingsCredentialsRouteImport
+    '/w/$workspaceId': {
+      id: '/w/$workspaceId'
+      path: '/w/$workspaceId'
+      fullPath: '/w/$workspaceId'
+      preLoaderRoute: typeof WWorkspaceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -87,8 +70,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
-  SettingsCredentialsRoute: SettingsCredentialsRoute,
+  WWorkspaceIdRoute: WWorkspaceIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,7 +1,6 @@
 import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { python } from '@codemirror/lang-python'
-import { xml } from '@codemirror/lang-xml'
 import { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
 import { useMemo } from 'react'
@@ -12,7 +11,7 @@ export function TextPreview({
   file,
   content,
 }: {
-  file: { name: string; mime: string }
+  file: { name: string; mime: string | null }
   content: string
 }) {
   // CodeMirror throws on anything but a string; a parsed JSON body must never reach it
@@ -20,7 +19,6 @@ export function TextPreview({
   const extensions = useMemo(() => {
     const language = languageFor(file)
     const base = [EditorView.lineWrapping]
-    if (language === 'xml') return [...base, xml()]
     if (language === 'json') return [...base, json()]
     if (language === 'markdown') return [...base, markdown()]
     if (language === 'python') return [...base, python()]

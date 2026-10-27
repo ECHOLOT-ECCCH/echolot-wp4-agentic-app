@@ -15,24 +15,24 @@ export function formatDate(iso: string): string {
   return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export function formatPrice(perMillion: number | null): string {
-  if (perMillion === null) return ''
-  if (perMillion === 0) return 'free'
-  return `$${perMillion < 1 ? perMillion.toFixed(2) : perMillion.toFixed(1)}/M`
-}
-
-export function isPdf(file: { mime: string; name: string }): boolean {
-  return file.mime === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+export function formatCount(n: number, noun: string): string {
+  return `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`
 }
 
 export function languageFor(file: {
-  mime: string
+  mime: string | null
   name: string
-}): 'xml' | 'json' | 'markdown' | 'python' | 'text' {
+}): 'json' | 'markdown' | 'python' | 'text' {
   const name = file.name.toLowerCase()
-  if (file.mime.includes('xml') || name.endsWith('.xml') || name.endsWith('.tei')) return 'xml'
   if (file.mime === 'application/json' || name.endsWith('.json')) return 'json'
   if (name.endsWith('.md')) return 'markdown'
   if (file.mime === 'text/x-python' || name.endsWith('.py')) return 'python'
-  return 'text' // .txt, .log, .jsonl, .csv and anything else the sandbox wrote
+  return 'text' // .txt, .jsonl, .csv and anything else
+}
+
+/** One cell of a records table: strings as they are, everything else as compact JSON. */
+export function cellText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  return JSON.stringify(value)
 }

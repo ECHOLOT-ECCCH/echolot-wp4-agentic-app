@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 
-const STORAGE_KEY = 'elexifier.panes.v1'
+const STORAGE_KEY = 'echolot.panes.v1'
 
 type Layout = Record<string, number>
 
@@ -57,7 +57,7 @@ export function ThreePane({ header, left, middle, right }: ThreePaneProps) {
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={leftOpen ? 'Hide project pane' : 'Show project pane'}
+          aria-label={leftOpen ? 'Hide workspace pane' : 'Show workspace pane'}
           onClick={() => setLeftOpen((v) => !v)}
         >
           <PanelLeftIcon />

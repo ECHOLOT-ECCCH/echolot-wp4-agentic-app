@@ -41,7 +41,9 @@ def get_storage(state: State) -> LocalStorage:
 
 
 CurrentSettings = Annotated[Settings, Depends(get_settings_dep)]
-DbSession = Annotated[AsyncSession, Depends(get_db)]
+# "function" scope commits before the response is sent: a client that creates something and
+# reads it right away must find it (the default "request" scope commits after the response)
+DbSession = Annotated[AsyncSession, Depends(get_db, scope="function")]
 CurrentStorage = Annotated[LocalStorage, Depends(get_storage)]
 
 

@@ -1,12 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { AuthGuard } from '@/features/auth/AuthGuard'
-import { ProjectsPage } from '@/features/project/ProjectsPage'
+import { WorkspacesPage } from '@/features/workspace/WorkspacesPage'
 
 export const Route = createFileRoute('/')({
-  component: () => (
-    <AuthGuard>
-      <ProjectsPage />
-    </AuthGuard>
-  ),
+  component: WorkspacesPage,
 })

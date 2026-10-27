@@ -76,3 +76,24 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - The workspace block in the instructions lists up to 20 input files with their record counts
   and file ids, and whether task notes exist, so the model rarely needs `list_files` first.
 - Tool tests drive the real agent with a scripted `FunctionModel` (`tests/conftest.call_tool`).
+
+## 2026-10-27 Web prune (M0.5)
+
+- Removed: the PDF, entries, mapping, runs, steps, settings and auth features, the model picker,
+  the PDF viewer, context chips, the SSE client and the XML tool bodies; dependencies react-pdf,
+  pdfjs-dist, `@codemirror/lang-xml` and `@codemirror/merge`. The web package is `@echolot/web`.
+- Routes: `/` (workspaces) and `/w/$workspaceId`. The preview store's targets are file (with an
+  optional row), task, script and run, matching the server's ui-actions.
+- Records open in a paged table (50 rows a page, go to row); clicking a row selects it, so the
+  "[Looking at: …]" note names the row. A row the agent opens brings its page into view (state
+  adjusted during render, which the linter accepts, instead of an effect).
+- The task notes editor is the old spec editor on `GET/PUT /api/workspaces/{id}/task`; it is
+  wired now, and M1.1 adds the agent's tools for it.
+- Bug found in the walk-through: a conversation created by POST could answer 404 on the
+  immediate GET of its messages, because the session dependency committed after the response
+  was sent. `DbSession` now uses `Depends(get_db, scope="function")` (FastAPI 0.162), which
+  commits before the response goes out.
+- Walk-through (Playwright script against uvicorn + Vite, test model): create a workspace,
+  upload a 120-row CSV, page to rows 50–99, select row 57, ask "What files do I have?", allow
+  the demo tool, the turn completes; the stored message carries
+  "[Looking at: row 57 of the file people.csv (file_id …)]".

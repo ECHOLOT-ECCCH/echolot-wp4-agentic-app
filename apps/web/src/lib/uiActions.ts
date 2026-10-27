@@ -3,32 +3,18 @@ import { create } from 'zustand'
 import type { UiAction } from '@/lib/types'
 
 export type PreviewTarget =
-  | { kind: 'file'; fileId: string; page?: number; bbox?: [number, number, number, number] }
-  | { kind: 'document'; documentId: string; page?: number; overlaySetId?: string }
-  | { kind: 'entry'; entryId: string; documentId?: string; runId?: string }
-  | { kind: 'run'; runId: string }
-  | { kind: 'span'; runId: string; convertedId: string; documentId: string | null }
-  | { kind: 'mapping'; version?: number }
-  | { kind: 'spec' }
-  | { kind: 'profile' }
+  | { kind: 'file'; fileId: string; row?: number }
+  | { kind: 'task' }
+  | { kind: 'script'; version?: number }
+  | { kind: 'run'; runId: string; row?: number }
   | { kind: 'none' }
 
 interface PreviewState {
   target: PreviewTarget
   /** Monotonic counter so re-opening the same target still notifies viewers. */
   revision: number
-  openFile: (
-    fileId: string,
-    page?: number,
-    bbox?: PreviewTarget extends { bbox?: infer B } ? B : never,
-  ) => void
-  openDocument: (documentId: string, page?: number) => void
-  openEntry: (entryId: string, documentId?: string, runId?: string) => void
-  openRun: (runId: string) => void
-  openSpan: (runId: string, convertedId: string, documentId: string | null) => void
-  openMapping: (version?: number) => void
-  openSpec: () => void
-  openProfile: () => void
+  open: (target: PreviewTarget) => void
+  openFile: (fileId: string, row?: number) => void
   apply: (action: UiAction) => void
   clear: () => void
 }
@@ -36,25 +22,12 @@ interface PreviewState {
 export const usePreview = create<PreviewState>((set) => ({
   target: { kind: 'none' },
   revision: 0,
-  openFile: (fileId, page, bbox) =>
-    set((s) => ({ target: { kind: 'file', fileId, page, bbox }, revision: s.revision + 1 })),
-  openDocument: (documentId, page) =>
-    set((s) => ({ target: { kind: 'document', documentId, page }, revision: s.revision + 1 })),
-  openEntry: (entryId, documentId, runId) =>
+  open: (target) => set((s) => ({ target, revision: s.revision + 1 })),
+  openFile: (fileId, row) =>
     set((s) => ({
-      target: { kind: 'entry', entryId, documentId, runId },
+      target: row === undefined ? { kind: 'file', fileId } : { kind: 'file', fileId, row },
       revision: s.revision + 1,
     })),
-  openRun: (runId) => set((s) => ({ target: { kind: 'run', runId }, revision: s.revision + 1 })),
-  openSpan: (runId, convertedId, documentId) =>
-    set((s) => ({
-      target: { kind: 'span', runId, convertedId, documentId },
-      revision: s.revision + 1,
-    })),
-  openMapping: (version) =>
-    set((s) => ({ target: { kind: 'mapping', version }, revision: s.revision + 1 })),
-  openSpec: () => set((s) => ({ target: { kind: 'spec' }, revision: s.revision + 1 })),
-  openProfile: () => set((s) => ({ target: { kind: 'profile' }, revision: s.revision + 1 })),
   apply: (action) =>
     set((s) => {
       const next = targetFor(action)
@@ -63,43 +36,25 @@ export const usePreview = create<PreviewState>((set) => ({
   clear: () => set({ target: { kind: 'none' } }),
 }))
 
+const withRow = <T extends PreviewTarget>(target: T, row: number | undefined): T =>
+  row === undefined || row === null ? target : { ...target, row }
+
 export function targetFor(action: UiAction): PreviewTarget | null {
   switch (action.type) {
     case 'open_file':
-    case 'open_artifact':
-      return action.file_id ? { kind: 'file', fileId: action.file_id } : null
-    case 'open_page':
       return action.file_id
-        ? { kind: 'file', fileId: action.file_id, page: action.page, bbox: action.bbox }
+        ? withRow({ kind: 'file' as const, fileId: action.file_id }, action.row)
         : null
-    case 'open_document':
-      return action.document_id
-        ? { kind: 'document', documentId: action.document_id, page: action.page }
-        : null
-    case 'show_overlay':
-      return action.document_id
-        ? {
-            kind: 'document',
-            documentId: action.document_id,
-            page: action.page,
-            overlaySetId: action.overlay_set_id,
-          }
-        : null
-    case 'open_entry':
-      return action.entry_id
-        ? {
-            kind: 'entry',
-            entryId: action.entry_id,
-            documentId: action.document_id,
-            runId: action.run_id,
-          }
-        : null
+    case 'open_task':
+      return { kind: 'task' }
+    case 'open_script':
+      return action.script_version
+        ? { kind: 'script', version: action.script_version }
+        : { kind: 'script' }
     case 'open_run':
-      return action.run_id ? { kind: 'run', runId: action.run_id } : null
-    case 'open_mapping':
-      return { kind: 'mapping', version: action.mapping_version }
-    case 'open_spec':
-      return { kind: 'spec' }
+      return action.run_id
+        ? withRow({ kind: 'run' as const, runId: action.run_id }, action.row)
+        : null
     default:
       return null
   }

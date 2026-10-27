@@ -15,13 +15,11 @@ interface UploadState {
 }
 
 export function UploadDropzone({
-  projectId,
+  workspaceId,
   onUploaded,
-  disabled,
 }: {
-  projectId: string
+  workspaceId: string
   onUploaded: () => void
-  disabled?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -32,7 +30,7 @@ export function UploadDropzone({
       for (const file of Array.from(files)) {
         const id = `${file.name}-${Date.now()}-${Math.random()}`
         setUploads((u) => [...u, { id, name: file.name, size: file.size, fraction: 0 }])
-        const handle = uploadFile(projectId, file, (fraction) =>
+        const handle = uploadFile(workspaceId, file, (fraction) =>
           setUploads((u) => u.map((x) => (x.id === id ? { ...x, fraction } : x))),
         )
         handle.promise
@@ -47,37 +45,36 @@ export function UploadDropzone({
           })
       }
     },
-    [projectId, onUploaded],
+    [workspaceId, onUploaded],
   )
 
   return (
     <div className="flex flex-col gap-2">
       <button
         type="button"
-        disabled={disabled}
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => {
           e.preventDefault()
-          if (!disabled) setDragging(true)
+          setDragging(true)
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => {
           e.preventDefault()
           setDragging(false)
-          if (!disabled && e.dataTransfer.files.length) start(e.dataTransfer.files)
+          if (e.dataTransfer.files.length) start(e.dataTransfer.files)
         }}
         className={`text-muted-foreground flex w-full items-center justify-center gap-2 rounded-md border border-dashed px-3 py-3 text-xs transition-colors ${
           dragging ? 'border-primary bg-accent text-foreground' : 'hover:bg-accent/50'
-        } disabled:opacity-50`}
+        }`}
       >
         <UploadIcon className="size-3.5" />
-        {disabled ? 'Viewers cannot upload' : 'Drop XML or PDF files here, or click'}
+        Drop CSV, TSV, JSON or JSONL files here, or click
       </button>
       <input
         ref={inputRef}
         type="file"
         multiple
-        accept=".xml,.tei,.json,.nvh,.txt,.pdf,application/xml,text/xml,application/pdf"
+        accept=".csv,.tsv,.tab,.json,.jsonl,.ndjson,.txt,.md,text/csv,application/json"
         className="hidden"
         onChange={(e) => {
           if (e.target.files?.length) start(e.target.files)

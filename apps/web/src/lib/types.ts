@@ -1,492 +1,73 @@
-export interface User {
+/** Shapes of the API's responses (apps/server/src/echolot_app/schemas.py). */
+
+export interface Workspace {
   id: string
-  email: string
-  name: string
-  role: 'user' | 'admin'
-  created_at: string
-  last_login_at: string | null
-}
-
-export type SourceType = 'xml' | 'pdf'
-export type ProjectRole = 'owner' | 'editor' | 'viewer'
-
-export interface ModelSpec {
-  provider: string
-  model_id: string
-  credential_id?: string | null
-}
-
-export interface Project {
-  id: string
-  owner_id: string
   name: string
   description: string | null
-  source_type: SourceType
-  default_model: ModelSpec | null
-  settings: Record<string, unknown>
   created_at: string
   updated_at: string
-  my_role: ProjectRole
 }
 
-export type FileKind = 'source' | 'derived' | 'output' | 'artifact'
+export type FileKind = 'input' | 'result' | 'export'
+
+export interface FileMeta {
+  format?: 'csv' | 'tsv' | 'json' | 'jsonl' | null
+  record_count?: number
+  columns?: string[]
+  encoding?: string
+  dialect?: { delimiter: string; quotechar: string }
+  json_path?: string
+  ragged_rows?: number
+  invalid_count?: number
+  error?: string
+  [key: string]: unknown
+}
 
 export interface FileRecord {
   id: string
-  project_id: string
+  workspace_id: string
   kind: FileKind
   name: string
   size: number
-  sha256: string
-  mime: string
-  meta: Record<string, unknown>
-  created_by: string | null
+  sha256: string | null
+  mime: string | null
+  meta: FileMeta
   created_at: string
 }
 
-export interface Member {
-  user_id: string
-  email: string
-  name: string
-  role: ProjectRole
+export interface RecordRow {
+  row: number
+  record: Record<string, unknown>
 }
 
-export interface Provider {
-  name: string
-  label: string
-  needs_api_key: boolean
-  needs_base_url: boolean
-  docs_url: string
+export interface RecordsPage {
+  total: number
+  offset: number
+  columns: string[]
+  records: RecordRow[]
 }
 
-export interface Credential {
-  id: string
-  provider: string
-  label: string
-  base_url: string | null
-  key_hint: string
-  declared_capabilities: Record<string, unknown>
-  last_used_at: string | null
-  created_at: string
-}
-
-export interface ModelInfo {
-  id: string
-  label: string
-  provider: string
-  supports_tools: boolean | null
-  supports_vision: boolean | null
-  context_length: number | null
-  price_in_per_m: number | null
-  price_out_per_m: number | null
-  recommended: boolean
-}
-
-export interface ProbeResult {
-  ok: boolean
-  model_id: string
-  latency_ms: number
-  message: string
-  input_tokens: number
-  output_tokens: number
-  reply: string
+export interface TaskNotes {
+  markdown: string
+  updated_at: string
 }
 
 export interface Conversation {
   id: string
-  project_id: string
+  workspace_id: string
   title: string
-  created_by: string | null
   created_at: string
   updated_at: string
 }
 
-export type DocumentStatus = 'queued' | 'parsing' | 'ready' | 'error'
-
-export interface EntryCandidate {
-  xpath: string
-  tag: string
-  count: number
-  depth: number
-  score: number
-  reason: string
-}
-
-export interface DocumentRecord {
-  id: string
-  project_id: string
-  source_file_id: string
-  file_name: string
-  type: 'xml' | 'pdf'
-  status: DocumentStatus
-  entry_xpath: string | null
-  headword_xpath: string | null
-  entry_count: number
-  page_count: number | null
-  error: string | null
-  parsed_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface DocumentDetail extends DocumentRecord {
-  stats: {
-    size_bytes?: number
-    root_tag?: string
-    namespaces?: Record<string, string>
-    total_elements?: number
-    entry_candidates?: EntryCandidate[]
-    element_stats?: { tag: string; count: number; depth: number; has_text: boolean }[]
-    page_count?: number
-    scanned_pages?: number
-    text_chars?: number
-    lines?: number
-    segmentation?: {
-      set_id: string
-      segmenter: string
-      params: Record<string, unknown>
-      stats: {
-        pages: number
-        spans: number
-        continuations: number
-        mode: string
-        warnings: string[]
-        confidence_mean: number
-      }
-      at: string
-    }
-    review?: ReviewSummary
-  }
-}
-
-export interface ReviewPageFlag {
-  page: number
-  reasons: string[]
-  entries: number
-  lines: number
-}
-
-/** What a rule segmentation looks like against its own statistics (PLAN M2.9). */
-export interface ReviewSummary {
-  pages_total: number
-  text_pages: number
-  entries: number
-  continuations: number
-  median_entries_per_page: number
-  median_span_chars: number
-  flagged_spans: number
-  flagged_pages: ReviewPageFlag[]
-  sample_pages: number[]
-  reasons: Record<string, number>
-  letter_pages: number[]
-}
-
-export interface ReviewOut {
-  document_id: string
-  summary: ReviewSummary | null
-  counts: Record<string, number>
-  remaining_proposed: number
-  remaining_flagged_proposed: number
-  flagged_total: number
-}
-
-export type AnnotationStatus = 'proposed' | 'accepted' | 'rejected' | 'edited'
-
-export interface AnnotationRecord {
-  id: string
-  document_id: string
-  page_no: number
-  bbox: [number, number, number, number]
-  label: string
-  entry_span_id: string | null
-  source: 'rule' | 'ml' | 'user'
-  status: AnnotationStatus
-  payload: {
-    bboxes?: [number, number, number, number][]
-    line_ids?: string[]
-    headword_guess?: string | null
-    confidence?: number
-    continuation?: boolean
-    text?: string
-    original_bbox?: [number, number, number, number]
-    flags?: string[]
-    continues?: string
-    continued_by?: string
-    structurer?: { segmentation: string; reason: string | null; run_id: string }
-  }
-  set_id: string | null
-  position: number
-  created_by: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface AnnotationPage {
-  items: AnnotationRecord[]
-  total: number
-  offset: number
-  limit: number
-}
-
-export interface SegmentResult {
-  document_id: string
-  queued: boolean
-  job_id: number | null
-  set_id: string | null
-  stats: { spans: number; mode: string; warnings: string[] } | null
-}
-
-export interface PdfPageRecord {
-  id: string
-  document_id: string
-  page_no: number
-  width: number
-  height: number
-  rotation: number
-  text_chars: number
-  is_scanned: boolean
-  line_count: number
-}
-
-export interface EntryListItem {
-  id: string
-  document_id: string
-  ordinal: number
-  headword: string | null
-  snippet: string
-}
-
-export interface EntryPage {
-  items: EntryListItem[]
-  total: number
-  offset: number
-  limit: number
-}
-
-export interface EntryDetail extends EntryListItem {
-  source_xml: string
-  source_ref: { start: number; end: number }
-}
-
-export type RunKind = 'sample' | 'full'
-export type RunStatus = 'queued' | 'running' | 'done' | 'failed'
-
-/** A custom step as snapshotted on a run, with what it did once the run ran it. */
-export interface StepRunRecord {
-  step_id: string
-  name: string
-  position: number
-  code_artifact_id?: string
-  exit_code?: number
-  duration_s?: number
-  entries_in?: number
-  entries_out?: number
-  stdout?: string
-  stderr?: string
-}
-
-export interface RunRecord {
-  id: string
-  project_id: string
-  document_id: string | null
-  kind: RunKind
-  mapping_version: number
-  status: RunStatus
-  scope: {
-    ordinals?: number[]
-    strategy?: string | null
-    query?: string | null
-    structurer?: string
-    span_ids?: string[]
-    options?: Record<string, unknown>
-  }
-  stats: {
-    phase?: string
-    done?: number
-    total?: number | null
-    requested?: number
-    converted?: number
-    skipped?: number
-    with_issues?: number
-    errors?: number
-    warnings?: number
-    resource_issues?: number
-    homographs_numbered?: number
-    cached?: number
-    failed?: number
-    segmentation?: Record<string, number> // structurer doubts by verdict
-    confidence_mean?: number
-    low_confidence?: number
-    usage?: { input_tokens: number; output_tokens: number; requests: number }
-    cost_check?: { estimated_tokens: number; actual_tokens: number; ratio: number | null }
-    output_files?: { file_id: string; name: string; format: string; size: number }[]
-    report_file_id?: string
-    timings?: Record<string, number>
-  }
-  output_file_id: string | null
-  error: string | null
-  created_at: string
-  finished_at: string | null
-  steps_snapshot?: StepRunRecord[]
-}
-
-export interface EntryIssue {
-  severity: 'error' | 'warning'
-  source: 'schema' | 'consistency' | 'writer' | 'structurer'
-  code: string
-  path: string
-  message: string
-  verdict?: string // code "segmentation": ok | merged | fragment | not_an_entry
-  reason?: string
-}
-
-export interface RunDetail extends RunRecord {
-  validation_report: {
-    summary?: string
-    valid?: boolean
-    error_count?: number
-    limitation_count?: number
-    resource_issues?: EntryIssue[]
-    plan_warnings?: string[]
-    resource_scalars?: Record<string, unknown>
-    issue_codes?: Record<string, number>
-    entries_with_issues?: number
-    errors?: { output_index: number | null; ordinal: number | null; path: string; reason: string }[]
-  }
-}
-
-export interface ConvertedEntryItem {
-  id: string
-  run_id: string
-  entry_id: string | null
-  annotation_id: string | null
-  position: number
-  ordinal: number | null
-  headword: string | null
-  issue_count: number
-  issues: EntryIssue[]
-  confidence: number | null
-  notes: string[]
-}
-
-export interface ConvertedEntryPage {
-  items: ConvertedEntryItem[]
-  total: number
-  offset: number
-  limit: number
-}
-
-/** One output entry of a live conversion (nothing stored). */
-export interface LiveOutput {
-  position: number
-  headword: string | null
-  dmlex: Record<string, unknown>
-  xml: string
-  issues: EntryIssue[]
-  issue_count: number
-}
-
-/** A source entry converted just now with a mapping version, checked on its own. */
-export interface EntryPreview {
-  entry_id: string
-  mapping_version: number
-  outputs: LiveOutput[]
-  skipped: boolean
-  resource_issues: EntryIssue[]
-  plan_warnings: string[]
-  steps: string[]
-  warnings: string[]
-  checked_alone: boolean
-}
-
-export interface ConvertedEntryDetail extends ConvertedEntryItem {
-  dmlex: Record<string, unknown>
-  xml: string
-  mapping_version: number
-  run_created_at: string
-  override: Record<string, unknown> | null
-}
-
-export interface MappingIssue {
-  severity: 'error' | 'warning' | 'info'
-  path: string
-  message: string
-}
-
-export interface MappingSummary {
-  id: string
-  version: number
-  note: string
-  source: string
-  created_by: string | null
-  created_at: string
-  issue_count: number
-}
-
-export interface MappingRecord extends MappingSummary {
-  spec: Record<string, unknown>
-  issues: MappingIssue[]
-  summary: string
-}
-
-export interface MappingCheck {
-  ok: boolean
-  issues: MappingIssue[]
-  summary: string | null
-}
-
-/** What the structurer is told about a PDF dictionary before every entry. */
-export interface StructureProfile {
-  source_language: string
-  target_languages: string[]
-  contents: string
-  entry_id_prefix: string
-  stored: boolean
-}
-
-export interface SpecRecord {
-  version: number
-  markdown: string
-  updated_by: string | null
-  created_at: string
-}
-
-export type UiActionType =
-  | 'open_file'
-  | 'open_document'
-  | 'open_entry'
-  | 'open_page'
-  | 'show_overlay'
-  | 'open_mapping'
-  | 'open_run'
-  | 'open_spec'
-  | 'open_artifact'
+export type UiActionType = 'open_file' | 'open_task' | 'open_script' | 'open_run'
 
 export interface UiAction {
   type: UiActionType
   file_id?: string
-  entry_id?: string
-  document_id?: string
-  page?: number
-  bbox?: [number, number, number, number]
-  overlay_set_id?: string
-  mapping_version?: number
+  script_version?: number
   run_id?: string
-}
-
-/** A custom step of the conversion pipeline: a saved sandbox snippet (M3.4). */
-export interface StepRecord {
-  id: string
-  project_id: string
-  position: number
-  kind: 'builtin' | 'custom_code'
-  name: string
-  config: { stage?: string; purpose?: string | null; code_run_id?: string; inputs?: string[] }
-  code_artifact_id: string | null
-  enabled: boolean
-  created_by: string | null
-  created_at: string
-  updated_at: string
+  row?: number
 }
 
 export interface ToolResultPayload {
@@ -494,4 +75,8 @@ export interface ToolResultPayload {
   data?: Record<string, unknown>
   artifacts?: { file_id: string; name: string; kind: string }[]
   cost?: Record<string, unknown>
+}
+
+export function isRecordsFile(file: FileRecord): boolean {
+  return Boolean(file.meta.format) && typeof file.meta.record_count === 'number'
 }

@@ -1,11 +1,11 @@
 import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
-import { xml } from '@codemirror/lang-xml'
+import { python } from '@codemirror/lang-python'
 import { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
 import { useMemo } from 'react'
 
-/** Editable CodeMirror for JSON, Markdown or XML; the read-only variant is TextPreview. */
+/** Editable CodeMirror for JSON, Markdown or Python; the read-only variant is TextPreview. */
 export function CodeEditor({
   value,
   onChange,
@@ -15,7 +15,7 @@ export function CodeEditor({
 }: {
   value: string
   onChange: (value: string) => void
-  language: 'json' | 'markdown' | 'xml'
+  language: 'json' | 'markdown' | 'python'
   readOnly?: boolean
   ariaLabel?: string
 }) {
@@ -23,7 +23,7 @@ export function CodeEditor({
     const base = [EditorView.lineWrapping]
     if (language === 'json') return [...base, json()]
     if (language === 'markdown') return [...base, markdown()]
-    return [...base, xml()]
+    return [...base, python()]
   }, [language])
   return (
     <CodeMirror

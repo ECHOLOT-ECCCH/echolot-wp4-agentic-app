@@ -5,7 +5,7 @@ import { configure } from '@testing-library/react'
 // can miss on a re-render after a fetch; the tests wait for real data, not for timers
 configure({ asyncUtilTimeout: 5000 })
 
-// jsdom lacks matchMedia (used by sonner) and IntersectionObserver (used by the PDF viewer).
+// jsdom lacks matchMedia (used by sonner) and IntersectionObserver.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({

@@ -5,24 +5,21 @@ import { isUiAction, targetFor, usePreview } from '@/lib/uiActions'
 describe('ui actions', () => {
   it('maps actions to preview targets', () => {
     expect(targetFor({ type: 'open_file', file_id: 'f1' })).toEqual({ kind: 'file', fileId: 'f1' })
-    expect(targetFor({ type: 'open_page', file_id: 'f1', page: 3, bbox: [1, 2, 3, 4] })).toEqual({
+    expect(targetFor({ type: 'open_file', file_id: 'f1', row: 0 })).toEqual({
       kind: 'file',
       fileId: 'f1',
-      page: 3,
-      bbox: [1, 2, 3, 4],
+      row: 0,
     })
-    expect(targetFor({ type: 'open_entry', entry_id: 'e1' })).toEqual({
-      kind: 'entry',
-      entryId: 'e1',
+    expect(targetFor({ type: 'open_task' })).toEqual({ kind: 'task' })
+    expect(targetFor({ type: 'open_script', script_version: 3 })).toEqual({
+      kind: 'script',
+      version: 3,
     })
-    expect(
-      targetFor({ type: 'open_entry', entry_id: 'e1', document_id: 'd1', run_id: 'r1' }),
-    ).toEqual({ kind: 'entry', entryId: 'e1', documentId: 'd1', runId: 'r1' })
-    expect(targetFor({ type: 'open_run', run_id: 'r1' })).toEqual({ kind: 'run', runId: 'r1' })
-    expect(
-      targetFor({ type: 'show_overlay', document_id: 'd1', page: 3, overlay_set_id: 's1' }),
-    ).toEqual({ kind: 'document', documentId: 'd1', page: 3, overlaySetId: 's1' })
-    expect(targetFor({ type: 'open_spec' })).toEqual({ kind: 'spec' })
+    expect(targetFor({ type: 'open_run', run_id: 'r1', row: 7 })).toEqual({
+      kind: 'run',
+      runId: 'r1',
+      row: 7,
+    })
     expect(targetFor({ type: 'open_file' })).toBeNull()
   })
 

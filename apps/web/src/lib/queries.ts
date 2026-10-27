@@ -1,743 +1,106 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { ApiError, api } from '@/lib/api'
-import type {
-  AnnotationPage,
-  AnnotationRecord,
-  AnnotationStatus,
-  Conversation,
-  ConvertedEntryDetail,
-  ConvertedEntryPage,
-  Credential,
-  DocumentDetail,
-  DocumentRecord,
-  EntryDetail,
-  EntryPreview,
-  EntryPage,
-  FileRecord,
-  MappingCheck,
-  MappingRecord,
-  MappingSummary,
-  Member,
-  ModelInfo,
-  ModelSpec,
-  PdfPageRecord,
-  ProbeResult,
-  Project,
-  Provider,
-  RunDetail,
-  RunRecord,
-  ReviewOut,
-  SegmentResult,
-  StepRecord,
-  StructureProfile,
-  SourceType,
-  SpecRecord,
-  User,
-} from '@/lib/types'
+import { api } from '@/lib/api'
+import type { Conversation, FileRecord, RecordsPage, TaskNotes, Workspace } from '@/lib/types'
 
 export const keys = {
-  me: ['me'] as const,
-  projects: ['projects'] as const,
-  project: (id: string) => ['projects', id] as const,
-  files: (projectId: string) => ['projects', projectId, 'files'] as const,
-  documents: (projectId: string) => ['projects', projectId, 'documents'] as const,
-  document: (projectId: string, documentId: string) =>
-    ['projects', projectId, 'documents', documentId] as const,
-  entries: (projectId: string, documentId: string, offset: number, limit: number, q: string) =>
-    ['projects', projectId, 'documents', documentId, 'entries', { offset, limit, q }] as const,
-  entry: (projectId: string, entryId: string) =>
-    ['projects', projectId, 'entries', entryId] as const,
-  pages: (projectId: string, documentId: string) =>
-    ['projects', projectId, 'documents', documentId, 'pages'] as const,
-  annotations: (projectId: string, documentId: string) =>
-    ['projects', projectId, 'documents', documentId, 'annotations'] as const,
-  review: (projectId: string, documentId: string) =>
-    ['projects', projectId, 'documents', documentId, 'annotations', 'review'] as const,
-  annotationsQuery: (
-    projectId: string,
-    documentId: string,
-    params: { page_no?: number; status?: string; offset?: number; limit?: number },
-  ) => ['projects', projectId, 'documents', documentId, 'annotations', params] as const,
-  runs: (projectId: string) => ['projects', projectId, 'runs'] as const,
-  run: (projectId: string, runId: string) => ['projects', projectId, 'runs', runId] as const,
-  runEntries: (projectId: string, runId: string, offset: number, limit: number, issues: boolean) =>
-    ['projects', projectId, 'runs', runId, 'entries', { offset, limit, issues }] as const,
-  converted: (projectId: string, entryId: string, runId: string | null) =>
-    ['projects', projectId, 'entries', entryId, 'converted', runId ?? 'latest'] as const,
-  preview: (projectId: string, entryId: string, version: number) =>
-    ['projects', projectId, 'entries', entryId, 'preview', version] as const,
-  mappings: (projectId: string) => ['projects', projectId, 'mappings'] as const,
-  mapping: (projectId: string, version: string) =>
-    ['projects', projectId, 'mappings', version] as const,
-  spec: (projectId: string) => ['projects', projectId, 'spec'] as const,
-  profile: (projectId: string) => ['projects', projectId, 'structure-profile'] as const,
-  steps: (projectId: string) => ['projects', projectId, 'steps'] as const,
-  members: (projectId: string) => ['projects', projectId, 'members'] as const,
-  conversations: (projectId: string) => ['projects', projectId, 'conversations'] as const,
-  messages: (projectId: string, conversationId: string) =>
-    ['projects', projectId, 'conversations', conversationId, 'messages'] as const,
-  providers: ['providers'] as const,
-  credentials: ['credentials'] as const,
-  models: (credentialId: string) => ['models', credentialId] as const,
+  workspaces: ['workspaces'] as const,
+  workspace: (id: string) => ['workspaces', id] as const,
+  files: (workspaceId: string) => ['workspaces', workspaceId, 'files'] as const,
+  records: (workspaceId: string, fileId: string, offset: number, limit: number) =>
+    ['workspaces', workspaceId, 'files', fileId, 'records', { offset, limit }] as const,
+  task: (workspaceId: string) => ['workspaces', workspaceId, 'task'] as const,
+  conversations: (workspaceId: string) => ['workspaces', workspaceId, 'conversations'] as const,
+  messages: (workspaceId: string, conversationId: string) =>
+    ['workspaces', workspaceId, 'conversations', conversationId, 'messages'] as const,
 }
 
-export function useMe() {
+const base = (workspaceId: string) => `/api/workspaces/${workspaceId}`
+
+export function useWorkspaces() {
+  return useQuery({ queryKey: keys.workspaces, queryFn: () => api<Workspace[]>('/api/workspaces') })
+}
+
+export function useWorkspace(workspaceId: string) {
   return useQuery({
-    queryKey: keys.me,
-    queryFn: () => api<User>('/api/me', { noRedirect: true }),
-    retry: false,
-    staleTime: 5 * 60_000,
+    queryKey: keys.workspace(workspaceId),
+    queryFn: () => api<Workspace>(base(workspaceId)),
   })
 }
 
-export function useProjects() {
-  return useQuery({ queryKey: keys.projects, queryFn: () => api<Project[]>('/api/projects') })
-}
-
-export function useProject(projectId: string) {
-  return useQuery({
-    queryKey: keys.project(projectId),
-    queryFn: () => api<Project>(`/api/projects/${projectId}`),
-  })
-}
-
-export function useCreateProject() {
+export function useCreateWorkspace() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; source_type: SourceType; description?: string }) =>
-      api<Project>('/api/projects', { method: 'POST', json: body }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.projects }),
+    mutationFn: (body: { name: string; description?: string }) =>
+      api<Workspace>('/api/workspaces', { method: 'POST', json: body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.workspaces }),
   })
 }
 
-export function useUpdateProject(projectId: string) {
+export function useDeleteWorkspace() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (
-      body: Partial<Pick<Project, 'name' | 'description' | 'default_model' | 'settings'>>,
-    ) => api<Project>(`/api/projects/${projectId}`, { method: 'PATCH', json: body }),
-    onSuccess: (project) => {
-      queryClient.setQueryData(keys.project(projectId), project)
-      void queryClient.invalidateQueries({ queryKey: keys.projects })
-    },
+    mutationFn: (workspaceId: string) => api<void>(base(workspaceId), { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.workspaces }),
   })
 }
 
-export function useFiles(projectId: string) {
+export function useFiles(workspaceId: string) {
   return useQuery({
-    queryKey: keys.files(projectId),
-    queryFn: () => api<FileRecord[]>(`/api/projects/${projectId}/files`),
+    queryKey: keys.files(workspaceId),
+    queryFn: () => api<FileRecord[]>(`${base(workspaceId)}/files`),
   })
 }
 
-export function useDeleteFile(projectId: string) {
+export function useDeleteFile(workspaceId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (fileId: string) =>
-      api<void>(`/api/projects/${projectId}/files/${fileId}`, { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.files(projectId) }),
+      api<void>(`${base(workspaceId)}/files/${fileId}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.files(workspaceId) }),
   })
 }
 
-export function useDocuments(projectId: string) {
+export function useRecords(workspaceId: string, fileId: string, offset: number, limit: number) {
   return useQuery({
-    queryKey: keys.documents(projectId),
-    queryFn: () => api<DocumentRecord[]>(`/api/projects/${projectId}/documents`),
-    refetchInterval: (query) =>
-      query.state.data?.some((d) => d.status === 'queued' || d.status === 'parsing') ? 3000 : false,
-  })
-}
-
-export function useDocument(projectId: string, documentId: string | null) {
-  return useQuery({
-    queryKey: keys.document(projectId, documentId ?? ''),
-    queryFn: () => api<DocumentDetail>(`/api/projects/${projectId}/documents/${documentId}`),
-    enabled: Boolean(documentId),
-  })
-}
-
-export function useEntries(
-  projectId: string,
-  documentId: string | null,
-  params: { offset: number; limit: number; q: string },
-) {
-  const search = new URLSearchParams({
-    offset: String(params.offset),
-    limit: String(params.limit),
-  })
-  if (params.q) search.set('q', params.q)
-  return useQuery({
-    queryKey: keys.entries(projectId, documentId ?? '', params.offset, params.limit, params.q),
+    queryKey: keys.records(workspaceId, fileId, offset, limit),
     queryFn: () =>
-      api<EntryPage>(`/api/projects/${projectId}/documents/${documentId}/entries?${search}`),
-    enabled: Boolean(documentId),
-    placeholderData: (previous) => previous,
-  })
-}
-
-export function useEntry(projectId: string, entryId: string | null) {
-  return useQuery({
-    queryKey: keys.entry(projectId, entryId ?? ''),
-    queryFn: () => api<EntryDetail>(`/api/projects/${projectId}/entries/${entryId}`),
-    enabled: Boolean(entryId),
-    staleTime: 5 * 60_000,
-  })
-}
-
-const runActive = (status?: string) => status === 'queued' || status === 'running'
-
-export function useRuns(projectId: string) {
-  return useQuery({
-    queryKey: keys.runs(projectId),
-    queryFn: () => api<RunRecord[]>(`/api/projects/${projectId}/runs`),
-    refetchInterval: (query) => (query.state.data?.some((r) => runActive(r.status)) ? 3000 : false),
-  })
-}
-
-export function useRun(projectId: string, runId: string | null) {
-  return useQuery({
-    queryKey: keys.run(projectId, runId ?? ''),
-    queryFn: () => api<RunDetail>(`/api/projects/${projectId}/runs/${runId}`),
-    enabled: Boolean(runId),
-    refetchInterval: (query) => (runActive(query.state.data?.status) ? 2000 : false),
-  })
-}
-
-export function useRunEntries(
-  projectId: string,
-  runId: string | null,
-  params: { offset: number; limit: number; issues: boolean; review?: boolean },
-) {
-  const search = new URLSearchParams({
-    offset: String(params.offset),
-    limit: String(params.limit),
-    issues: String(params.issues),
-    review: String(params.review ?? false),
-  })
-  return useQuery({
-    queryKey: [
-      ...keys.runEntries(projectId, runId ?? '', params.offset, params.limit, params.issues),
-      params.review ?? false,
-    ] as const,
-    queryFn: () =>
-      api<ConvertedEntryPage>(`/api/projects/${projectId}/runs/${runId}/entries?${search}`),
-    enabled: Boolean(runId),
-    placeholderData: (previous) => previous,
-  })
-}
-
-export function useConvertedEntryById(
-  projectId: string,
-  runId: string | null,
-  convertedId: string | null,
-) {
-  return useQuery({
-    queryKey: ['projects', projectId, 'runs', runId ?? '', 'entries', convertedId ?? ''] as const,
-    queryFn: () =>
-      api<ConvertedEntryDetail>(`/api/projects/${projectId}/runs/${runId}/entries/${convertedId}`),
-    enabled: Boolean(runId && convertedId),
-  })
-}
-
-export function useOverrideEntry(projectId: string, runId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, override }: { id: string; override: Record<string, unknown> | null }) =>
-      api<ConvertedEntryDetail>(`/api/projects/${projectId}/runs/${runId}/entries/${id}`, {
-        method: 'PATCH',
-        json: { override },
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.run(projectId, runId) }),
-  })
-}
-
-export function useRebuildRun(projectId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (runId: string) =>
-      api<RunDetail>(`/api/projects/${projectId}/runs/${runId}/rebuild`, { method: 'POST' }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.runs(projectId) })
-      void queryClient.invalidateQueries({ queryKey: keys.files(projectId) })
-    },
-  })
-}
-
-export function useAnnotation(projectId: string, annotationId: string | null) {
-  return useQuery({
-    queryKey: ['projects', projectId, 'annotation', annotationId ?? ''] as const,
-    queryFn: () => api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${annotationId}`),
-    enabled: Boolean(annotationId),
-  })
-}
-
-/** Converted output of a source entry in a run (the latest run that has it when runId is null). */
-/** The entry converted on the spot with a mapping version (the latest, normally): the key
- *  carries the version, so saving a new mapping refreshes every open entry. */
-export function useEntryPreview(projectId: string, entryId: string | null, version: number | null) {
-  return useQuery({
-    queryKey: keys.preview(projectId, entryId ?? '', version ?? 0),
-    queryFn: () =>
-      api<EntryPreview>(
-        `/api/projects/${projectId}/entries/${entryId}/preview?mapping_version=${version}`,
+      api<RecordsPage>(
+        `${base(workspaceId)}/files/${fileId}/records?offset=${offset}&limit=${limit}`,
       ),
-    enabled: Boolean(entryId) && version !== null,
-    staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
   })
 }
 
-export function useConvertedEntry(projectId: string, entryId: string | null, runId: string | null) {
-  const search = runId ? `?run_id=${runId}` : ''
+export function useTask(workspaceId: string) {
   return useQuery({
-    queryKey: keys.converted(projectId, entryId ?? '', runId),
-    queryFn: () =>
-      api<ConvertedEntryDetail[]>(
-        `/api/projects/${projectId}/entries/${entryId}/converted${search}`,
-      ),
-    enabled: Boolean(entryId),
+    queryKey: keys.task(workspaceId),
+    queryFn: () => api<TaskNotes>(`${base(workspaceId)}/task`),
   })
 }
 
-export function useMappings(projectId: string, enabled = true) {
-  return useQuery({
-    queryKey: keys.mappings(projectId),
-    queryFn: () => api<MappingSummary[]>(`/api/projects/${projectId}/mappings`),
-    enabled,
-  })
-}
-
-/** The structure profile of a PDF project (defaults with stored=false until one is saved). */
-export function useStructureProfile(projectId: string, enabled = true) {
-  return useQuery({
-    queryKey: keys.profile(projectId),
-    queryFn: () => api<StructureProfile>(`/api/projects/${projectId}/structure-profile`),
-    enabled,
-  })
-}
-
-export function useSaveStructureProfile(projectId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (body: Omit<StructureProfile, 'stored'>) =>
-      api<StructureProfile>(`/api/projects/${projectId}/structure-profile`, {
-        method: 'PUT',
-        json: body,
-      }),
-    onSuccess: (profile) => {
-      queryClient.setQueryData(keys.profile(projectId), profile)
-      void queryClient.invalidateQueries({ queryKey: keys.project(projectId) })
-    },
-  })
-}
-
-export function useSteps(projectId: string) {
-  return useQuery({
-    queryKey: keys.steps(projectId),
-    queryFn: () => api<StepRecord[]>(`/api/projects/${projectId}/steps`),
-  })
-}
-
-/** Rename, switch on or off, reorder and delete the custom steps of the pipeline. */
-export function useEditSteps(projectId: string) {
-  const queryClient = useQueryClient()
-  const done = () => void queryClient.invalidateQueries({ queryKey: keys.steps(projectId) })
-  const update = useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; enabled?: boolean }) =>
-      api<StepRecord>(`/api/projects/${projectId}/steps/${id}`, { method: 'PATCH', json: body }),
-    onSuccess: done,
-  })
-  const remove = useMutation({
-    mutationFn: (id: string) =>
-      api<void>(`/api/projects/${projectId}/steps/${id}`, { method: 'DELETE' }),
-    onSuccess: done,
-  })
-  const reorder = useMutation({
-    mutationFn: (ids: string[]) =>
-      api<StepRecord[]>(`/api/projects/${projectId}/steps/reorder`, {
-        method: 'POST',
-        json: { ids },
-      }),
-    onSuccess: done,
-  })
-  return { update, remove, reorder }
-}
-
-/** One mapping version, or the latest; null data when the project has none yet. */
-export function useMapping(projectId: string, version: number | 'latest') {
-  return useQuery({
-    queryKey: keys.mapping(projectId, String(version)),
-    queryFn: async () => {
-      try {
-        return await api<MappingRecord>(`/api/projects/${projectId}/mappings/${version}`)
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 404) return null
-        throw error
-      }
-    },
-  })
-}
-
-export function useCheckMapping(projectId: string) {
-  return useMutation({
-    mutationFn: (spec: Record<string, unknown>) =>
-      api<MappingCheck>(`/api/projects/${projectId}/mappings/check`, {
-        method: 'POST',
-        json: { spec },
-      }),
-  })
-}
-
-export function useSaveMapping(projectId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (body: { spec: Record<string, unknown>; note: string }) =>
-      api<MappingRecord>(`/api/projects/${projectId}/mappings`, { method: 'POST', json: body }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.mappings(projectId) }),
-  })
-}
-
-export function useSpec(projectId: string) {
-  return useQuery({
-    queryKey: keys.spec(projectId),
-    queryFn: async () => {
-      try {
-        return await api<SpecRecord>(`/api/projects/${projectId}/spec`)
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 404) return null
-        throw error
-      }
-    },
-  })
-}
-
-export function useSaveSpec(projectId: string) {
+export function useSaveTask(workspaceId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (markdown: string) =>
-      api<SpecRecord>(`/api/projects/${projectId}/spec`, { method: 'PUT', json: { markdown } }),
-    onSuccess: (spec) => queryClient.setQueryData(keys.spec(projectId), spec),
+      api<TaskNotes>(`${base(workspaceId)}/task`, { method: 'PUT', json: { markdown } }),
+    onSuccess: (task) => queryClient.setQueryData(keys.task(workspaceId), task),
   })
 }
 
-export function useCreateRun(projectId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (body: {
-      kind: 'sample' | 'full'
-      mapping_version?: number
-      n?: number
-      ordinals?: number[]
-      strategy?: 'first' | 'spread' | 'random'
-      document_id?: string
-    }) => api<RunDetail>(`/api/projects/${projectId}/runs`, { method: 'POST', json: body }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.runs(projectId) }),
-  })
-}
-
-export interface PageLayoutLine {
-  id: string
-  x0: number
-  top: number
-  x1: number
-  bottom: number
-  column: number
-  words: { text: string; x0: number; top: number; x1: number; bottom: number; bold: boolean }[]
-}
-
-export interface PageLayoutRecord {
-  page: number
-  width: number
-  height: number
-  lines: PageLayoutLine[]
-}
-
-export function pageLayoutOptions(projectId: string, documentId: string, pageNo: number) {
-  return {
-    queryKey: ['projects', projectId, 'documents', documentId, 'layout', pageNo] as const,
-    queryFn: () =>
-      api<PageLayoutRecord>(
-        `/api/projects/${projectId}/documents/${documentId}/pages/${pageNo}/layout`,
-      ),
-    staleTime: 10 * 60_000,
-  }
-}
-
-export function usePages(projectId: string, documentId: string | null) {
+export function useConversations(workspaceId: string) {
   return useQuery({
-    queryKey: keys.pages(projectId, documentId ?? ''),
-    queryFn: () => api<PdfPageRecord[]>(`/api/projects/${projectId}/documents/${documentId}/pages`),
-    enabled: Boolean(documentId),
-    staleTime: 5 * 60_000,
+    queryKey: keys.conversations(workspaceId),
+    queryFn: () => api<Conversation[]>(`${base(workspaceId)}/conversations`),
   })
 }
 
-export function useAnnotations(
-  projectId: string,
-  documentId: string | null,
-  params: {
-    page_no?: number
-    status?: string
-    flagged?: boolean
-    offset?: number
-    limit?: number
-  },
-) {
-  const search = new URLSearchParams()
-  if (params.page_no !== undefined) search.set('page_no', String(params.page_no))
-  if (params.status) search.set('status', params.status)
-  if (params.flagged) search.set('flagged', 'true')
-  search.set('offset', String(params.offset ?? 0))
-  search.set('limit', String(params.limit ?? 500))
-  return useQuery({
-    queryKey: keys.annotationsQuery(projectId, documentId ?? '', params),
-    queryFn: () =>
-      api<AnnotationPage>(
-        `/api/projects/${projectId}/documents/${documentId}/annotations?${search}`,
-      ),
-    enabled: Boolean(documentId),
-    placeholderData: (previous) => previous,
-  })
-}
-
-/** The review summary stored with the segmentation plus how many proposals are undecided. */
-export function useReview(projectId: string, documentId: string | null, enabled = true) {
-  return useQuery({
-    queryKey: keys.review(projectId, documentId ?? ''),
-    queryFn: () => api<ReviewOut>(`/api/projects/${projectId}/documents/${documentId}/review`),
-    enabled: Boolean(documentId) && enabled,
-    placeholderData: (previous) => previous,
-  })
-}
-
-export function useAcceptRest(projectId: string, documentId: string) {
+export function useCreateConversation(workspaceId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (body: { skip_flagged: boolean }) =>
-      api<Record<string, number>>(
-        `/api/projects/${projectId}/documents/${documentId}/annotations/accept-rest`,
-        { method: 'POST', json: body },
-      ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
-      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
-    },
+    mutationFn: () =>
+      api<Conversation>(`${base(workspaceId)}/conversations`, { method: 'POST', json: {} }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.conversations(workspaceId) }),
   })
-}
-
-export function useDecideAnnotation(projectId: string, documentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: AnnotationStatus }) =>
-      api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${id}`, {
-        method: 'PATCH',
-        json: { status },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
-      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
-    },
-  })
-}
-
-export function useBulkDecide(projectId: string, documentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (body: {
-      status: 'accepted' | 'rejected' | 'proposed'
-      ids?: string[]
-      page_no?: number
-      only_status?: AnnotationStatus | null
-    }) =>
-      api<Record<string, number>>(
-        `/api/projects/${projectId}/documents/${documentId}/annotations/bulk`,
-        { method: 'POST', json: body },
-      ),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
-      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
-    },
-  })
-}
-
-export function useEditAnnotations(projectId: string, documentId: string) {
-  const queryClient = useQueryClient()
-  const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
-    void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
-  }
-  const create = useMutation({
-    mutationFn: (body: {
-      page_no: number
-      bbox: [number, number, number, number]
-      label?: string
-      payload?: Record<string, unknown>
-    }) =>
-      api<AnnotationRecord>(`/api/projects/${projectId}/documents/${documentId}/annotations`, {
-        method: 'POST',
-        json: body,
-      }),
-    onSuccess: refresh,
-  })
-  const update = useMutation({
-    mutationFn: ({
-      id,
-      ...body
-    }: {
-      id: string
-      bbox?: [number, number, number, number]
-      label?: string
-      status?: AnnotationStatus
-    }) =>
-      api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${id}`, {
-        method: 'PATCH',
-        json: body,
-      }),
-    onSuccess: refresh,
-  })
-  const remove = useMutation({
-    mutationFn: (id: string) =>
-      api<void>(`/api/projects/${projectId}/annotations/${id}`, { method: 'DELETE' }),
-    onSuccess: refresh,
-  })
-  const split = useMutation({
-    mutationFn: ({ id, y }: { id: string; y: number }) =>
-      api<AnnotationRecord[]>(`/api/projects/${projectId}/annotations/${id}/split`, {
-        method: 'POST',
-        json: { y },
-      }),
-    onSuccess: refresh,
-  })
-  const merge = useMutation({
-    mutationFn: ({ id, withId }: { id: string; withId: string }) =>
-      api<AnnotationRecord>(`/api/projects/${projectId}/annotations/${id}/merge`, {
-        method: 'POST',
-        json: { with_id: withId },
-      }),
-    onSuccess: refresh,
-  })
-  return { create, update, remove, split, merge }
-}
-
-export function useSegmentDocument(projectId: string, documentId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (body: { segmenter?: string; params?: Record<string, unknown> }) =>
-      api<SegmentResult>(`/api/projects/${projectId}/documents/${documentId}/segment`, {
-        method: 'POST',
-        json: { segmenter: body.segmenter ?? 'rule', params: body.params ?? {} },
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: keys.annotations(projectId, documentId) })
-      void queryClient.invalidateQueries({ queryKey: keys.documents(projectId) })
-      void queryClient.invalidateQueries({ queryKey: keys.document(projectId, documentId) })
-    },
-  })
-}
-
-export function useReparseDocument(projectId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      documentId,
-      entry_xpath,
-      headword_xpath,
-    }: {
-      documentId: string
-      entry_xpath?: string | null
-      headword_xpath?: string | null
-    }) =>
-      api<DocumentRecord>(`/api/projects/${projectId}/documents/${documentId}/reparse`, {
-        method: 'POST',
-        json: { entry_xpath, headword_xpath },
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.documents(projectId) }),
-  })
-}
-
-export function useMembers(projectId: string) {
-  return useQuery({
-    queryKey: keys.members(projectId),
-    queryFn: () => api<Member[]>(`/api/projects/${projectId}/members`),
-  })
-}
-
-export function useConversations(projectId: string) {
-  return useQuery({
-    queryKey: keys.conversations(projectId),
-    queryFn: () => api<Conversation[]>(`/api/projects/${projectId}/conversations`),
-  })
-}
-
-export function useCreateConversation(projectId: string) {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (title?: string) =>
-      api<Conversation>(`/api/projects/${projectId}/conversations`, {
-        method: 'POST',
-        json: { title: title ?? null },
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.conversations(projectId) }),
-  })
-}
-
-export function useProviders() {
-  return useQuery({
-    queryKey: keys.providers,
-    queryFn: () => api<Provider[]>('/api/providers'),
-    staleTime: Infinity,
-  })
-}
-
-export function useCredentials() {
-  return useQuery({
-    queryKey: keys.credentials,
-    queryFn: () => api<Credential[]>('/api/me/credentials'),
-  })
-}
-
-export function useCreateCredential() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (body: {
-      provider: string
-      label: string
-      api_key?: string
-      base_url?: string
-      declared_capabilities?: Record<string, unknown>
-    }) => api<Credential>('/api/me/credentials', { method: 'POST', json: body }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.credentials }),
-  })
-}
-
-export function useDeleteCredential() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (id: string) => api<void>(`/api/me/credentials/${id}`, { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.credentials }),
-  })
-}
-
-export function useTestCredential() {
-  return useMutation({
-    mutationFn: ({ id, modelId }: { id: string; modelId?: string }) =>
-      api<ProbeResult>(`/api/me/credentials/${id}/test`, {
-        method: 'POST',
-        json: { model_id: modelId ?? null },
-      }),
-  })
-}
-
-export function useModels(credentialId: string | null | undefined) {
-  return useQuery({
-    queryKey: keys.models(credentialId ?? ''),
-    queryFn: () => api<ModelInfo[]>(`/api/models?credential_id=${credentialId}`),
-    enabled: Boolean(credentialId),
-    staleTime: 30 * 60_000,
-  })
-}
-
-export function describeModel(spec: ModelSpec | null | undefined): string {
-  if (!spec) return 'No model selected'
-  return spec.model_id
 }

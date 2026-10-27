@@ -10,28 +10,25 @@ import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { Button } from '@/components/ui/button'
 import { makeGenericToolCard } from '@/features/chat/GenericToolCard'
 import { ApprovalAwareToolGroup } from '@/features/chat/ToolGroup'
-import { ModelPicker } from '@/features/project/ModelPicker'
-import { api, csrfToken } from '@/lib/api'
-import { useChatContext } from '@/lib/chatContext'
+import { api } from '@/lib/api'
 import { keys, useConversations, useCreateConversation } from '@/lib/queries'
-import type { Project } from '@/lib/types'
+import type { Workspace } from '@/lib/types'
 import { isUiAction, usePreview } from '@/lib/uiActions'
 
-export function ChatPane({ project }: { project: Project }) {
-  const conversations = useConversations(project.id)
-  const create = useCreateConversation(project.id)
+export function ChatPane({ workspace }: { workspace: Workspace }) {
+  const conversations = useConversations(workspace.id)
+  const create = useCreateConversation(workspace.id)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const canChat = project.my_role !== 'viewer'
 
   const activeId = selectedId ?? conversations.data?.[0]?.id ?? null
 
   useEffect(() => {
-    if (conversations.data && conversations.data.length === 0 && canChat && !create.isPending) {
+    if (conversations.data && conversations.data.length === 0 && !create.isPending) {
       create.mutate(undefined, { onSuccess: (c) => setSelectedId(c.id) })
     }
     // only when the list first loads empty
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations.data?.length, canChat])
+  }, [conversations.data?.length])
 
   return (
     <div className="flex h-full flex-col">
@@ -52,7 +49,7 @@ export function ChatPane({ project }: { project: Project }) {
           variant="ghost"
           size="icon-xs"
           aria-label="New conversation"
-          disabled={!canChat || create.isPending}
+          disabled={create.isPending}
           onClick={() =>
             create.mutate(undefined, {
               onSuccess: (c) => setSelectedId(c.id),
@@ -62,17 +59,12 @@ export function ChatPane({ project }: { project: Project }) {
         >
           <PlusIcon />
         </Button>
-        <ModelPicker project={project} />
       </div>
       <div className="min-h-0 flex-1">
         {activeId ? (
-          <ConversationThread key={activeId} project={project} conversationId={activeId} />
+          <ConversationThread key={activeId} workspace={workspace} conversationId={activeId} />
         ) : (
-          <p className="text-muted-foreground p-4 text-sm">
-            {canChat
-              ? 'Starting a conversation…'
-              : 'Viewers can read conversations once they exist.'}
-          </p>
+          <p className="text-muted-foreground p-4 text-sm">Starting a conversation…</p>
         )}
       </div>
     </div>
@@ -80,16 +72,16 @@ export function ChatPane({ project }: { project: Project }) {
 }
 
 function ConversationThread({
-  project,
+  workspace,
   conversationId,
 }: {
-  project: Project
+  workspace: Workspace
   conversationId: string
 }) {
   const history = useQuery({
-    queryKey: keys.messages(project.id, conversationId),
+    queryKey: keys.messages(workspace.id, conversationId),
     queryFn: () =>
-      api<UIMessage[]>(`/api/projects/${project.id}/conversations/${conversationId}/messages`),
+      api<UIMessage[]>(`/api/workspaces/${workspace.id}/conversations/${conversationId}/messages`),
     staleTime: Infinity,
   })
   if (history.isPending)
@@ -97,29 +89,30 @@ function ConversationThread({
   if (history.isError)
     return <p className="text-destructive p-4 text-sm">{history.error.message}</p>
   return (
-    <LiveThread project={project} conversationId={conversationId} initialMessages={history.data} />
+    <LiveThread
+      workspace={workspace}
+      conversationId={conversationId}
+      initialMessages={history.data}
+    />
   )
 }
 
 function LiveThread({
-  project,
+  workspace,
   conversationId,
   initialMessages,
 }: {
-  project: Project
+  workspace: Workspace
   conversationId: string
   initialMessages: UIMessage[]
 }) {
   const apply = usePreview((s) => s.apply)
-  const noModel = !project.default_model
   const transport = useMemo(
     () =>
       new AssistantChatTransport({
-        api: `/api/projects/${project.id}/conversations/${conversationId}/chat`,
+        api: `/api/workspaces/${workspace.id}/conversations/${conversationId}/chat`,
         credentials: 'same-origin',
-        headers: () => ({ 'X-CSRF-Token': csrfToken() }),
-        // attachments travel with the message and are cleared once sent; what is open in the
-        // middle pane goes along too, so "this entry" means something to the model
+        // what is open in the middle pane goes along, so "this row" means something to the model
         prepareSendMessagesRequest: ({ id, messages, trigger, messageId, body }) => ({
           body: {
             ...(body as object | undefined),
@@ -127,12 +120,11 @@ function LiveThread({
             messages,
             trigger,
             messageId,
-            context: useChatContext.getState().take(),
             viewing: usePreview.getState().target,
           },
         }),
       }),
-    [project.id, conversationId],
+    [workspace.id, conversationId],
   )
   const runtime = useChatRuntime({
     transport,
@@ -145,11 +137,11 @@ function LiveThread({
   })
   const components = useMemo(
     () => ({
-      ToolFallback: makeGenericToolCard(project.id),
+      ToolFallback: makeGenericToolCard(workspace.id),
       ToolGroup: ApprovalAwareToolGroup,
-      Welcome: makeWelcome(project, noModel),
+      Welcome: makeWelcome(workspace),
     }),
-    [project, noModel],
+    [workspace],
   )
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -160,26 +152,21 @@ function LiveThread({
   )
 }
 
-function makeWelcome(project: Project, noModel: boolean) {
-  const Welcome = () => <WelcomeBody project={project} noModel={noModel} />
+function makeWelcome(workspace: Workspace) {
+  const Welcome = () => <WelcomeBody workspace={workspace} />
   Welcome.displayName = 'Welcome'
   return Welcome
 }
 
-function WelcomeBody({ project, noModel }: { project: Project; noModel: boolean }) {
+function WelcomeBody({ workspace }: { workspace: Workspace }) {
   return (
     <div className="mx-auto flex max-w-md flex-col gap-3 px-4 py-8 text-center">
-      <h2 className="text-lg font-semibold">Let's convert {project.name}</h2>
+      <h2 className="text-lg font-semibold">Let's work on {workspace.name}</h2>
       <p className="text-muted-foreground text-sm">
-        I am your conversion engineer. Tell me what this dictionary looks like, or ask me to have a
-        look at the files you uploaded. I will show what I find in the middle pane and ask before
-        changing anything.
+        Upload a dataset and tell me what should happen to each record: link it to Wikidata, add
+        information from a service, clean a column. I will look at the data first, agree the details
+        with you, then write and run the script. Runs always wait for your approval.
       </p>
-      {noModel && (
-        <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-          Choose a model first (button above) so I know which model and key to use.
-        </p>
-      )}
     </div>
   )
 }

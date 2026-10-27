@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M0 (skeleton).
-- Next task: M0.5.
-- M0.4 done: the agent with the file tools, the lifted runtime, conversations and the streaming
-  chat endpoint with persistence and approvals (test model).
+- Next task: M0.6.
+- M0.5 done: the web app is cut to workspaces, files with a paged records table, task notes and
+  the chat; walked through in a browser against the live API with the test model.
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -448,7 +448,7 @@ approvals, on SQLite, with no auth and no infrastructure.
   - Tests with `FunctionModel` and `TestModel`; the approval test lifted.
   - Acceptance: curl the chat endpoint with the test model and see streamed chunks; the approve
     and deny paths pass in tests.
-- [ ] M0.5 Web prune.
+- [x] M0.5 Web prune.
   - Delete `features/{pdf,entries,mapping,runs,steps,settings,auth}`,
     `features/project/ModelPicker.tsx`, `features/preview/PdfViewer.tsx` and their tests; remove
     the dependencies listed in section 5.
