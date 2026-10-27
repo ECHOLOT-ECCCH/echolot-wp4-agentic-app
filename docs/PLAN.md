@@ -30,10 +30,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
 
 ## 1. Status
 
-- Current milestone: M0 (skeleton).
-- Next task: M0.6.
-- M0.5 done: the web app is cut to workspaces, files with a paged records table, task notes and
-  the chat; walked through in a browser against the live API with the test model.
+- Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
+- Next task: M1.1.
+- M0.6 done: Playwright smoke (records, chat with an approval, task notes) passes locally; the
+  CI workflow has the check and e2e jobs but has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -456,7 +456,7 @@ approvals, on SQLite, with no auth and no infrastructure.
   - Routes per section 10; `LeftPane` with files; `TablePreview`; `ui-action` types per 7.8.
   - Acceptance: web lint, `tsc` and vitest green; manual walk-through: create a workspace, upload
     a CSV, page through it, chat with the test model.
-- [ ] M0.6 e2e and CI.
+- [x] M0.6 e2e and CI.
   - Playwright smoke: create a workspace, upload a CSV, see the table, ask the test model "what
     files do I have", approve the demo tool.
   - `.github/workflows/ci.yml` without services, running `make check` and the web build.

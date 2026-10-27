@@ -97,3 +97,14 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   upload a 120-row CSV, page to rows 50–99, select row 57, ask "What files do I have?", allow
   the demo tool, the turn completes; the stored message carries
   "[Looking at: row 57 of the file people.csv (file_id …)]".
+
+## 2026-10-27 e2e and CI (M0.6)
+
+- The Playwright config starts the API itself with the test model and SQLite under `data/e2e`
+  (gitignored), and Vite; no login state, no Keycloak. Fixture: `e2e/fixtures/people.csv`
+  (120 rows).
+- Smoke tests: browse records (paging, go to row, select a row); chat with the test model,
+  allow the demo tool, the conversation survives a reload; write and save the task notes.
+  CodeMirror puts its aria-label on the wrapper, so the tests click `.cm-content` inside it.
+- CI: the check job (no services) and the e2e job (Chromium with deps). Not run yet: the
+  workflow only runs on GitHub, and nothing has been pushed.

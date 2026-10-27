@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
-const apiURL = process.env.E2E_API_URL ?? 'http://localhost:8000'
+const apiURL = process.env.E2E_API_URL ?? 'http://127.0.0.1:8000'
 const ci = Boolean(process.env.CI)
 
 export default defineConfig({
@@ -17,20 +17,20 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [
-    { name: 'setup', testMatch: /global\.setup\.ts/ },
-    {
-      name: 'chromium',
-      dependencies: ['setup'],
-      use: { ...devices['Desktop Chrome'], storageState: 'e2e/.auth/state.json' },
-    },
-  ],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: process.env.E2E_NO_SERVERS
     ? undefined
     : [
         {
-          command: 'uv run uvicorn elexifier_api.main:app --port 8000',
+          // the test model answers without a key and calls every tool it sees
+          command: 'uv run uvicorn echolot_app.main:app --host 127.0.0.1 --port 8000',
           cwd: '../..',
+          env: {
+            ECHO_DATA_DIR: './data/e2e',
+            ECHO_MODEL_PROVIDER: 'test',
+            ECHO_MODEL_ID: 'test',
+            ECHO_ENABLE_TEST_MODEL: '1',
+          },
           url: `${apiURL}/healthz`,
           reuseExistingServer: !ci,
           timeout: 60_000,

@@ -40,7 +40,6 @@ apps/web/test-results/
 
 # Docker / misc
 *.log
-apps/web/e2e/.auth/
 
 # Large legacy inputs stay local; only the mapping spec and readme are tracked
 legacy/kks/*

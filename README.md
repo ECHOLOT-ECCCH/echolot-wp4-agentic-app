@@ -15,10 +15,11 @@ the right.
 
 ## Status
 
-Being cut down from the Elexifier app (dictionary conversion; last commit `98999b1`). See
+Cut down from the Elexifier app (dictionary conversion; last commit `98999b1`). Milestone M0
+is built: workspaces, file upload with a paged records view, task notes, and the agent chat
+with approvals. Scripts and runs (M1) and Prefect (M2) are next. See
 [docs/PLAN.md](docs/PLAN.md) for the architecture, contracts, milestones and current status,
-and [docs/DECISIONS.md](docs/DECISIONS.md) for the decision log. Until task M0.2 lands, the code
-in this repository is still Elexifier's.
+and [docs/DECISIONS.md](docs/DECISIONS.md) for the decision log.
 
 ## Requirements
 
@@ -26,6 +27,17 @@ in this repository is still Elexifier's.
 - Node.js 22+ and pnpm (via `corepack enable`)
 - GNU Make
 - For real runs: a Prefect 3 server and a runner host that can reach the services (PLAN M2)
+
+## Quick start (development)
+
+```bash
+make setup             # uv sync, pnpm install, playwright browsers
+cp .env.example .env   # the test model needs no key; set ECHO_MODEL_* for a real one
+make api               # FastAPI on 127.0.0.1:8000, SQLite and files under ./data
+make web               # Vite on :5173
+make check             # lint, types, unit tests
+make e2e               # browser smoke tests (start their own servers)
+```
 
 ## License
 
