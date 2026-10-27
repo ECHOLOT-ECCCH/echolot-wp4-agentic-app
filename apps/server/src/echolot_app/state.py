@@ -32,7 +32,9 @@ def build_executor(settings: Settings) -> Executor:
             settings.prefect_deployment,
             auth.get_secret_value() if auth else None,
         )
-    return LocalExecutor(settings.data_dir / "runner", settings.local_services_file)
+    return LocalExecutor(
+        settings.data_dir / "runner", settings.local_services_file, settings.local_runner_env_file
+    )
 
 
 def build_state(settings: Settings) -> AppState:

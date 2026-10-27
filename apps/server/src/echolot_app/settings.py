@@ -46,8 +46,10 @@ class Settings(BaseSettings):
     prefect_deployment: str = "run-script/default"
     # the agent-facing service docs (docs/PLAN.md 7.7)
     services_dir: Path = Path("./services")
-    # LocalExecutor: the services the runner subprocess may call (keys from this environment)
+    # LocalExecutor: the services the runner subprocess may call, and the variables (service
+    # keys) it gets on top of this process's environment
     local_services_file: Path = Path("./services.toml")
+    local_runner_env_file: Path = Path("./runner.env")
     run_poll_interval_s: float = 3.0
 
     log_level: str = "INFO"

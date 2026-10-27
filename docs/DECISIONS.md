@@ -324,3 +324,13 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   and Q220980 for row 12 (Pío Baroja) are in the "decided" filter and in the export. The check
   also caught a crash when an older API sent rows without a `decision` field; the selector now
   treats a missing decision as undecided.
+
+## 2026-10-28 Service keys for the LocalExecutor (demo preparation)
+
+- The app's `.env` is read into its settings, not into its process environment, so a service key
+  put there never reached the runner subprocess: every run would fail with "needs its key in the
+  environment variable …". The LocalExecutor now adds the `KEY=VALUE` lines of
+  `ECHO_LOCAL_RUNNER_ENV_FILE` (default `./runner.env`, gitignored, read at every submit) to the
+  subprocess's environment. Exporting the key in the shell that starts the app still works.
+- On the Prefect runner host nothing changes: keys are in the runner's own environment
+  (docs/runner-host.md).

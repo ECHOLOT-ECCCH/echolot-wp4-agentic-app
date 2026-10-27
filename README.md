@@ -36,6 +36,8 @@ Still open: the checks with a real model and the owner's own data (M1.7, M3.1, M
 ```bash
 make setup             # uv sync, pnpm install, playwright browsers
 cp .env.example .env   # the test model needs no key; set ECHO_MODEL_* for a real one
+# to call services from scripts: list them in ./services.toml (runner/services.example.toml)
+# and put their keys in ./runner.env, e.g. ECHOLOT_API_KEY=... (both gitignored)
 make api               # FastAPI on 127.0.0.1:8000, SQLite and files under ./data
 make web               # Vite on :5173
 make check             # lint, types, unit tests

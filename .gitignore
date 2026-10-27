@@ -49,3 +49,5 @@ legacy/kks/*
 
 # The runner host's service list (LocalExecutor reads ./services.toml); see runner/services.example.toml
 /services.toml
+# the runner's service keys for the LocalExecutor
+/runner.env
