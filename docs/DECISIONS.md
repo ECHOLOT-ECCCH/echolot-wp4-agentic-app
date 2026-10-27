@@ -182,3 +182,23 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - Tested over real HTTP: uvicorn on a free port inside the test, a fake service on another, the
   real runner subprocess: sample, full run with one failing record, rows, error filter, CSV and
   JSONL export, retry, cancel of a slow run, a failing setup, token checks.
+
+## 2026-10-27 Run tools and prompt (M1.5)
+
+- `submit_run` gained an optional `script_version` (PLAN 7.9 updated): the approval card shows
+  which version will run, and the agent can pin the one it just wrote. Without it the latest
+  version at approval time runs.
+- A sample is a run with `limit` ≤ 25: the tool waits up to 120 s (polling the executor itself,
+  not only the background poller) and returns the first 20 rows with input and output, values
+  clipped. Larger runs return at once with an `open_run` ui-action.
+- Run and service logic moved out of the router (`runs.service.start_run`,
+  `retry_failed_run`) so the API and the tools share it; `AgentDeps` carries the executor.
+- Service docs are read from `ECHO_SERVICES_DIR` (default `./services`) on every call, so a doc
+  edited on disk is used at once; `README.md` there is not a service.
+- The canned test model does not see `submit_run` and `retry_failed` (it calls every tool it
+  sees; one demo approval per turn keeps the approval tests and the e2e meaningful). Real models
+  and the FunctionModel tests see them.
+- The system prompt is filled with a plain `replace("{workspace_block}", …)`: its code examples
+  contain braces, which `str.format` would take for fields.
+- Tool tests run against the live app (real port, real runner subprocess); a helper approves or
+  denies the gated call through `DeferredToolResults`. A denied `submit_run` creates no run.

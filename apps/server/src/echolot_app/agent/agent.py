@@ -6,14 +6,18 @@ from pathlib import Path
 
 from pydantic_ai import Agent, DeferredToolRequests, RunContext
 from pydantic_ai.models import Model
+from pydantic_ai.models.test import TestModel
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import AbstractToolset
 from sqlalchemy import select
 
 from echolot_app.agent.deps import AgentDeps
 from echolot_app.agent.tools.dev import dev_toolset
 from echolot_app.agent.tools.files import files_toolset
+from echolot_app.agent.tools.runs import runs_toolset
 from echolot_app.agent.tools.scripts import scripts_toolset
+from echolot_app.agent.tools.services import services_toolset
 from echolot_app.agent.tools.task import task_toolset
 from echolot_app.db import File, FileKind, Workspace
 from echolot_app.scripts import latest_script
@@ -77,8 +81,23 @@ async def workspace_block(deps: AgentDeps) -> str:
     return "\n".join(lines)
 
 
+GATED_RUN_TOOLS = frozenset({"submit_run", "retry_failed"})
+
+
+def _not_gated_for_canned_model(ctx: RunContext[AgentDeps], tool: ToolDefinition) -> bool:
+    """The dev/CI test model calls every tool it sees with generated arguments; it gets the one
+    demo approval, not a run approval on every turn."""
+    return tool.name not in GATED_RUN_TOOLS or not isinstance(ctx.model, TestModel)
+
+
 def toolsets_for(*, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]:
-    toolsets: list[AbstractToolset[AgentDeps]] = [files_toolset, task_toolset, scripts_toolset]
+    toolsets: list[AbstractToolset[AgentDeps]] = [
+        files_toolset,
+        task_toolset,
+        services_toolset,
+        scripts_toolset,
+        runs_toolset.filtered(_not_gated_for_canned_model),
+    ]
     if dev_tools:
         toolsets.append(dev_toolset)
     return toolsets
@@ -97,6 +116,9 @@ def build_agent(model: Model, *, name: str = "echolot", dev_tools: bool = False)
 
     @agent.instructions
     async def _instructions(ctx: RunContext[AgentDeps]) -> str:
-        return load_prompt("system.md").format(workspace_block=await workspace_block(ctx.deps))
+        # a plain replace: the prompt's code examples contain braces
+        return load_prompt("system.md").replace(
+            "{workspace_block}", await workspace_block(ctx.deps)
+        )
 
     return agent

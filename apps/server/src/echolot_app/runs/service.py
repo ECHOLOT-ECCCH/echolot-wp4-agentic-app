@@ -20,6 +20,8 @@ from echolot_app.db import File, FileKind, Run, RunStatus, Script, utcnow
 from echolot_app.records import RecordsReader, normalize, runner_line
 from echolot_app.runs.executor import ExecState, Executor, app_status
 from echolot_app.runs.tokens import new_token
+from echolot_app.schemas import RunCreate
+from echolot_app.scripts import get_script, latest_script
 from echolot_app.settings import Settings
 from echolot_app.storage import LocalStorage, run_key
 
@@ -341,3 +343,86 @@ async def unfinished_runs(db: AsyncSession) -> list[Run]:
         select(Run).where(Run.status.in_([RunStatus.QUEUED.value, RunStatus.RUNNING.value]))
     )
     return list(rows.scalars())
+
+
+# --- starting runs (the route and the agent) ------------------------------------------------
+
+
+async def start_run(
+    db: AsyncSession,
+    storage: LocalStorage,
+    settings: Settings,
+    executor: Executor,
+    workspace_id: uuid.UUID,
+    body: RunCreate,
+    author: str,
+) -> Run:
+    """A run of a script version (the latest by default) over a workspace file; shared by the
+    route (a user's run) and the agent's submit_run."""
+    input_file = await db.get(File, body.file_id)
+    if input_file is None or input_file.workspace_id != workspace_id:
+        raise RunError(f"there is no file {body.file_id} in this workspace")
+    if body.script_version is None:
+        script = await latest_script(db, workspace_id)
+    else:
+        script = await get_script(db, workspace_id, body.script_version)
+    if script is None:
+        raise RunError(
+            "there is no script to run yet"
+            if body.script_version is None
+            else f"there is no version {body.script_version} of the script"
+        )
+    return await create_run(
+        db,
+        storage,
+        settings,
+        executor,
+        RunRequest(
+            input_file=input_file,
+            script=script,
+            record_limit=body.limit,
+            concurrency=body.concurrency,
+            script_params=body.script_params,
+            purpose=body.purpose,
+            submitted_by=author,
+        ),
+    )
+
+
+async def retry_failed_run(
+    db: AsyncSession,
+    storage: LocalStorage,
+    settings: Settings,
+    executor: Executor,
+    run: Run,
+    author: str,
+) -> Run:
+    """A new run over the rows that failed in ``run``, with the latest script."""
+    if not RunStatus(run.status).is_terminal:
+        raise RunError("the run is not finished yet")
+    result = await db.get(File, run.result_file_id) if run.result_file_id else None
+    if result is None:
+        raise RunError("the run has no results to retry")
+    rows = await failed_rows(storage, result)
+    if not rows:
+        raise RunError("no record failed in this run")
+    input_file = await db.get(File, run.input_file_id)
+    script = await latest_script(db, run.workspace_id)
+    if input_file is None or script is None:
+        raise RunError("the run's input file or script no longer exists")
+    return await create_run(
+        db,
+        storage,
+        settings,
+        executor,
+        RunRequest(
+            input_file=input_file,
+            script=script,
+            concurrency=run.concurrency,
+            script_params=run.script_params,
+            purpose=f"retry the {len(rows)} failed record(s) of run {str(run.id)[:8]}",
+            submitted_by=author,
+            selection_rows=rows,
+            parent_run_id=run.id,
+        ),
+    )

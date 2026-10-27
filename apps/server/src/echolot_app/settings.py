@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     prefect_api_url: str = "http://127.0.0.1:4200/api"
     prefect_auth_string: SecretStr | None = None
     prefect_deployment: str = "run-script/default"
+    # the agent-facing service docs (docs/PLAN.md 7.7)
+    services_dir: Path = Path("./services")
     # LocalExecutor: the services the runner subprocess may call (keys from this environment)
     local_services_file: Path = Path("./services.toml")
     run_poll_interval_s: float = 3.0

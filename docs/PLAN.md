@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M1.5.
-- M1.4 done: `LocalExecutor`, run tokens, runner I/O endpoints, runs API (rows, export, cancel,
-  retry-failed), the poller; tested end to end over real HTTP. CI has not run yet.
+- Next task: M1.6.
+- M1.5 done: the agent's run and service tools (submit_run and retry_failed with approval), the
+  scripts-and-runs prompt section, the approval card for runs. CI has not run yet.
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -309,7 +309,7 @@ model.
 | `task_read`, `task_update(markdown)` | the agreed description of the function |
 | `list_services`, `service_docs(name)` | from `services/*.md` |
 | `script_read(version=None)`, `script_write(code, note)` | validation per 7.1; opens the script |
-| `submit_run(file_id, purpose, limit=None, concurrency=None, script_params=None)` | **approval**; card shows script version, file, record count, services, purpose |
+| `submit_run(file_id, purpose, limit=None, script_version=None, concurrency=None, script_params=None)` | **approval**; card shows script version, file, record count, services, purpose |
 | `run_status(run_id)` | status, progress, counts, the first errors |
 | `run_results(run_id, n≤20, status=None, offset=0)` | input record and output side by side |
 | `retry_failed(run_id)` | **approval**; a new run over the failed rows, with the latest script |
@@ -498,7 +498,7 @@ run, full run, results, export.
   - Acceptance: an API test submits a run with `LocalExecutor` against a fake service started in
     the test, follows it to `done` and exports CSV with the output columns; a wrong token
     answers 404.
-- [ ] M1.5 Run tools and prompt.
+- [x] M1.5 Run tools and prompt.
   - `submit_run` (approval; a sample run waits up to 120 s and returns the first rows),
     `run_status`, `run_results`, `retry_failed` (approval), `cancel_run`, `list_services`,
     `service_docs`.

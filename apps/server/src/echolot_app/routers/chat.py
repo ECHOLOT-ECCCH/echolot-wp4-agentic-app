@@ -205,6 +205,7 @@ async def chat(
         session_factory=state.db.session_factory,
         storage=state.storage,
         settings=settings,
+        executor=state.executor,
         conversation_id=conversation.id,
     )
 

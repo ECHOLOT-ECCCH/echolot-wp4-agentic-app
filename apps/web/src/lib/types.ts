@@ -95,3 +95,52 @@ export interface ScriptRecord extends ScriptSummary {
   workspace_id: string
   code: string
 }
+
+export type RunStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled'
+
+export interface RunRecord {
+  id: string
+  workspace_id: string
+  script_version: number | null
+  services: string[]
+  input_file_id: string
+  input_file_name: string | null
+  parent_run_id: string | null
+  record_limit: number | null
+  selected_rows: number | null
+  concurrency: number
+  script_params: Record<string, unknown>
+  purpose: string | null
+  status: RunStatus
+  executor: string
+  progress: { done?: number; total?: number; ok?: number; error?: number }
+  counts: { total?: number; ok?: number; error?: number }
+  result_file_id: string | null
+  error: string | null
+  submitted_by: 'agent' | 'user'
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface RunRow {
+  row: number
+  status: 'ok' | 'error' | null
+  error: string | null
+  ms: number | null
+  input: Record<string, unknown>
+  output: Record<string, unknown>
+}
+
+export interface RunRowsPage {
+  total: number
+  offset: number
+  run_status: RunStatus
+  input_columns: string[]
+  output_columns: string[]
+  rows: RunRow[]
+}
+
+export function isTerminal(status: RunStatus): boolean {
+  return status === 'done' || status === 'failed' || status === 'cancelled'
+}

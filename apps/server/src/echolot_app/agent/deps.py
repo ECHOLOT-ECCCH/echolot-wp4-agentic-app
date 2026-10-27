@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from echolot_app.runs.executor import Executor
 from echolot_app.settings import Settings
 from echolot_app.storage import LocalStorage
 
@@ -24,6 +25,7 @@ class AgentDeps:
     session_factory: async_sessionmaker[AsyncSession]
     storage: LocalStorage
     settings: Settings
+    executor: Executor
     conversation_id: uuid.UUID | None = None
 
     def session(self) -> AsyncSession:

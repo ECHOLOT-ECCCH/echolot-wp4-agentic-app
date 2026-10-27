@@ -3,6 +3,7 @@ import { PaperclipIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { ToolFallback } from '@/components/assistant-ui/elements/tool-fallback.aui'
+import { RunBody, SubmitRunArgs } from '@/features/chat/runCards'
 import { TOOL_LABELS } from '@/features/chat/toolLabels'
 import { fileDownloadUrl } from '@/lib/api'
 import type { ToolResultPayload } from '@/lib/types'
@@ -14,10 +15,20 @@ export interface BodyProps {
 }
 
 /** Tools whose results deserve more than the summary and the raw data. */
-const TOOL_BODIES: Record<string, (props: BodyProps) => React.ReactNode> = {}
+const TOOL_BODIES: Record<string, (props: BodyProps) => React.ReactNode> = {
+  submit_run: RunBody,
+  run_status: RunBody,
+  retry_failed: RunBody,
+  cancel_run: RunBody,
+}
 
 /** Tools whose arguments deserve a readable view (the approval card shows them). */
-const TOOL_ARGS: Record<string, (props: { argsText?: string }) => React.ReactNode> = {}
+const TOOL_ARGS: Record<
+  string,
+  (props: { argsText?: string; workspaceId: string }) => React.ReactNode
+> = {
+  submit_run: SubmitRunArgs,
+}
 
 function isToolResult(value: unknown): value is ToolResultPayload {
   return typeof value === 'object' && value !== null && 'summary' in value
@@ -45,14 +56,15 @@ export function makeGenericToolCard(workspaceId: string): ToolCallMessagePartCom
     const [open, setOpen] = useState(requiresAction)
     const payload = isToolResult(result) ? result : null
     const isError = Boolean(payload?.data && 'error' in (payload.data ?? {}))
+    const Args = TOOL_ARGS[toolName]
 
     return (
       <ToolFallback.Root open={open || requiresAction} onOpenChange={setOpen}>
         <ToolFallback.Trigger toolName={TOOL_LABELS[toolName] ?? toolName} status={status} />
         <ToolFallback.Content>
           <ToolFallback.Error status={status} />
-          {TOOL_ARGS[toolName] ? (
-            TOOL_ARGS[toolName]({ argsText })
+          {Args ? (
+            <Args argsText={argsText} workspaceId={workspaceId} />
           ) : (
             <ToolFallback.Args argsText={argsText} />
           )}

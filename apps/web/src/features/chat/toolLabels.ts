@@ -8,5 +8,12 @@ export const TOOL_LABELS: Record<string, string> = {
   task_update: 'Updating the task notes',
   script_read: 'Reading the script',
   script_write: 'Writing the script',
+  list_services: 'Listing the services',
+  service_docs: 'Reading a service description',
+  submit_run: 'Running the script',
+  run_status: 'Checking a run',
+  run_results: 'Reading run results',
+  retry_failed: 'Retrying failed records',
+  cancel_run: 'Cancelling a run',
   demo_requires_approval: 'Demo action (needs approval)',
 }

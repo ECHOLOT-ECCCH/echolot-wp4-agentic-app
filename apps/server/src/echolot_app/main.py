@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from echolot_app import __version__
 from echolot_app.logging import configure_logging
-from echolot_app.routers import chat, files, runner_io, runs, scripts, workspaces
+from echolot_app.routers import chat, files, runner_io, runs, scripts, services, workspaces
 from echolot_app.settings import Settings, get_settings
 from echolot_app.state import AppState, build_state
 from echolot_app.storage import NotFoundError, StorageError
@@ -77,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scripts.router)
     app.include_router(runs.router)
     app.include_router(runner_io.router)
+    app.include_router(services.router)
     app.include_router(chat.router)
     return app
 
