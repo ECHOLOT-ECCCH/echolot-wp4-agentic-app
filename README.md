@@ -1,67 +1,31 @@
-# Elexifier Agentic App
+# ECHOLOT Agentic Workbench
 
-A web application where lexicographers convert legacy dictionaries (XML exports and PDFs)
-into [DMLex](https://docs.oasis-open.org/lexidma/dmlex/v1.0/dmlex-v1.0.html), the OASIS
-LEXIDMA data model, by instructing an LLM agent the way they used to instruct a human
-conversion engineer.
+A proof-of-concept web app for per-record tasks over datasets, such as entity reconciliation
+against the ECHOLOT reconciliation service, and later enrichment:
 
-Three panes: files and dictionary information on the left, a preview of XML, JSON or PDF in the
-middle, and the agent chat on the right. Bring your own model key (OpenRouter, direct
-providers, or a self-hosted OpenAI-compatible endpoint). Everything is open source and
-self-hostable with Docker Compose.
+1. Upload input files (CSV, TSV, JSON, JSONL) and preview them.
+2. Agree with an LLM agent in the chat on what should happen to each record.
+3. The agent writes the function as a Python script, which you can read and edit.
+4. The script runs on a sample, then on the whole dataset, as a job on a Prefect deployment
+   that sits next to the services.
+5. The results come back as a table to review and export.
+
+Three panes: files, task, scripts and runs on the left, a preview in the middle, the chat on
+the right.
 
 ## Status
 
-Milestones 0 to 3 are built: login and projects, XML conversion through a mapping the agent
-writes with the lexicographer, PDF segmentation with review at scale and model structuring,
-and a sandbox in which the agent runs approved snippets that can become steps of every
-conversion. See [docs/PLAN.md](docs/PLAN.md) for the architecture, contracts, milestones and
-current status, and [docs/DECISIONS.md](docs/DECISIONS.md) for the decision log.
+Being cut down from the Elexifier app (dictionary conversion; last commit `98999b1`). See
+[docs/PLAN.md](docs/PLAN.md) for the architecture, contracts, milestones and current status,
+and [docs/DECISIONS.md](docs/DECISIONS.md) for the decision log. Until task M0.2 lands, the code
+in this repository is still Elexifier's.
 
 ## Requirements
 
 - Python 3.12 (managed by [uv](https://docs.astral.sh/uv/))
 - Node.js 22+ and pnpm (via `corepack enable`)
-- Docker with Compose (PostgreSQL, Keycloak, Garage), also the sandbox in which agent-written
-  snippets run: build its image once with `make sandbox-image` and start `make runner`
 - GNU Make
-
-## Quick start (development)
-
-```bash
-make setup        # uv sync, pnpm install, playwright browsers
-cp .env.example .env
-make dev-infra    # postgres + keycloak in docker
-make upgrade      # database migrations
-make api          # FastAPI on :8000
-make web          # Vite on :5173 (proxies /api, /auth, /events to :8000)
-```
-
-Log in with `dev@example.com` / `dev` (imported Keycloak realm).
-
-## Run the whole stack with Docker
-
-Installing on a server from the published images: the runbook [deploy/vm/README.md](deploy/vm/README.md); sizing, secrets and the design of the stack: [docs/self-hosting.md](docs/self-hosting.md).
-
-```bash
-cp .env.example .env            # then set ELX_SECRET_KEY and ELX_SESSION_SECRET to real values
-docker compose -f deploy/compose/docker-compose.yml up -d --build
-```
-
-Open http://localhost (sign in with `dev@example.com` / `dev`). See [docs/self-hosting.md](docs/self-hosting.md)
-for domains, HTTPS, identity federation, storage and backups.
-
-## Layout
-
-| Path | Contents |
-|---|---|
-| `apps/api` | FastAPI application: auth (OIDC), projects, files, chat streaming, events |
-| `apps/web` | React SPA: three-pane workspace |
-| `packages/core` | Settings, database models and migrations, storage, jobs, crypto, events |
-| `packages/agent` | Pydantic AI agent, toolsets, prompts, model registry |
-| `packages/pipeline` | Conversion code behind stable protocols (XML, PDF, DMLex) |
-| `packages/sandbox` | Sandbox runner service and image |
-| `deploy/compose` | Docker Compose stacks, Caddy, Keycloak realm |
+- For real runs: a Prefect 3 server and a runner host that can reach the services (PLAN M2)
 
 ## License
 
