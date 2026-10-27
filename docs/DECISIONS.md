@@ -325,7 +325,7 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   also caught a crash when an older API sent rows without a `decision` field; the selector now
   treats a missing decision as undecided.
 
-## 2026-10-28 Service keys for the LocalExecutor (demo preparation)
+## 2026-10-27 Service keys for the LocalExecutor (demo preparation)
 
 - The app's `.env` is read into its settings, not into its process environment, so a service key
   put there never reached the runner subprocess: every run would fail with "needs its key in the
@@ -335,7 +335,7 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - On the Prefect runner host nothing changes: keys are in the runner's own environment
   (docs/runner-host.md).
 
-## 2026-10-28 Dry run with a real model (demo preparation)
+## 2026-10-27 Dry run with a real model (demo preparation)
 
 - Model: Claude Sonnet 5.5 through OpenRouter (`anthropic/claude-sonnet-5.5`); the Anthropic
   account had no API credit. Data: `demo/people-demo.csv`; services: the local executor and the
@@ -352,3 +352,13 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   The decision select has a fixed width (it varied per row).
 - The conversation, tool groups, run view, candidate links and decisions rendered without
   browser errors.
+
+## 2026-10-27 Usage screenshots
+
+- `screenshots/` holds 15 step-by-step screenshots with a README, recorded against the app with
+  Claude Sonnet 5.5 (OpenRouter), the local executor and `demo/people-demo.csv`;
+  `apps/web/scripts/usage-screenshots.mjs` records them again (the agent's words vary per run).
+- Recording them found a bug: a run started from the script view finished without its result file
+  appearing under Results until the next agent turn. The run queries now refetch the file list
+  when a run they follow finishes.
+- Two demo-preparation entries above were dated 2026-10-28 by mistake; corrected to 2026-10-27.
