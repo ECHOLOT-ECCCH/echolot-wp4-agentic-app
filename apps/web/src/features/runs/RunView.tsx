@@ -7,7 +7,9 @@ import { Progress } from '@/components/ui/progress'
 import { Pager } from '@/features/preview/RecordsTable'
 import { RunStatusBadge } from '@/features/runs/RunStatusBadge'
 import { ApiError } from '@/lib/api'
-import { cellText, formatDate } from '@/lib/format'
+import { CellValue } from '@/features/preview/CellValue'
+import { cellTitle } from '@/lib/cells'
+import { formatDate } from '@/lib/format'
 import { PAGE_SIZE, pageStart } from '@/lib/paging'
 import { runExportUrl, useCancelRun, useRetryFailed, useRun, useRunRows } from '@/lib/queries'
 import { isTerminal, type RunRecord, type RunRow } from '@/lib/types'
@@ -189,7 +191,7 @@ function RunRowsTable({
   selectedRow?: number
   onSelect: (row: number) => void
 }) {
-  const cell = 'max-w-72 truncate border-b px-2 py-1'
+  const cell = 'max-w-96 truncate border-b px-2 py-1'
   return (
     <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
       <thead className="bg-background sticky top-0 z-10">
@@ -230,8 +232,8 @@ function RunRowsTable({
               {r.status}
             </td>
             {outputColumns.map((c) => (
-              <td key={`out-${c}`} className={cell} title={cellText(r.output[c])}>
-                {cellText(r.output[c])}
+              <td key={`out-${c}`} className={cell} title={cellTitle(r.output[c])}>
+                <CellValue value={r.output[c]} />
               </td>
             ))}
             <td className={`${cell} text-destructive`} title={r.error ?? ''}>
@@ -241,9 +243,9 @@ function RunRowsTable({
               <td
                 key={`in-${c}`}
                 className={`${cell} text-muted-foreground ${i === 0 ? 'border-l' : ''}`}
-                title={cellText(r.input[c])}
+                title={cellTitle(r.input[c])}
               >
-                {cellText(r.input[c])}
+                <CellValue value={r.input[c]} />
               </td>
             ))}
           </tr>

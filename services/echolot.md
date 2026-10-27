@@ -47,8 +47,13 @@ spans.
   failure, and do not raise for it.
 - **The score ranks; it does not verify.** It is the probability that the text mention refers to
   that page, not that it is the same entity. Never present 1.0 as confirmed.
-- **The top match can be another person with the same name.** `information` and dates are not
-  checked. Several matches can appear, e.g. one for "Einstein" and one for "Albert Einstein".
+- **The top match can be another person with the same name, with a high score.** `information`
+  and dates are not checked. Seen in the 2026-10-27 test: Rafael Ruiz Balerdi (Basque painter)
+  matched Leonardo Balerdi (a footballer) at 0.93, Aurelio Arteta (Basque painter) matched Mikel
+  Arteta (Q185572, a football manager) at 0.91. Compare the candidate's title with the record
+  before calling it a match, and flag surname-only or different-first-name matches. Several
+  matches can appear, e.g. one for "Einstein" and one for "Albert Einstein". A match can also
+  come without a QID (`wikidata_item_id: null`).
 - **English only.** Entities without an English Wikipedia article cannot be found; Basque or
   Spanish context disambiguates poorly. Prefer English context sentences.
 - **Coverage is uneven.** In a test run (2026-10-27), 90 of 199 well-known people from Basque art

@@ -31,7 +31,7 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M3. M2 is complete (2026-10-27).
-- Next task: M3.2. M1.7 and the acceptance of M3.1 are waiting for a model key (none is
+- Next task: M3.3. M1.7 and the acceptance of M3.1 are waiting for a model key (none is
   configured on this machine).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
   sample takes 5.7 s, 200 records 53 s. Finding for the owner: ECHOLOT returned no candidate for
@@ -555,7 +555,7 @@ Goal: the first real use case, end to end, with a person confirming matches.
   - The `services.example.toml` entry.
   - Acceptance: in a manual session with a real model, the agent writes a working script from
     this file alone.
-- [ ] M3.2 Result cells.
+- [x] M3.2 Result cells.
   - In `TablePreview`, an array of objects renders as a compact ranked list; URL strings render
     as links.
   - A value shaped like ECHOLOT's matches renders each candidate as QID (linked to

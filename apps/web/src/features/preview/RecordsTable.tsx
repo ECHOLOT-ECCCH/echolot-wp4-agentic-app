@@ -2,11 +2,10 @@ import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { cellText } from '@/lib/format'
+import { CellValue } from '@/features/preview/CellValue'
+import { cellTitle } from '@/lib/cells'
 import { PAGE_SIZE, pageStart } from '@/lib/paging'
 import type { RecordRow } from '@/lib/types'
-
-const MAX_TITLE = 2000
 
 /** A page of records as a table: row number first, then the columns. Clicking a row selects it
  *  (the agent then knows which row "this row" is). */
@@ -47,18 +46,15 @@ export function RecordsTable({
               <td className="text-muted-foreground border-b px-2 py-1 text-right tabular-nums">
                 {row}
               </td>
-              {columns.map((column) => {
-                const text = cellText(record[column])
-                return (
-                  <td
-                    key={column}
-                    className="max-w-80 truncate border-b px-2 py-1"
-                    title={text.length > MAX_TITLE ? `${text.slice(0, MAX_TITLE)}…` : text}
-                  >
-                    {text}
-                  </td>
-                )
-              })}
+              {columns.map((column) => (
+                <td
+                  key={column}
+                  className="max-w-80 truncate border-b px-2 py-1"
+                  title={cellTitle(record[column])}
+                >
+                  <CellValue value={record[column]} />
+                </td>
+              ))}
             </tr>
           )
         })}

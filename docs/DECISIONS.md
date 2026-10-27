@@ -293,3 +293,15 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   harness.
 - The checklist box stays open until a real model has written a working script from the doc
   alone (needs a model key).
+
+## 2026-10-27 Result cells (M3.2)
+
+- `CellValue` renders every records and results cell: a list of objects with
+  `wikidata_item_id` (or `title` and `url`) as up to three ranked candidates, each with the QID
+  linked to wikidata.org, the title linked to its Wikipedia page and the score with a tooltip
+  saying it ranks candidates and is not a certainty; "+N more" beyond three, the full list in
+  the cell's tooltip. QID strings and http(s) URLs become links; empty lists read "none"; other
+  values are compact JSON. A click on a link does not select the row.
+- Checked on the 200-record ECHOLOT run of M2.3. The review also surfaced high-score matches of
+  the wrong person (Rafael Ruiz Balerdi → Leonardo Balerdi 0.93, Aurelio Arteta → Mikel Arteta
+  0.91), now in `services/echolot.md` so the agent flags them.
