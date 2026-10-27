@@ -30,11 +30,12 @@ chat, persistence and approval code being lifted, and are worth reading before t
 
 ## 1. Status
 
-- Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M2.3. M1.7 is waiting for a model key (none is configured on this machine); M1 is
-  otherwise complete.
-- M2.2 done: `PrefectExecutor`; the live run and run-tool tests pass through a local Prefect
-  3.8.8 server (`ECHO_TEST_PREFECT_API_URL`). CI has not run yet (nothing pushed).
+- Current milestone: M3. M2 is complete (2026-10-27).
+- Next task: M3.1. M1.7 is waiting for a model key (none is configured on this machine).
+- M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
+  sample takes 5.7 s, 200 records 53 s. Finding for the owner: ECHOLOT returned no candidate for
+  90 of 199 well-known (mostly Basque) people, e.g. Eduardo Chillida (DECISIONS 2026-10-27, M2.3).
+  CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -534,7 +535,7 @@ Goal: runs execute on the Prefect deployment next to the services.
     auth.
   - Acceptance: the tests pass; `ECHO_EXECUTOR=prefect` against a local Prefect server runs the
     M1.4 scenario.
-- [ ] M2.3 Live acceptance on the runner host: the app, the Prefect server, `serve.py` and the
+- [x] M2.3 Live acceptance on the runner host: the app, the Prefect server, `serve.py` and the
   ECHOLOT standalone API.
   - A 200-row run shows progress; one failing record does not stop it; cancel works; the Prefect
     UI shows the flow run.

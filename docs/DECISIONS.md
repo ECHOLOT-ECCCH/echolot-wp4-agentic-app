@@ -257,3 +257,25 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - Regression caught on the way: moving the live fixture into `conftest.py` in M1.5 had cut the
   main run scenario test out of `test_runs.py` (make check stayed green with five tests). It is
   restored from `da9606a`, and the test lists of all test files were compared with M1.4.
+
+## 2026-10-27 Live acceptance with Prefect and ECHOLOT (M2.3)
+
+- On this machine: the app (`ECHO_EXECUTOR=prefect`, test model), a Prefect 3.8.8 server, the
+  runner serving `run-script/default` (`PREFECT_RUNNER_POLL_FREQUENCY=2`) with `services.toml`
+  pointing at ECHOLOT's standalone API on 127.0.0.1:5000. The key was loaded from ECHOLOT's
+  `.env` into the runner's environment by the shell that started it, never printed.
+- Data: 200 rows from 40 well-known people (mostly Basque art and letters) with a context
+  sentence each; row 57 has an empty name, which the script turns into a record error.
+- Script: strip `"` and `\` from the name, POST /reconcile, keep top QID, title, score, the
+  number of candidates and the candidates.
+- Results:
+  - A 10-record sample went from submit to done in 5.7 s (runner poll 2 s, app poll 1 s).
+  - The 200-record run took 53 s at concurrency 4, with progress in 22 steps; 199 ok and 1
+    error (row 57, "ValueError: the record has no name"); the export had 201 lines.
+  - Cancel after 11 records: CANCELLED about 3 s later. The Prefect server lists the runs as
+    `echolot-<id>` with their states.
+- Finding about the service, not the app: 90 of the 199 ok records got no candidate. Direct
+  calls confirm it: Eduardo Chillida returns `[]` with and without a context sentence, Kirmen
+  Uribe matches "Uribe (surname)" at 0.38, Albert Einstein matches Q937 at 0.98. Wikifier's
+  `pageRankSqThreshold=0.8` seems to drop entities that are well known but not globally
+  prominent. This goes into `services/echolot.md` (M3.1) and is the owner's to judge.
