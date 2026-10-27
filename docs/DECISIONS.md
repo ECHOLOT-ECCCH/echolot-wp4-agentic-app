@@ -334,3 +334,21 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   subprocess's environment. Exporting the key in the shell that starts the app still works.
 - On the Prefect runner host nothing changes: keys are in the runner's own environment
   (docs/runner-host.md).
+
+## 2026-10-28 Dry run with a real model (demo preparation)
+
+- Model: Claude Sonnet 5.5 through OpenRouter (`anthropic/claude-sonnet-5.5`); the Anthropic
+  account had no API credit. Data: `demo/people-demo.csv`; services: the local executor and the
+  real ECHOLOT.
+- Five turns, driven like the browser (approval cards allowed): the agent profiled and sampled
+  the file, read the ECHOLOT doc, wrote task notes, asked one question, wrote a readable script
+  (accent-insensitive title check with rapidfuzz, threshold in `ctx.params`), ran an approved
+  sample of 10 and the full 20, and reported honestly: 2 agree, 1 conflict, 13 new, 3 none, with
+  Oteiza and Ruiz Balerdi flagged as wrong people. It noticed on its own that the Goya row's
+  existing Q5593 is Picasso's QID. A second script version (retry with a shorter context) found
+  nothing better, which it recorded in the task notes but hardly mentioned in the chat.
+- Fixes from it: `run_status` takes `wait_s` (up to 60 s), because the agent polled it four
+  times while a 20-record run went on; the prompt says to follow a run with one waiting call.
+  The decision select has a fixed width (it varied per row).
+- The conversation, tool groups, run view, candidate links and decisions rendered without
+  browser errors.

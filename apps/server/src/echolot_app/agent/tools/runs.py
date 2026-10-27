@@ -187,7 +187,7 @@ async def submit_run(
         return to_tool_return(
             ToolResult(
                 summary=f"Run {str(run.id)[:8]} started on {data['progress'].get('total')} "
-                "records; follow it with run_status",
+                "records; follow it with run_status and wait_s",
                 data=data,
                 ui_actions=_open(run),
             )
@@ -202,24 +202,23 @@ async def submit_run(
     return to_tool_return(ToolResult(summary=_status_line(data), data=data, ui_actions=_open(run)))
 
 
+MAX_STATUS_WAIT_S = 60
+
+
 @runs_toolset.tool
-async def run_status(ctx: RunContext[AgentDeps], run_id: str) -> ToolReturn:
+async def run_status(ctx: RunContext[AgentDeps], run_id: str, wait_s: int = 0) -> ToolReturn:
     """The status of a run: progress, counts when done, the reason when it failed, and the
-    first failed records.
+    first failed records. To follow a run, call it once with wait_s rather than many times.
 
     Args:
         run_id: The run id from submit_run.
+        wait_s: Wait up to this many seconds (at most 60) for the run to finish.
     """
     try:
         run = await _run(ctx.deps, run_id)
     except RunError as exc:
         return error_result(str(exc))
-    async with ctx.deps.session() as db:
-        current = await db.get(Run, run.id)
-        assert current is not None
-        if await refresh_run(db, ctx.deps.executor, current):
-            await db.commit()
-        run = current
+    run = await _wait(ctx.deps, run.id, max(0, min(wait_s, MAX_STATUS_WAIT_S)))
     data = await _describe(ctx.deps, run)
     if run.status == RunStatus.DONE.value and (run.counts or {}).get("error"):
         _, failed = await _rows(ctx.deps, run, 5, "error")

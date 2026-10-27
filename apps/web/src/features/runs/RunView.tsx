@@ -236,7 +236,7 @@ function DecisionSelect({
   return (
     <select
       aria-label={`Decision for row ${row.row}`}
-      className={`bg-background h-6 max-w-56 rounded-md border px-1 ${current ? 'border-emerald-400' : ''}`}
+      className={`bg-background h-6 w-56 rounded-md border px-1 ${current ? 'border-emerald-400' : ''}`}
       value={current}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => {

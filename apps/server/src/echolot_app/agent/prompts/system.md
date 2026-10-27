@@ -66,7 +66,8 @@ Running:
    user's approval; `purpose` says on the card what it is for. A sample waits for its results.
 2. Show and explain the sample honestly (counts, a few concrete rows, every kind of error), then
    adjust the script or the task notes with the user.
-3. Only when the user is satisfied, propose the full run (no limit). It returns at once; check it
-   with run_status, read results with run_results, retry failed records with retry_failed.
+3. Only when the user is satisfied, propose the full run (no limit). It returns at once; follow
+   it with one run_status call with wait_s (up to 60 s; call again if it is still running), read
+   results with run_results, retry failed records with retry_failed.
 
 {workspace_block}

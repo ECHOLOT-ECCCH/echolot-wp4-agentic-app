@@ -49,8 +49,7 @@ async def test_a_full_run_then_status_results_and_retry(live: Live) -> None:
     )
     assert started is not None and "started on 50 records" in started["summary"]
     run_id = started["data"]["run_id"]
-    await live.wait(run_id)
-    status = await call_tool(live.deps(), "run_status", {"run_id": run_id})
+    status = await call_tool(live.deps(), "run_status", {"run_id": run_id, "wait_s": 60})
     assert status["summary"].endswith("done: 49 ok, 1 error(s) of 50")
     assert status["data"]["first_errors"] == [
         {"row": 17, "error": "ServiceError: 502 from upper: upstream failed (after 2 attempts)"}
