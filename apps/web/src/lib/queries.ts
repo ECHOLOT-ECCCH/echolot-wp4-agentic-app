@@ -144,10 +144,29 @@ export function useSaveScript(workspaceId: string) {
 
 const RUN_REFRESH_MS = 2000
 
+/** A run that finished stored its result file; the file list should show it. */
+function refreshFilesWhenFinished(
+  queryClient: QueryClient,
+  workspaceId: string,
+  before: RunRecord[],
+  after: RunRecord[],
+) {
+  const wasRunning = new Set(before.filter((r) => !isTerminal(r.status)).map((r) => r.id))
+  if (after.some((r) => wasRunning.has(r.id) && isTerminal(r.status))) {
+    void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId), exact: true })
+  }
+}
+
 export function useRuns(workspaceId: string) {
+  const queryClient = useQueryClient()
   return useQuery({
     queryKey: keys.runs(workspaceId),
-    queryFn: () => api<RunRecord[]>(`${base(workspaceId)}/runs`),
+    queryFn: async () => {
+      const runs = await api<RunRecord[]>(`${base(workspaceId)}/runs`)
+      const before = queryClient.getQueryData<RunRecord[]>(keys.runs(workspaceId)) ?? []
+      refreshFilesWhenFinished(queryClient, workspaceId, before, runs)
+      return runs
+    },
     // follow unfinished runs; nothing to poll once all are finished
     refetchInterval: (query) =>
       query.state.data?.some((r) => !isTerminal(r.status)) ? RUN_REFRESH_MS : false,
@@ -155,9 +174,15 @@ export function useRuns(workspaceId: string) {
 }
 
 export function useRun(workspaceId: string, runId: string) {
+  const queryClient = useQueryClient()
   return useQuery({
     queryKey: keys.run(workspaceId, runId),
-    queryFn: () => api<RunRecord>(`${base(workspaceId)}/runs/${runId}`),
+    queryFn: async () => {
+      const run = await api<RunRecord>(`${base(workspaceId)}/runs/${runId}`)
+      const before = queryClient.getQueryData<RunRecord>(keys.run(workspaceId, runId))
+      refreshFilesWhenFinished(queryClient, workspaceId, before ? [before] : [], [run])
+      return run
+    },
     refetchInterval: (query) =>
       query.state.data && isTerminal(query.state.data.status) ? false : RUN_REFRESH_MS,
   })
