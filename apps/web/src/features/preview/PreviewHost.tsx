@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Pager, RecordsTable } from '@/features/preview/RecordsTable'
 import { TextPreview } from '@/features/preview/TextPreview'
+import { RunView } from '@/features/runs/RunView'
 import { ScriptView } from '@/features/scripts/ScriptView'
 import { TaskEditor } from '@/features/task/TaskEditor'
 import { ApiError, api, fileContentUrl, fileDownloadUrl } from '@/lib/api'
@@ -34,8 +35,10 @@ export function PreviewHost({ workspaceId }: { workspaceId: string }) {
   if (target.kind === 'script') {
     return <ScriptView workspaceId={workspaceId} version={target.version} />
   }
-  if (target.kind !== 'file') {
-    return <Empty title="Not available yet" body="Runs arrive with milestone M1.4." />
+  if (target.kind === 'run') {
+    return (
+      <RunView key={target.runId} workspaceId={workspaceId} runId={target.runId} row={target.row} />
+    )
   }
   const file = files.data?.find((f) => f.id === target.fileId)
   if (!file) {

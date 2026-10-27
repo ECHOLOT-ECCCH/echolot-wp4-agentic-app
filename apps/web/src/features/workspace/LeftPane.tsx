@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { FileList } from '@/features/files/FileList'
 import { UploadDropzone } from '@/features/files/UploadDropzone'
-import { keys, useFiles, useScripts } from '@/lib/queries'
+import { RunList } from '@/features/runs/RunList'
+import { keys, useFiles, useRuns, useScripts } from '@/lib/queries'
 import type { Workspace } from '@/lib/types'
 import { usePreview } from '@/lib/uiActions'
 
@@ -19,10 +20,11 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
-/** The workspace sidebar: files with the upload area, the task notes and the script. */
+/** The workspace sidebar: files with the upload area, the task notes, the script and runs. */
 export function LeftPane({ workspace }: { workspace: Workspace }) {
   const files = useFiles(workspace.id)
   const scripts = useScripts(workspace.id)
+  const runs = useRuns(workspace.id)
   const latest = scripts.data?.[0]
   const queryClient = useQueryClient()
   const target = usePreview((s) => s.target)
@@ -83,6 +85,11 @@ export function LeftPane({ workspace }: { workspace: Workspace }) {
               {latest ? `v${latest.version}` : 'none yet'}
             </span>
           </button>
+        </section>
+
+        <section className="flex flex-col gap-1">
+          <SectionTitle>Runs</SectionTitle>
+          {runs.data && <RunList runs={runs.data} />}
         </section>
       </div>
     </ScrollArea>

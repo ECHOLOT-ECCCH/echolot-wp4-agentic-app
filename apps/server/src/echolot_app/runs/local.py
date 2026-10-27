@@ -32,7 +32,8 @@ class LocalExecutor:
     name = "local"
 
     def __init__(self, workdir: Path, services_file: Path | None = None) -> None:
-        self._root = workdir
+        # absolute: the subprocess starts in its own directory, a relative data dir would miss
+        self._root = workdir.resolve()
         self._services_file = services_file
         self._jobs: dict[str, _Job] = {}
 

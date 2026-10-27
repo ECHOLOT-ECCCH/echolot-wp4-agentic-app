@@ -31,9 +31,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M1 (scripts and local runs). M0 is complete (tag `m0`, 2026-10-27).
-- Next task: M1.6.
-- M1.5 done: the agent's run and service tools (submit_run and retry_failed with approval), the
-  scripts-and-runs prompt section, the approval card for runs. CI has not run yet.
+- Next task: M1.7 (needs the owner's model key and a local ECHOLOT; see below).
+- M1.6 done: runs in the left pane, the run view (progress, counts, results before inputs,
+  error filter, CSV/JSONL export, retry, cancel), Run 20 / Run all in the script editor; e2e
+  covers script → sample → results → export. CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -505,7 +506,7 @@ run, full run, results, export.
   - A run card in the chat; the script contract section of the prompt.
   - Acceptance: `FunctionModel` tests for each tool; the approval card shows the services and
     record count.
-- [ ] M1.6 Run UI.
+- [x] M1.6 Run UI.
   - Runs in the left pane; `RunView` per section 10, refreshed every 2 s while not terminal.
   - "Run sample" and "Run all" in `ScriptView`.
   - Acceptance: a manual walk-through with the test model and a fake service; the e2e smoke

@@ -202,3 +202,20 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   contain braces, which `str.format` would take for fields.
 - Tool tests run against the live app (real port, real runner subprocess); a helper approves or
   denies the gated call through `DeferredToolResults`. A denied `submit_run` creates no run.
+
+## 2026-10-27 Run UI (M1.6)
+
+- The run list and an open run refetch every 2 s while unfinished and stop once finished; the
+  run's status is part of the rows query key, so results appear when it turns done.
+- The results table shows `#`, status, the output columns and the error first, then the input
+  columns muted: the walk-through showed four input columns (a long URI first) pushing the
+  outputs out of view.
+- "Run 20" / "Run all" in the script editor start a run of the shown version on the chosen
+  input file (a user action: no approval card); they are disabled while the editor has
+  unsaved changes.
+- Bug found by the e2e run: with a relative `ECHO_DATA_DIR` the LocalExecutor gave the runner a
+  relative params path, but the subprocess starts in its own directory. The executor now
+  resolves its root (regression test `test_local_executor.py`).
+- Walk-through with a fake reconciler on :5099 (`services.toml` and a service doc in a scratch
+  directory): a script calling `ctx.service("fakerecon")` ran on 20 records from the UI, 19 ok
+  and 1 error (the fake's 502 after two attempts), with Retry 1 failed, CSV and JSONL offered.

@@ -7,10 +7,13 @@ import {
 } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
+import { isTerminal } from '@/lib/types'
 import type {
   Conversation,
   FileRecord,
   RecordsPage,
+  RunRecord,
+  RunRowsPage,
   ScriptRecord,
   ScriptSummary,
   TaskNotes,
@@ -28,6 +31,13 @@ export const keys = {
   scripts: (workspaceId: string) => ['workspaces', workspaceId, 'scripts'] as const,
   script: (workspaceId: string, version: number | 'latest') =>
     ['workspaces', workspaceId, 'scripts', version] as const,
+  runs: (workspaceId: string) => ['workspaces', workspaceId, 'runs'] as const,
+  run: (workspaceId: string, runId: string) => ['workspaces', workspaceId, 'runs', runId] as const,
+  runRows: (
+    workspaceId: string,
+    runId: string,
+    params: { offset: number; limit: number; status: string | null; runStatus: string },
+  ) => ['workspaces', workspaceId, 'runs', runId, 'rows', params] as const,
   conversations: (workspaceId: string) => ['workspaces', workspaceId, 'conversations'] as const,
   messages: (workspaceId: string, conversationId: string) =>
     ['workspaces', workspaceId, 'conversations', conversationId, 'messages'] as const,
@@ -135,6 +145,88 @@ export function useSaveScript(workspaceId: string) {
   })
 }
 
+const RUN_REFRESH_MS = 2000
+
+export function useRuns(workspaceId: string) {
+  return useQuery({
+    queryKey: keys.runs(workspaceId),
+    queryFn: () => api<RunRecord[]>(`${base(workspaceId)}/runs`),
+    // follow unfinished runs; nothing to poll once all are finished
+    refetchInterval: (query) =>
+      query.state.data?.some((r) => !isTerminal(r.status)) ? RUN_REFRESH_MS : false,
+  })
+}
+
+export function useRun(workspaceId: string, runId: string) {
+  return useQuery({
+    queryKey: keys.run(workspaceId, runId),
+    queryFn: () => api<RunRecord>(`${base(workspaceId)}/runs/${runId}`),
+    refetchInterval: (query) =>
+      query.state.data && isTerminal(query.state.data.status) ? false : RUN_REFRESH_MS,
+  })
+}
+
+export function useRunRows(
+  workspaceId: string,
+  run: RunRecord | undefined,
+  offset: number,
+  limit: number,
+  status: 'ok' | 'error' | null,
+) {
+  const runId = run?.id ?? ''
+  const runStatus = run?.status ?? 'queued'
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
+  if (status) query.set('status', status)
+  return useQuery({
+    // the run's status is in the key: the rows appear when the run is done
+    queryKey: keys.runRows(workspaceId, runId, { offset, limit, status, runStatus }),
+    queryFn: () => api<RunRowsPage>(`${base(workspaceId)}/runs/${runId}/rows?${query}`),
+    enabled: Boolean(run?.result_file_id),
+    placeholderData: keepPreviousData,
+  })
+}
+
+export interface RunStart {
+  file_id: string
+  script_version?: number
+  limit?: number
+  purpose?: string
+}
+
+function useRunMutation<T>(workspaceId: string, request: (arg: T) => Promise<RunRecord>) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: request,
+    onSuccess: (run) => {
+      queryClient.setQueryData(keys.run(workspaceId, run.id), run)
+      void queryClient.invalidateQueries({ queryKey: keys.runs(workspaceId), exact: true })
+      void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId), exact: true })
+    },
+  })
+}
+
+export function useStartRun(workspaceId: string) {
+  return useRunMutation(workspaceId, (body: RunStart) =>
+    api<RunRecord>(`${base(workspaceId)}/runs`, { method: 'POST', json: body }),
+  )
+}
+
+export function useCancelRun(workspaceId: string) {
+  return useRunMutation(workspaceId, (runId: string) =>
+    api<RunRecord>(`${base(workspaceId)}/runs/${runId}/cancel`, { method: 'POST' }),
+  )
+}
+
+export function useRetryFailed(workspaceId: string) {
+  return useRunMutation(workspaceId, (runId: string) =>
+    api<RunRecord>(`${base(workspaceId)}/runs/${runId}/retry-failed`, { method: 'POST' }),
+  )
+}
+
+export function runExportUrl(workspaceId: string, runId: string, format: 'csv' | 'jsonl') {
+  return `${base(workspaceId)}/runs/${runId}/export?format=${format}`
+}
+
 export function useConversations(workspaceId: string) {
   return useQuery({
     queryKey: keys.conversations(workspaceId),
@@ -163,12 +255,15 @@ export function refreshAfterAction(
     void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId) })
   } else if (action.type === 'open_script') {
     void queryClient.invalidateQueries({ queryKey: keys.scripts(workspaceId), exact: true })
+  } else if (action.type === 'open_run') {
+    void queryClient.invalidateQueries({ queryKey: keys.runs(workspaceId) })
   }
 }
 
-/** Refetch what an agent turn can change: files, task notes, script versions. */
+/** Refetch what an agent turn can change: files, task notes, script versions, runs. */
 export function refreshAfterTurn(queryClient: QueryClient, workspaceId: string) {
   void queryClient.invalidateQueries({ queryKey: keys.files(workspaceId), exact: true })
   void queryClient.invalidateQueries({ queryKey: keys.task(workspaceId) })
   void queryClient.invalidateQueries({ queryKey: keys.scripts(workspaceId), exact: true })
+  void queryClient.invalidateQueries({ queryKey: keys.runs(workspaceId), exact: true })
 }

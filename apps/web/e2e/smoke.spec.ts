@@ -28,7 +28,7 @@ test('upload a CSV and browse its records', async ({ page }) => {
   await uploadPeople(page)
   await page.getByRole('button', { name: /^people\.csv/ }).click()
   await expect(page.getByText('rows 0–49 of 120')).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'Eduardo Chillida' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Eduardo Chillida', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Next page' }).click()
   await expect(page.getByText('rows 50–99 of 120')).toBeVisible()
   await page.getByLabel('Go to row').fill('110')
@@ -73,4 +73,45 @@ test('write and save the task notes', async ({ page }) => {
   await page.reload()
   await page.getByRole('button', { name: 'Task notes' }).click()
   await expect(page.getByText('Link every person to Wikidata.')).toBeVisible()
+})
+
+test('write a script, run a sample, read the results, export', async ({ page }) => {
+  await createWorkspace(page, `Run ${stamp()}`)
+  await uploadPeople(page)
+  await page.getByRole('button', { name: /^Script/ }).click()
+  await expect(page.getByText('no version yet')).toBeVisible()
+  await page.getByLabel('Script code').locator('.cm-content').click()
+  await page.keyboard.press('ControlOrMeta+A')
+  await page.keyboard.insertText(
+    [
+      'def process(record, ctx):',
+      '    if record["name"] == "Jorge Oteiza":',
+      '        raise ValueError("no idea who this is")',
+      '    return {"name_upper": record["name"].upper()}',
+      '',
+    ].join('\n'),
+  )
+  await page.getByLabel('Version note').fill('upper-case the names')
+  await page.getByRole('button', { name: 'Save as new version' }).click()
+  await expect(page.getByText('Saved as version 1')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Run 20' }).click()
+  await expect(page.getByTestId('run-status').first()).toHaveText('done', { timeout: 60_000 })
+  await expect(page.getByTestId('run-counts')).toHaveText('19 ok · 1 error · 20 records')
+  await expect(page.getByRole('cell', { name: "BRIAN O'DOHERTY", exact: true })).toBeVisible()
+
+  await page.getByLabel('Show results').selectOption('error')
+  await expect(page.getByRole('cell', { name: 'ValueError: no idea who this is' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Eduardo Chillida', exact: true })).toHaveCount(0)
+
+  const download = page.waitForEvent('download')
+  await page.getByLabel('Export CSV').click()
+  const csv = await (await download).createReadStream()
+  const chunks: Buffer[] = []
+  for await (const chunk of csv) chunks.push(chunk as Buffer)
+  const lines = Buffer.concat(chunks).toString('utf-8').trim().split(/\r?\n/)
+  expect(lines[0]).toBe('uri,name,entity_type,context,name_upper,status,error')
+  expect(lines).toHaveLength(21)
+  expect(lines[3]).toContain('Jorge Oteiza')
+  expect(lines[3]).toContain('error,ValueError: no idea who this is')
 })
