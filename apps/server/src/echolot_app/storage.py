@@ -140,6 +140,12 @@ class LocalStorage:
         await anyio.Path(_sidecar(path)).unlink(missing_ok=True)
         await anyio.to_thread.run_sync(_prune_empty_dirs, path.parent, self.root)
 
+    async def delete_prefix(self, prefix: str) -> None:
+        """Delete everything under a key prefix (a workspace, a file's directory)."""
+        path = self._path(prefix.rstrip("/"))
+        await anyio.to_thread.run_sync(lambda: shutil.rmtree(path, ignore_errors=True))
+        await anyio.to_thread.run_sync(_prune_empty_dirs, path.parent, self.root)
+
     def local_path(self, key: str) -> Path:
         """The file behind a key, for readers that need a real path (record normalization)."""
         return self._path(key)

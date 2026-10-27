@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from echolot_app import __version__
 from echolot_app.logging import configure_logging
+from echolot_app.routers import files, workspaces
 from echolot_app.settings import Settings, get_settings
 from echolot_app.state import AppState, build_state
 from echolot_app.storage import NotFoundError, StorageError
@@ -67,6 +68,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             database = f"error: {type(exc).__name__}"
         return HealthOut(status="ok" if database == "ok" else "degraded", database=database)
 
+    app.include_router(workspaces.router)
+    app.include_router(files.router)
     return app
 
 

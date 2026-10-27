@@ -45,3 +45,20 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - CI is cut to the check job until M0.6 (the old e2e and image publishing referenced deleted
   files).
 - Dev machine: Node 22 installed with nvm (`nvm use 22`); the default Node there is 20.
+
+## 2026-10-27 Records (M0.3)
+
+- Uploads are raw request bodies only (`?name=` or `X-File-Name`), as the web app and
+  `curl --data-binary` send them; the multipart path of the old router is dropped.
+- CSV: the encoding is sniffed from the first 64 KB (BOM → `utf-8-sig`, valid UTF-8 → `utf-8`,
+  otherwise `latin-1`, which never fails); the delimiter from `,;\t|` with `csv.Sniffer`; the
+  first row is always the header. Empty and duplicate header names become `column_N` / `name_2`.
+  Rows shorter than the header are filled with empty strings; longer rows add `column_N` keys.
+  Both are counted in `meta.ragged_rows` with the first line numbers. Blank rows are skipped.
+- JSON: a list of objects, or an object holding exactly one list (ECHOLOT's `{"entities": [...]}`),
+  parsed whole up to 200 MB. JSONL streams; lines that are not objects are counted and skipped.
+- A file that cannot be read as records is still stored, with `meta.format = null` and
+  `meta.error`.
+- The runner's input line is `{"_row": n, "record": {...}}` (PLAN 7.3 updated).
+- Measured: a 100 MB, 678,651-row CSV uploads and normalizes in 3.4 s with server RSS flat at
+  74–76 MB; a page at offset 1,000 answers in 21 ms.

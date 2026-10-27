@@ -31,9 +31,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M0 (skeleton).
-- Next task: M0.3.
-- M0.2 done: `apps/server` (SQLite, local storage, `/healthz`); the Elexifier backend, packages,
-  legacy inputs and deployment files are deleted.
+- Next task: M0.4.
+- M0.3 done: workspaces (with task notes), files with streaming upload, normalization of
+  CSV/TSV/JSON/JSONL to records, paged records.
 - Open questions for the owner (do not block M0 and M1 on them):
   - Where the Prefect server and the runner host live, and which Prefect version the server runs
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
@@ -213,7 +213,8 @@ def process(record: dict[str, Any], ctx) -> dict[str, Any]:
 ### 7.3 Runner I/O endpoints (on the app, `Authorization: Bearer <token>`)
 
 - `GET /runner/runs/{run_id}/input`: the run's records as JSONL, one object per line,
-  `{"_row": <int>, ...record}`, already cut to the run's selection (limit, failed rows of a parent).
+  `{"_row": <int>, "record": {...}}`, already cut to the run's selection (limit, failed rows of a
+  parent). The record is nested so a source field called `_row` cannot collide with it.
 - `POST /runner/runs/{run_id}/progress`: `{"done", "total", "ok", "error"}`, at most every 2 s and
   once at the end.
 - `PUT /runner/runs/{run_id}/result`: the results JSONL (7.4), streamed.
@@ -342,7 +343,9 @@ model.
 
 On disk under `ECHO_DATA_DIR`:
 - `app.db`
-- `workspaces/{wid}/files/{fid}/{name}`, plus `records.jsonl` next to it (the normalized records)
+- `workspaces/{wid}/files/{fid}/{name}`, plus `.records.jsonl` (the normalized records, one
+  object per line, row = line number) and `.records.idx.json` (byte offsets every 1,000 lines)
+  next to it
 - `workspaces/{wid}/runs/{rid}/result.jsonl`
 
 ## 9. API routes
@@ -426,7 +429,7 @@ approvals, on SQLite, with no auth and no infrastructure.
     `test-db`, `images`, `up`, `down`, `garage-init`; `make api` runs the new app.
   - The e2e test is off until M0.6.
   - Acceptance: `make check` green; `make api` answers `/healthz`; `data/app.db` is created.
-- [ ] M0.3 Workspaces and files.
+- [x] M0.3 Workspaces and files.
   - Routes per section 9, with streaming upload lifted.
   - `records.py` normalizes on upload: CSV/TSV (dialect and encoding sniffed, header row; values
     stay strings), JSONL, a JSON array of objects. It writes `records.jsonl` and fills `meta`.
@@ -439,7 +442,7 @@ approvals, on SQLite, with no auth and no infrastructure.
   - `agent.py` with `output_type=[str, DeferredToolRequests]` and `max_tokens` 16384.
   - A new `prompts/system.md` (section 13).
   - File tools: `list_files`, `profile_file`, `sample_records`, `search_records`,
-    `distinct_values`.
+    `distinct_values`, built on `records.RecordsReader`.
   - Conversation routes and the chat endpoint with persistence; the dev toolset with the test
     model.
   - Tests with `FunctionModel` and `TestModel`; the approval test lifted.
