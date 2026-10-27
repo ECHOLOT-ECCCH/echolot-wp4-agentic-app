@@ -279,3 +279,17 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   Uribe matches "Uribe (surname)" at 0.38, Albert Einstein matches Q937 at 0.98. Wikifier's
   `pageRankSqThreshold=0.8` seems to drop entities that are well known but not globally
   prominent. This goes into `services/echolot.md` (M3.1) and is the owner's to judge.
+
+## 2026-10-27 The ECHOLOT service doc (M3.1, acceptance pending)
+
+- `services/echolot.md` is written for the agent from the owner's context note and the M2.3
+  findings: the entity and match shapes, the errors and which ones mean "stop", what the score
+  does and does not mean, `matches: []` as a normal outcome, English only, the measured coverage
+  gap, stripping `"` and `\`, and an example script that returns `top_qid`, `top_title`,
+  `top_score`, `verdict` (agree, conflict, new, none from an existing Wikidata id) and the full
+  `matches` list.
+- `tests/test_service_docs.py` keeps the shipped docs honest: they parse, and the example script
+  passes `check_script` and gives the four verdicts against a fake ECHOLOT through the real
+  harness.
+- The checklist box stays open until a real model has written a working script from the doc
+  alone (needs a model key).

@@ -31,7 +31,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M3. M2 is complete (2026-10-27).
-- Next task: M3.1. M1.7 is waiting for a model key (none is configured on this machine).
+- Next task: M3.2. M1.7 and the acceptance of M3.1 are waiting for a model key (none is
+  configured on this machine).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
   sample takes 5.7 s, 200 records 53 s. Finding for the owner: ECHOLOT returned no candidate for
   90 of 199 well-known (mostly Basque) people, e.g. Eduardo Chillida (DECISIONS 2026-10-27, M2.3).
@@ -545,7 +546,8 @@ Goal: runs execute on the Prefect deployment next to the services.
 
 Goal: the first real use case, end to end, with a person confirming matches.
 
-- [ ] M3.1 `services/echolot.md`.
+- [ ] M3.1 `services/echolot.md`. (Written and tested with a fake service on 2026-10-27; the
+  acceptance with a real model is waiting for a model key.)
   - From the owner's context note (2026-10-27): the Entity and Match shapes, the status codes,
     what the score means and does not mean, `matches: []` as a normal outcome, English only, and
     stripping `"` and `\` from names.
