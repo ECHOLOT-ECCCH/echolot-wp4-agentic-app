@@ -130,6 +130,7 @@ export interface RunRow {
   ms: number | null
   input: Record<string, unknown>
   output: Record<string, unknown>
+  decision: { qid: string | null; note?: string } | null
 }
 
 export interface RunRowsPage {

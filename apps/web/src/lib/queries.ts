@@ -33,11 +33,8 @@ export const keys = {
     ['workspaces', workspaceId, 'scripts', version] as const,
   runs: (workspaceId: string) => ['workspaces', workspaceId, 'runs'] as const,
   run: (workspaceId: string, runId: string) => ['workspaces', workspaceId, 'runs', runId] as const,
-  runRows: (
-    workspaceId: string,
-    runId: string,
-    params: { offset: number; limit: number; status: string | null; runStatus: string },
-  ) => ['workspaces', workspaceId, 'runs', runId, 'rows', params] as const,
+  runRows: (workspaceId: string, runId: string, params: { params: string; runStatus: string }) =>
+    ['workspaces', workspaceId, 'runs', runId, 'rows', params] as const,
   conversations: (workspaceId: string) => ['workspaces', workspaceId, 'conversations'] as const,
   messages: (workspaceId: string, conversationId: string) =>
     ['workspaces', workspaceId, 'conversations', conversationId, 'messages'] as const,
@@ -166,23 +163,52 @@ export function useRun(workspaceId: string, runId: string) {
   })
 }
 
+export interface RowsFilter {
+  status?: 'ok' | 'error'
+  field?: string
+  equals?: string
+  decided?: boolean
+}
+
 export function useRunRows(
   workspaceId: string,
   run: RunRecord | undefined,
   offset: number,
   limit: number,
-  status: 'ok' | 'error' | null,
+  filter: RowsFilter = {},
 ) {
   const runId = run?.id ?? ''
   const runStatus = run?.status ?? 'queued'
   const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
-  if (status) query.set('status', status)
+  if (filter.status) query.set('status', filter.status)
+  if (filter.field) query.set('field', filter.field)
+  if (filter.equals !== undefined) query.set('equals', filter.equals)
+  if (filter.decided !== undefined) query.set('decided', String(filter.decided))
+  const params = query.toString()
   return useQuery({
     // the run's status is in the key: the rows appear when the run is done
-    queryKey: keys.runRows(workspaceId, runId, { offset, limit, status, runStatus }),
-    queryFn: () => api<RunRowsPage>(`${base(workspaceId)}/runs/${runId}/rows?${query}`),
+    queryKey: keys.runRows(workspaceId, runId, { params, runStatus }),
+    queryFn: () => api<RunRowsPage>(`${base(workspaceId)}/runs/${runId}/rows?${params}`),
     enabled: Boolean(run?.result_file_id),
     placeholderData: keepPreviousData,
+  })
+}
+
+/** Set (a QID, or null for "none of these") or clear (undefined) a row's decision. */
+export function useDecide(workspaceId: string, runId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ row, qid }: { row: number; qid: string | null | undefined }) =>
+      qid === undefined
+        ? api<void>(`${base(workspaceId)}/runs/${runId}/rows/${row}/decision`, {
+            method: 'DELETE',
+          })
+        : api<unknown>(`${base(workspaceId)}/runs/${runId}/rows/${row}/decision`, {
+            method: 'PUT',
+            json: { qid },
+          }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: [...keys.run(workspaceId, runId), 'rows'] }),
   })
 }
 

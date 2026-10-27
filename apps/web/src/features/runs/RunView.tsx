@@ -8,12 +8,32 @@ import { Pager } from '@/features/preview/RecordsTable'
 import { RunStatusBadge } from '@/features/runs/RunStatusBadge'
 import { ApiError } from '@/lib/api'
 import { CellValue } from '@/features/preview/CellValue'
-import { cellTitle } from '@/lib/cells'
+import { cellTitle, formatScore, isCandidateList } from '@/lib/cells'
 import { formatDate } from '@/lib/format'
 import { PAGE_SIZE, pageStart } from '@/lib/paging'
-import { runExportUrl, useCancelRun, useRetryFailed, useRun, useRunRows } from '@/lib/queries'
+import {
+  type RowsFilter,
+  runExportUrl,
+  useCancelRun,
+  useDecide,
+  useRetryFailed,
+  useRun,
+  useRunRows,
+} from '@/lib/queries'
 import { isTerminal, type RunRecord, type RunRow } from '@/lib/types'
 import { usePreview } from '@/lib/uiActions'
+
+const VERDICTS = ['agree', 'conflict', 'new', 'none']
+const NONE_OF_THESE = '__none__'
+
+/** The results filter: a select value and the query it stands for. */
+function filterFor(value: string): RowsFilter {
+  if (value === 'ok' || value === 'error') return { status: value }
+  if (value === 'decided') return { decided: true }
+  if (value === 'undecided') return { decided: false }
+  if (value.startsWith('verdict:')) return { field: 'verdict', equals: value.slice(8) }
+  return {}
+}
 
 function duration(run: RunRecord): string | null {
   if (!run.started_at || !run.finished_at) return null
@@ -35,12 +55,13 @@ export function RunView({
   const cancel = useCancelRun(workspaceId)
   const retry = useRetryFailed(workspaceId)
   const open = usePreview((s) => s.open)
-  const [filter, setFilter] = useState<'ok' | 'error' | null>(null)
+  const [filter, setFilter] = useState('')
+  const decide = useDecide(workspaceId, runId)
   const [paging, setPaging] = useState({ row, offset: row === undefined ? 0 : pageStart(row) })
   if (paging.row !== row) {
     setPaging({ row, offset: row === undefined ? paging.offset : pageStart(row) })
   }
-  const rows = useRunRows(workspaceId, run.data, paging.offset, PAGE_SIZE, filter)
+  const rows = useRunRows(workspaceId, run.data, paging.offset, PAGE_SIZE, filterFor(filter))
 
   if (run.isPending) return <p className="text-muted-foreground p-3 text-sm">Loading the run…</p>
   if (run.isError) return <p className="text-destructive p-3 text-sm">{run.error.message}</p>
@@ -142,15 +163,23 @@ export function RunView({
             <select
               aria-label="Show results"
               className="bg-background h-6 rounded-md border px-1"
-              value={filter ?? ''}
+              value={filter}
               onChange={(e) => {
-                setFilter((e.target.value || null) as 'ok' | 'error' | null)
+                setFilter(e.target.value)
                 setPaging((p) => ({ ...p, offset: 0 }))
               }}
             >
               <option value="">all results</option>
               <option value="ok">ok only</option>
               <option value="error">errors only</option>
+              <option value="undecided">not decided yet</option>
+              <option value="decided">decided</option>
+              {rows.data?.output_columns.includes('verdict') &&
+                VERDICTS.map((v) => (
+                  <option key={v} value={`verdict:${v}`}>
+                    verdict: {v}
+                  </option>
+                ))}
             </select>
             <Pager
               offset={paging.offset}
@@ -165,6 +194,7 @@ export function RunView({
               rows={rows.data?.rows ?? []}
               selectedRow={row}
               onSelect={(r) => open({ kind: 'run', runId: data.id, row: r })}
+              onDecide={(r, qid) => decide.mutate({ row: r, qid }, { onError })}
             />
           </div>
         </>
@@ -177,27 +207,81 @@ export function RunView({
   )
 }
 
-/** Results first (status, outputs, error), then the input record, muted, for comparison. */
+/** The output column holding reconciliation candidates, if any. */
+function candidateColumn(outputColumns: string[], rows: RunRow[]): string | null {
+  for (const column of outputColumns) {
+    if (rows.some((r) => isCandidateList(r.output[column]))) return column
+  }
+  return outputColumns.includes('matches') ? 'matches' : null
+}
+
+/** A reviewer's choice for one row: one of its candidates, "none of these", or undecided. */
+function DecisionSelect({
+  row,
+  candidates,
+  onDecide,
+}: {
+  row: RunRow
+  candidates: unknown
+  onDecide: (row: number, qid: string | null | undefined) => void
+}) {
+  const options = isCandidateList(candidates)
+    ? candidates.filter((c) => Boolean(c.wikidata_item_id))
+    : []
+  const current = !row.decision ? '' : row.decision.qid === null ? NONE_OF_THESE : row.decision.qid
+  const known =
+    current === '' ||
+    current === NONE_OF_THESE ||
+    options.some((c) => c.wikidata_item_id === current)
+  return (
+    <select
+      aria-label={`Decision for row ${row.row}`}
+      className={`bg-background h-6 max-w-56 rounded-md border px-1 ${current ? 'border-emerald-400' : ''}`}
+      value={current}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const value = e.target.value
+        onDecide(row.row, value === '' ? undefined : value === NONE_OF_THESE ? null : value)
+      }}
+    >
+      <option value="">—</option>
+      {options.map((c, i) => (
+        <option key={c.wikidata_item_id} value={c.wikidata_item_id ?? ''}>
+          {i + 1}. {c.wikidata_item_id} {c.title ?? ''}
+          {typeof c.score === 'number' ? ` (${formatScore(c.score)})` : ''}
+        </option>
+      ))}
+      {!known && <option value={current}>{current}</option>}
+      <option value={NONE_OF_THESE}>none of these</option>
+    </select>
+  )
+}
+
+/** Results first (status, decision, outputs, error), then the input record, muted. */
 function RunRowsTable({
   inputColumns,
   outputColumns,
   rows,
   selectedRow,
   onSelect,
+  onDecide,
 }: {
   inputColumns: string[]
   outputColumns: string[]
   rows: RunRow[]
   selectedRow?: number
   onSelect: (row: number) => void
+  onDecide: (row: number, qid: string | null | undefined) => void
 }) {
   const cell = 'max-w-96 truncate border-b px-2 py-1'
+  const candidates = candidateColumn(outputColumns, rows)
   return (
     <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
       <thead className="bg-background sticky top-0 z-10">
         <tr>
           <th className="text-muted-foreground border-b px-2 py-1.5 text-right font-medium">#</th>
           <th className="border-b px-2 py-1.5 text-left font-medium">status</th>
+          {candidates && <th className="border-b px-2 py-1.5 text-left font-medium">decision</th>}
           {outputColumns.map((c) => (
             <th key={`out-${c}`} className="border-b px-2 py-1.5 text-left font-medium">
               {c}
@@ -231,6 +315,13 @@ function RunRowsTable({
             <td className={`border-b px-2 py-1 ${r.status === 'error' ? 'text-destructive' : ''}`}>
               {r.status}
             </td>
+            {candidates && (
+              <td className="border-b px-2 py-1">
+                {r.status === 'ok' && (
+                  <DecisionSelect row={r} candidates={r.output[candidates]} onDecide={onDecide} />
+                )}
+              </td>
+            )}
             {outputColumns.map((c) => (
               <td key={`out-${c}`} className={cell} title={cellTitle(r.output[c])}>
                 <CellValue value={r.output[c]} />

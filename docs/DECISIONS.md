@@ -305,3 +305,22 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
 - Checked on the 200-record ECHOLOT run of M2.3. The review also surfaced high-score matches of
   the wrong person (Rafael Ruiz Balerdi → Leonardo Balerdi 0.93, Aurelio Arteta → Mikel Arteta
   0.91), now in `services/echolot.md` so the agent flags them.
+
+## 2026-10-27 Decisions per row (M3.3)
+
+- A decision is `{"qid": "Q…"}` (a chosen candidate) or `{"qid": null}` ("none of these"),
+  optionally with a note, stored per run and row (`run_decisions`); DELETE clears it. Only rows
+  present in the run's results can be decided.
+- Rows carry their decision; the rows endpoint filters on `decided` and on an output field's
+  value (`field` + `equals`, e.g. the example script's `verdict`). The run view offers "not
+  decided yet", "decided" and, when the output has a `verdict` column, one filter per verdict.
+- The decision selector appears when an output column holds candidates (detected from the
+  values, else a column named `matches`) and lists the row's candidates with a QID, plus "none of
+  these".
+- The CSV export gets a last `decision` column (the QID, `none`, or empty) as soon as the run has
+  any decision; the JSONL export carries the decision object. `run_results` shows decisions to
+  the agent.
+- Checked on the 200-record ECHOLOT run of M2.3: "none of these" for row 6 (the wrong Balerdi)
+  and Q220980 for row 12 (Pío Baroja) are in the "decided" filter and in the export. The check
+  also caught a crash when an older API sent rows without a `decision` field; the selector now
+  treats a missing decision as undecided.

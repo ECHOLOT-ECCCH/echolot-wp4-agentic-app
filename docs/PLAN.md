@@ -31,8 +31,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 ## 1. Status
 
 - Current milestone: M3. M2 is complete (2026-10-27).
-- Next task: M3.3. M1.7 and the acceptance of M3.1 are waiting for a model key (none is
-  configured on this machine).
+- Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
+  M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
   sample takes 5.7 s, 200 records 53 s. Finding for the owner: ECHOLOT returned no candidate for
   90 of 199 well-known (mostly Basque) people, e.g. Eduardo Chillida (DECISIONS 2026-10-27, M2.3).
@@ -365,7 +365,8 @@ On disk under `ECHO_DATA_DIR`:
 - Scripts: `GET/POST .../scripts`, `GET .../scripts/{version}`
 - Runs: `GET/POST .../runs`, `GET .../runs/{rid}`, `GET .../runs/{rid}/rows?offset&limit&status`,
   `GET .../runs/{rid}/export?format=csv|jsonl`, `POST .../runs/{rid}/cancel`,
-  `POST .../runs/{rid}/retry-failed`, `PUT .../runs/{rid}/rows/{row}/decision` (M3)
+  `POST .../runs/{rid}/retry-failed`, `PUT/DELETE .../runs/{rid}/rows/{row}/decision` (M3);
+  rows also filter on `field` + `equals` (an output value such as `verdict`) and `decided`
 - Chat: `GET/POST .../conversations`, `GET/PUT .../conversations/{cid}/messages`,
   `POST .../conversations/{cid}/chat`
 - Services: `GET /api/services`
@@ -561,7 +562,7 @@ Goal: the first real use case, end to end, with a person confirming matches.
   - A value shaped like ECHOLOT's matches renders each candidate as QID (linked to
     `https://www.wikidata.org/wiki/<QID>`), Wikipedia title (linked) and score labelled as a
     ranking score, not a certainty.
-- [ ] M3.3 Decisions per row.
+- [x] M3.3 Decisions per row.
   - The reviewer picks a candidate or "none" per row (`run_decisions`); export adds a
     `decision` column.
   - Scripts that see an existing Wikidata identifier output `agree|conflict|new|none`, and the

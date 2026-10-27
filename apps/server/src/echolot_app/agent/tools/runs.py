@@ -18,10 +18,12 @@ from echolot_app.agent.deps import AgentDeps
 from echolot_app.agent.tools.files import clip_record
 from echolot_app.db import Author, File, Run, RunStatus, Script
 from echolot_app.runs.service import (
+    RowFilter,
     RunError,
     refresh_run,
     result_rows,
     retry_failed_run,
+    run_decisions,
     start_run,
 )
 from echolot_app.schemas import RunCreate
@@ -85,11 +87,22 @@ async def _rows(
     async with deps.session() as db:
         source = await db.get(File, run.input_file_id)
         result = await db.get(File, run.result_file_id) if run.result_file_id else None
+        decisions = await run_decisions(db, run.id)
     if source is None or result is None:
         return 0, []
-    total, rows = await anyio.to_thread.run_sync(
-        result_rows, deps.storage, source, result, offset, n, status
-    )
+
+    def page() -> tuple[int, list[dict[str, Any]]]:
+        return result_rows(
+            deps.storage,
+            source,
+            result,
+            offset,
+            n,
+            where=RowFilter(status=status),
+            decisions=decisions,
+        )
+
+    total, rows = await anyio.to_thread.run_sync(page)
     shown = []
     for row in rows:
         row["input"], _ = clip_record(row["input"], 2000)
@@ -222,7 +235,8 @@ async def run_results(
     status: Literal["ok", "error"] | None = None,
     offset: int = 0,
 ) -> ToolReturn:
-    """Results of a finished run: each record's input next to the script's output (or error).
+    """Results of a finished run: each record's input next to the script's output (or error),
+    and the reviewer's decision when there is one (a chosen QID, or null for "none of these").
     Long values are shortened.
 
     Args:

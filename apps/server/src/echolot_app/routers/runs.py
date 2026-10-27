@@ -3,27 +3,30 @@
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
 import anyio
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from echolot_app.db import Author, File, Run, RunStatus, Script
+from echolot_app.db import Author, File, Run, RunDecision, RunStatus, Script, utcnow
 from echolot_app.deps import DbSession, State, get_workspace_or_404
 from echolot_app.runs.service import (
+    RowFilter,
     RunError,
     export_csv,
     export_jsonl,
     output_columns,
     refresh_run,
+    result_row_numbers,
     result_rows,
     retry_failed_run,
+    run_decisions,
     start_run,
 )
-from echolot_app.schemas import RunCreate, RunOut, RunRow, RunRowsPage
+from echolot_app.schemas import DecisionIn, DecisionOut, RunCreate, RunOut, RunRow, RunRowsPage
 
 router = APIRouter(prefix="/api/workspaces/{workspace_id}/runs", tags=["runs"])
 
@@ -105,8 +108,12 @@ async def run_rows(
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=MAX_ROWS_PAGE),
     row_status: Literal["ok", "error"] | None = Query(default=None, alias="status"),
+    field: str | None = Query(default=None, max_length=200, description="an output field"),
+    equals: str | None = Query(default=None, max_length=2000, description="its value"),
+    decided: bool | None = None,
 ) -> RunRowsPage:
-    """Results joined with their input records; empty until the results arrived."""
+    """Results joined with their input records and decisions; empty until the results arrived.
+    Filters: ``status``, ``field`` + ``equals`` (an output field's value), ``decided``."""
     run = await get_run_or_404(db, workspace_id, run_id)
     input_file = await db.get(File, run.input_file_id)
     result = await db.get(File, run.result_file_id) if run.result_file_id else None
@@ -120,9 +127,15 @@ async def run_rows(
             output_columns=[],
             rows=[],
         )
-    total, rows = await anyio.to_thread.run_sync(
-        result_rows, state.storage, input_file, result, offset, limit, row_status
-    )
+    where = RowFilter(status=row_status, field=field, equals=equals, decided=decided)
+    decisions = await run_decisions(db, run.id)
+
+    def page() -> tuple[int, list[dict[str, Any]]]:
+        return result_rows(
+            state.storage, input_file, result, offset, limit, where=where, decisions=decisions
+        )
+
+    total, rows = await anyio.to_thread.run_sync(page)
     return RunRowsPage(
         total=total,
         offset=offset,
@@ -147,11 +160,12 @@ async def export(
     if input_file is None or result is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "The run has no results yet")
     stem = (input_file.name.rsplit(".", 1)[0] or "results") + f"-run-{str(run.id)[:8]}"
+    decisions = await run_decisions(db, run.id)
     if format == "csv":
-        body = export_csv(state.storage, input_file, result)
+        body = export_csv(state.storage, input_file, result, decisions)
         media, name = "text/csv; charset=utf-8", f"{stem}.csv"
     else:
-        body = export_jsonl(state.storage, input_file, result)
+        body = export_jsonl(state.storage, input_file, result, decisions)
         media, name = "application/x-ndjson", f"{stem}.jsonl"
     return StreamingResponse(
         body, media_type=media, headers={"Content-Disposition": f'attachment; filename="{name}"'}
@@ -179,3 +193,43 @@ async def retry_failed(
     except RunError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return await run_out(db, retry)
+
+
+@router.put("/{run_id}/rows/{row}/decision", response_model=DecisionOut)
+async def decide(
+    workspace_id: uuid.UUID,
+    run_id: uuid.UUID,
+    row: int,
+    body: DecisionIn,
+    db: DbSession,
+    state: State,
+) -> DecisionOut:
+    """The reviewer's choice for one result row (docs/PLAN.md M3.3)."""
+    run = await get_run_or_404(db, workspace_id, run_id)
+    result = await db.get(File, run.result_file_id) if run.result_file_id else None
+    if result is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "The run has no results yet")
+    rows = await anyio.to_thread.run_sync(result_row_numbers, state.storage, result)
+    if row not in rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Row {row} is not in this run's results")
+    value: dict[str, Any] = {"qid": body.qid}
+    if body.note:
+        value["note"] = body.note
+    decision = await db.get(RunDecision, (run.id, row))
+    if decision is None:
+        decision = RunDecision(run_id=run.id, row=row, value=value)
+        db.add(decision)
+    else:
+        decision.value = value
+        decision.decided_at = utcnow()
+    await db.flush()
+    return DecisionOut(row=row, value=decision.value, decided_at=decision.decided_at)
+
+
+@router.delete("/{run_id}/rows/{row}/decision", status_code=status.HTTP_204_NO_CONTENT)
+async def undecide(workspace_id: uuid.UUID, run_id: uuid.UUID, row: int, db: DbSession) -> Response:
+    run = await get_run_or_404(db, workspace_id, run_id)
+    decision = await db.get(RunDecision, (run.id, row))
+    if decision is not None:
+        await db.delete(decision)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

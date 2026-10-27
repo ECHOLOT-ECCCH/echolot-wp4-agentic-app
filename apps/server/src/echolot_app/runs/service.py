@@ -16,7 +16,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from echolot_app.db import File, FileKind, Run, RunStatus, Script, utcnow
+from echolot_app.db import File, FileKind, Run, RunDecision, RunStatus, Script, utcnow
 from echolot_app.records import RecordsReader, normalize, runner_line
 from echolot_app.runs.executor import ExecState, Executor, app_status
 from echolot_app.runs.tokens import new_token
@@ -240,25 +240,73 @@ def _row_out(line: dict[str, Any], record: dict[str, Any] | None) -> dict[str, A
     }
 
 
+@dataclass(frozen=True)
+class RowFilter:
+    """Which results a page shows: by status, by one output field's value, by decision."""
+
+    status: str | None = None
+    field: str | None = None
+    equals: str | None = None
+    decided: bool | None = None
+
+    @property
+    def empty(self) -> bool:
+        return self.status is None and self.field is None and self.decided is None
+
+    def keep(self, line: dict[str, Any], decided_rows: set[int]) -> bool:
+        if self.status is not None and line.get("_status") != self.status:
+            return False
+        if self.field is not None and _cell(line.get(self.field)) != (self.equals or ""):
+            return False
+        return self.decided is None or (int(line["_row"]) in decided_rows) == self.decided
+
+
 def result_rows(
     storage: LocalStorage,
     input_file: File,
     result: File,
     offset: int,
     limit: int,
-    status: str | None,
+    status: str | None = None,
+    *,
+    where: RowFilter | None = None,
+    decisions: dict[int, dict[str, Any]] | None = None,
 ) -> tuple[int, list[dict[str, Any]]]:
-    """A page of results with their input records; ``status`` filters on ok or error."""
+    """A page of results with their input records and decisions, optionally filtered."""
+    where = where or RowFilter(status=status)
+    decisions = decisions or {}
     results = records_reader(storage, result)
-    if status is None:
+    if where.empty:
         total = results.record_count
         lines = [line for _, line in results.page(offset, limit)]
     else:
-        matching = [line for _, line in results.iter_from(0) if line.get("_status") == status]
+        decided = set(decisions)
+        matching = [line for _, line in results.iter_from(0) if where.keep(line, decided)]
         total = len(matching)
         lines = matching[offset : offset + limit]
     inputs = dict(records_reader(storage, input_file).rows([int(x["_row"]) for x in lines]))
-    return total, [_row_out(line, inputs.get(int(line["_row"]))) for line in lines]
+    rows = []
+    for line in lines:
+        row = _row_out(line, inputs.get(int(line["_row"])))
+        row["decision"] = decisions.get(row["row"])
+        rows.append(row)
+    return total, rows
+
+
+def result_row_numbers(storage: LocalStorage, result: File) -> set[int]:
+    return {int(line["_row"]) for _, line in records_reader(storage, result).iter_from(0)}
+
+
+async def run_decisions(db: AsyncSession, run_id: uuid.UUID) -> dict[int, dict[str, Any]]:
+    rows = await db.execute(select(RunDecision).where(RunDecision.run_id == run_id))
+    return {d.row: d.value for d in rows.scalars()}
+
+
+def decision_text(value: dict[str, Any] | None) -> str:
+    """How a decision reads in an export: the chosen QID, ``none``, or empty (undecided)."""
+    if value is None:
+        return ""
+    return str(value.get("qid") or "none")
 
 
 def joined(
@@ -283,8 +331,15 @@ def _cell(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def export_csv(storage: LocalStorage, input_file: File, result: File) -> Iterator[str]:
-    """Input columns, then output columns, then the row's status and error."""
+def export_csv(
+    storage: LocalStorage,
+    input_file: File,
+    result: File,
+    decisions: dict[int, dict[str, Any]] | None = None,
+) -> Iterator[str]:
+    """Input columns, then output columns, then the row's status, error and decision (when the
+    run has any)."""
+    decisions = decisions or {}
     in_columns = list(input_file.meta.get("columns") or [])
     out_columns = output_columns(result)
     clash = set(in_columns) & set(out_columns)
@@ -298,25 +353,34 @@ def export_csv(storage: LocalStorage, input_file: File, result: File) -> Iterato
         buffer.truncate()
         return text
 
-    writer.writerow([*in_columns, *out_names, "status", "error"])
+    tail = ["status", "error", "decision"] if decisions else ["status", "error"]
+    writer.writerow([*in_columns, *out_names, *tail])
     yield flush()
     for record, line in joined(storage, input_file, result):
-        writer.writerow(
-            [
-                *(_cell(record.get(c)) for c in in_columns),
-                *(_cell(line.get(c)) for c in out_columns),
-                line.get("_status") or "",
-                line.get("_error") or "",
-            ]
-        )
+        cells = [
+            *(_cell(record.get(c)) for c in in_columns),
+            *(_cell(line.get(c)) for c in out_columns),
+            line.get("_status") or "",
+            line.get("_error") or "",
+        ]
+        if decisions:
+            cells.append(decision_text(decisions.get(int(line["_row"]))))
+        writer.writerow(cells)
         if buffer.tell() > 64 * 1024:
             yield flush()
     yield flush()
 
 
-def export_jsonl(storage: LocalStorage, input_file: File, result: File) -> Iterator[bytes]:
+def export_jsonl(
+    storage: LocalStorage,
+    input_file: File,
+    result: File,
+    decisions: dict[int, dict[str, Any]] | None = None,
+) -> Iterator[bytes]:
+    decisions = decisions or {}
     for record, line in joined(storage, input_file, result):
         row = _row_out(line, record)
+        row["decision"] = decisions.get(row["row"])
         yield json.dumps(row, ensure_ascii=False).encode("utf-8") + b"\n"
 
 

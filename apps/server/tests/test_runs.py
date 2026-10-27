@@ -167,3 +167,46 @@ async def test_viewing_names_an_open_run(live: Live) -> None:
         await db.dispose()
     assert described is not None
     assert described[0] == f"row 1 of the results of run {run['id']} (done, script v1, on p.csv)"
+
+
+async def test_decisions_per_row_filters_and_export(live: Live) -> None:
+    await live.script(
+        UPPER.replace(
+            '"length": len(reply["name"])', '"verdict": "new" if len(reply["name"]) > 8 else "none"'
+        )
+    )
+    run = await live.wait((await live.run(limit=12))["id"])
+    base = f"/api/workspaces/{live.workspace_id}/runs/{run['id']}"
+
+    chosen = await live.client.put(
+        f"{base}/rows/3/decision", json={"qid": "Q42", "note": "checked"}
+    )
+    assert chosen.status_code == 200 and chosen.json()["value"] == {"qid": "Q42", "note": "checked"}
+    none = await live.client.put(f"{base}/rows/11/decision", json={"qid": None})
+    assert none.json()["value"] == {"qid": None}
+    changed = await live.client.put(f"{base}/rows/3/decision", json={"qid": "Q43"})
+    assert changed.json()["value"] == {"qid": "Q43"}
+    assert (await live.client.put(f"{base}/rows/3/decision", json={"qid": "42"})).status_code == 422
+    assert (
+        await live.client.put(f"{base}/rows/40/decision", json={"qid": None})
+    ).status_code == 404
+
+    page = (await live.client.get(f"{base}/rows", params={"offset": 2, "limit": 2})).json()
+    assert [r["decision"] for r in page["rows"]] == [None, {"qid": "Q43"}]
+    decided = (await live.client.get(f"{base}/rows", params={"decided": "true"})).json()
+    assert [r["row"] for r in decided["rows"]] == [3, 11]
+    undecided = (await live.client.get(f"{base}/rows", params={"decided": "false"})).json()
+    assert undecided["total"] == 10
+    verdict = (
+        await live.client.get(f"{base}/rows", params={"field": "verdict", "equals": "new"})
+    ).json()
+    assert {r["output"]["verdict"] for r in verdict["rows"]} == {"new"}
+    assert verdict["total"] == 2  # "person 10", "person 11": the only names longer than 8
+
+    table = list(csv.reader(io.StringIO((await live.client.get(f"{base}/export")).text)))
+    assert table[0][-3:] == ["status", "error", "decision"]
+    assert table[4][-1] == "Q43" and table[12][-1] == "none" and table[1][-1] == ""
+
+    assert (await live.client.delete(f"{base}/rows/3/decision")).status_code == 204
+    again = (await live.client.get(f"{base}/rows", params={"decided": "true"})).json()
+    assert [r["row"] for r in again["rows"]] == [11]

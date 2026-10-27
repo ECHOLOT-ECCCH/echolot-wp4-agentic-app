@@ -141,6 +141,20 @@ class RunRow(BaseModel):
     ms: int | None
     input: dict[str, Any]
     output: dict[str, Any]
+    decision: dict[str, Any] | None = None
+
+
+class DecisionIn(BaseModel):
+    """A reviewer's choice for one result row: a candidate's QID, or null for "none of these"."""
+
+    qid: str | None = Field(default=None, pattern=r"^Q[1-9][0-9]*$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class DecisionOut(BaseModel):
+    row: int
+    value: dict[str, Any]
+    decided_at: datetime
 
 
 class RunRowsPage(BaseModel):

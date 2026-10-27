@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { RunView } from '@/features/runs/RunView'
@@ -95,5 +95,57 @@ describe('RunView', () => {
     expect(await screen.findByText('5 / 50')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
     expect(screen.getByText('Results appear here when the run is done.')).toBeInTheDocument()
+  })
+
+  it('records a decision per row from the candidates', async () => {
+    const candidates = [
+      { url: 'http://en.wikipedia.org/wiki/A', wikidata_item_id: 'Q1', title: 'Ana', score: 0.9 },
+      { url: 'http://en.wikipedia.org/wiki/B', wikidata_item_id: 'Q2', title: 'Ane', score: 0.4 },
+    ]
+    const { calls, fetchMock } = mockApi([
+      { method: 'PUT', path: '/api/workspaces/w1/runs/r1/rows/0/decision', body: {} },
+      {
+        path: '/api/workspaces/w1/runs/r1/rows',
+        body: {
+          total: 1,
+          offset: 0,
+          run_status: 'done',
+          input_columns: ['name'],
+          output_columns: ['verdict', 'matches'],
+          rows: [
+            {
+              row: 0,
+              status: 'ok',
+              error: null,
+              ms: 5,
+              input: { name: 'Ana' },
+              output: { verdict: 'new', matches: candidates },
+              decision: null,
+            },
+          ],
+        },
+      },
+      { path: '/api/workspaces/w1/runs/r1', body: run({}) },
+    ])
+    renderWithProviders(<RunView workspaceId="w1" runId="r1" />)
+    const select = await screen.findByLabelText('Decision for row 0')
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['—', '1. Q1 Ana (0.90)', '2. Q2 Ane (0.40)', 'none of these'])
+    fireEvent.change(select, { target: { value: 'Q2' } })
+    await waitFor(() =>
+      expect(calls.some((c) => c.method === 'PUT' && c.url.endsWith('/rows/0/decision'))).toBe(
+        true,
+      ),
+    )
+    const put = fetchMock.mock.calls.find(
+      (c) => (c[1] as RequestInit | undefined)?.method === 'PUT',
+    )
+    expect(put).toBeDefined()
+    const init = (put as unknown[])[1] as RequestInit
+    expect(JSON.parse(String(init.body))).toEqual({ qid: 'Q2' })
+    expect(screen.getByRole('option', { name: 'verdict: conflict' })).toBeInTheDocument()
   })
 })
