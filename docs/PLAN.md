@@ -632,5 +632,5 @@ Goal: the first real use case, end to end, with a person confirming matches.
 - Pydantic AI: https://ai.pydantic.dev (llms.txt), the Vercel AI adapter and deferred tools.
 - assistant-ui: https://www.assistant-ui.com/llms.txt; AI SDK: https://ai-sdk.dev/docs.
 - Prefect 3: https://docs.prefect.io (flows, `serve`, the REST API, settings).
-- The ECHOLOT reconciliation service: `/home/patrik/Work/ECHOLOT-reconciliation`, branch
-  `api-service` (README, `reconciliation/models.py`, `reconciliation/standalone_api.py`).
+- The ECHOLOT reconciliation service: https://github.com/ECHOLOT-ECCCH/echolot-wp4-api-service,
+  branch `main` (README, `reconciliation/models.py`, `reconciliation/standalone_api.py`).

@@ -362,3 +362,14 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   appearing under Results until the next agent turn. The run queries now refetch the file list
   when a run they follow finishes.
 - Two demo-preparation entries above were dated 2026-10-28 by mistake; corrected to 2026-10-27.
+
+## 2026-10-28 Repositories moved to the ECHOLOT-ECCCH organization
+
+- This app: https://github.com/ECHOLOT-ECCCH/echolot-wp4-agentic-app, a copy of
+  `pzajec/echolot-agentic-app` with its full history (`main`, the only branch). Issues and PRs
+  were not copied.
+- The ECHOLOT service: https://github.com/ECHOLOT-ECCCH/echolot-wp4-api-service, from
+  `pzajec/ECHOLOT-reconciliation`. The uncommitted `/enrich` work was committed on `api-service`,
+  which was then fast-forwarded into `main`; `main` is the branch to deploy, and PLAN 16 points
+  there.
+- The old repositories stay with their owner, to be archived.

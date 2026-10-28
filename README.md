@@ -30,6 +30,8 @@ Still open: the checks with a real model and the owner's own data (M1.7, M3.1, M
 - Node.js 22+ and pnpm (via `corepack enable`)
 - GNU Make
 - For real runs: a Prefect 3 server and a runner host that can reach the services (PLAN M2)
+- For reconciliation: the ECHOLOT service,
+  [ECHOLOT-ECCCH/echolot-wp4-api-service](https://github.com/ECHOLOT-ECCCH/echolot-wp4-api-service)
 
 ## Quick start (development)
 

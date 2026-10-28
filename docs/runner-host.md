@@ -17,7 +17,8 @@ app (ECHO_EXECUTOR=prefect) ──REST──▶ Prefect server :4200 ◀──po
 - A Prefect 3 server it can reach. Use the same `prefect` version on the runner as on the
   server.
 - Network access to the services (ECHOLOT binds to 127.0.0.1:5000, so the runner runs on the
-  same host) and to the app's `ECHO_PUBLIC_URL`.
+  same host) and to the app's `ECHO_PUBLIC_URL`. ECHOLOT's code and setup:
+  https://github.com/ECHOLOT-ECCCH/echolot-wp4-api-service.
 
 ## Install
 
