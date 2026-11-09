@@ -14,7 +14,7 @@ from echolot_app.main import create_app
 from echolot_app.settings import Settings
 from echolot_app.state import AppState
 
-from .conftest import Workspace, upload
+from .conftest import Workspace, add_user, api_client, sign_in, upload
 
 
 def user_message(text: str, message_id: str = "m1") -> dict[str, Any]:
@@ -80,7 +80,7 @@ async def test_chat_streams_and_persists(
                 break
         await asyncio.sleep(0.05)
     assert run is not None and run.status == "done"
-    assert run.model == {"provider": "test", "model_id": "test"}
+    assert run.model == {"provider": "test", "model_id": "test", "key": "server"}
     assert run.usage["requests"] >= 1
     assert run.messages
 
@@ -121,22 +121,23 @@ async def test_bad_requests(client: httpx.AsyncClient, workspace: Workspace) -> 
     assert (await client.post(foreign, json=chat_body(user_message("hi")))).status_code == 404
 
 
-async def test_an_unconfigured_model_is_a_clear_400(tmp_path: Path) -> None:
+async def test_without_a_usable_model_the_chat_says_what_to_do(tmp_path: Path) -> None:
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]
         data_dir=tmp_path / "data",
-        model_provider="nonesuch",
+        model_provider="anthropic",  # no server key, and the user has none either
         model_id="x",
     )
     app = create_app(settings)
     async with LifespanManager(app):
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        await add_user(app.state.app, "ana@example.org")
+        async with api_client(app) as client:
+            await sign_in(client, "ana@example.org")
             wid = (await client.post("/api/workspaces", json={"name": "w"})).json()["id"]
             cid = (await client.post(f"/api/workspaces/{wid}/conversations", json={})).json()["id"]
             resp = await client.post(
                 f"/api/workspaces/{wid}/conversations/{cid}/chat",
                 json=chat_body(user_message("hi")),
             )
-    assert resp.status_code == 400
-    assert "ECHO_MODEL_PROVIDER" in resp.json()["detail"]
+    assert resp.status_code == 409
+    assert "add a key" in resp.json()["detail"]

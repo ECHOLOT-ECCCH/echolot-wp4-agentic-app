@@ -7,13 +7,12 @@ import uuid
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import ValidationError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from echolot_app.agent.deps import AgentDeps, WorkspaceContext
-from echolot_app.agent.models import model_from_settings, model_label
 from echolot_app.agent.runtime import RunSummary
 from echolot_app.agent.ui_messages import (
     attach_viewing,
@@ -22,11 +21,25 @@ from echolot_app.agent.ui_messages import (
     restore_attachments,
 )
 from echolot_app.db import AgentRun, AgentRunStatus, Conversation, Message, utcnow
-from echolot_app.deps import CurrentSettings, DbSession, State, get_workspace_or_404
+from echolot_app.deps import (
+    CurrentSecretBox,
+    CurrentSettings,
+    CurrentUser,
+    DbSession,
+    OwnedWorkspace,
+    State,
+    require_workspace,
+)
 from echolot_app.schemas import ConversationCreate, ConversationOut, MessagesIn
+from echolot_app.user_models import ModelNotReady, model_for_user
 from echolot_app.viewing import Viewing, describe_viewing
 
-router = APIRouter(prefix="/api/workspaces/{workspace_id}/conversations", tags=["chat"])
+# every route checks that the signed-in user owns the workspace (docs/PLAN.md 7.11)
+router = APIRouter(
+    prefix="/api/workspaces/{workspace_id}/conversations",
+    tags=["chat"],
+    dependencies=[Depends(require_workspace)],
+)
 log = structlog.get_logger(__name__)
 NEW_TITLE = "New conversation"
 
@@ -40,7 +53,6 @@ async def _conversation(db: AsyncSession, workspace_id: uuid.UUID, cid: uuid.UUI
 
 @router.get("", response_model=list[ConversationOut])
 async def list_conversations(workspace_id: uuid.UUID, db: DbSession) -> list[ConversationOut]:
-    await get_workspace_or_404(db, workspace_id)
     rows = (
         await db.execute(
             select(Conversation)
@@ -55,7 +67,6 @@ async def list_conversations(workspace_id: uuid.UUID, db: DbSession) -> list[Con
 async def create_conversation(
     workspace_id: uuid.UUID, body: ConversationCreate, db: DbSession
 ) -> ConversationOut:
-    await get_workspace_or_404(db, workspace_id)
     conversation = Conversation(
         workspace_id=workspace_id, title=(body.title or "").strip() or NEW_TITLE
     )
@@ -158,9 +169,11 @@ async def chat(
     db: DbSession,
     state: State,
     settings: CurrentSettings,
+    user: CurrentUser,
+    workspace: OwnedWorkspace,
+    box: CurrentSecretBox,
 ) -> Response:
-    """Run one agent turn and stream the AI SDK data-stream protocol back."""
-    workspace = await get_workspace_or_404(db, workspace_id)
+    """Run one agent turn with the user's model and stream the AI SDK data-stream protocol."""
     conversation = await _conversation(db, workspace_id, conversation_id)
     try:
         body = await request.json()
@@ -170,13 +183,9 @@ async def chat(
     if not isinstance(messages, list) or not messages:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Body must contain messages")
     try:
-        model = model_from_settings(settings)
-    except Exception as exc:  # unknown provider, missing key: a configuration problem
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"The model is not configured ({settings.model_provider}): {exc}. "
-            "Set ECHO_MODEL_PROVIDER, ECHO_MODEL_ID and ECHO_MODEL_API_KEY.",
-        ) from exc
+        chosen, model = await model_for_user(db, user, settings, box)
+    except ModelNotReady as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
     # tool outputs recorded by earlier turns resolve approval parts the browser still holds
     stored = await load_messages(db, conversation.id)
@@ -193,7 +202,7 @@ async def chat(
             messages = attach_viewing(messages, *described)
     body = {k: v for k, v in body.items() if k != "viewing"} | {"messages": messages}
     await replace_messages(db, conversation, messages)
-    run = AgentRun(conversation_id=conversation.id, model=model_label(settings))
+    run = AgentRun(conversation_id=conversation.id, model=chosen.label())
     db.add(run)
     await db.commit()  # the stream outlives this request's session
     run_id = run.id

@@ -632,6 +632,7 @@ source = { editable = "apps/server" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "anyio" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "pydantic" },
@@ -646,6 +647,7 @@ dependencies = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
     { name = "anyio", specifier = ">=4" },
+    { name = "cryptography", specifier = ">=43" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic", specifier = ">=2.9" },

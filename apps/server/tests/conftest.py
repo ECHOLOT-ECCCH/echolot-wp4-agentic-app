@@ -23,11 +23,37 @@ from pydantic_ai import DeferredToolRequests, DeferredToolResults
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
+from echolot_app import auth
 from echolot_app.agent.agent import build_agent
 from echolot_app.agent.deps import AgentDeps, WorkspaceContext
+from echolot_app.auth import CSRF_HEADER, create_user
 from echolot_app.main import create_app
 from echolot_app.settings import Settings
 from echolot_app.state import AppState
+
+PASSWORD = "correct horse battery"
+# what the web app sends with every request (docs/PLAN.md 7.11)
+API_HEADERS = {CSRF_HEADER: "1"}
+
+
+@pytest.fixture(autouse=True)
+def cheap_password_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """scrypt at its production cost takes about 0.1 s per hash; tests need no such strength."""
+    monkeypatch.setattr(auth, "_SCRYPT_N", 2**10)
+
+
+async def add_user(
+    state: AppState, email: str, *, admin: bool = False, password: str = PASSWORD
+) -> uuid.UUID:
+    async with state.db.session() as db:
+        user = await create_user(db, email, email.split("@")[0], password, is_admin=admin)
+        await db.commit()
+        return user.id
+
+
+async def sign_in(client: httpx.AsyncClient, email: str, password: str = PASSWORD) -> None:
+    response = await client.post("/api/auth/login", json={"email": email, "password": password})
+    assert response.status_code == 200, response.text
 
 
 @pytest.fixture
@@ -54,10 +80,25 @@ def state(app: FastAPI) -> AppState:
     return app.state.app
 
 
+def api_client(app: FastAPI) -> httpx.AsyncClient:
+    """A client for the app, not signed in, sending the web app's request header."""
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver", headers=API_HEADERS
+    )
+
+
 @pytest.fixture
-async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+async def anonymous(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    async with api_client(app) as c:
+        yield c
+
+
+@pytest.fixture
+async def client(app: FastAPI, state: AppState) -> AsyncIterator[httpx.AsyncClient]:
+    """Signed in as ana@example.org, an admin."""
+    await add_user(state, "ana@example.org", admin=True)
+    async with api_client(app) as c:
+        await sign_in(c, "ana@example.org")
         yield c
 
 
@@ -275,7 +316,11 @@ async def live(tmp_path: Path, fake_service: str) -> AsyncIterator[Live]:
         if server.started:
             break
         await asyncio.sleep(0.02)
-    async with httpx.AsyncClient(base_url=settings.public_url, timeout=30) as client:
+    await add_user(application.state.app, "ana@example.org", admin=True)
+    async with httpx.AsyncClient(
+        base_url=settings.public_url, timeout=30, headers=API_HEADERS
+    ) as client:
+        await sign_in(client, "ana@example.org")
         wid = (await client.post("/api/workspaces", json={"name": "Runs"})).json()["id"]
         names = [f"person {i}" for i in range(50)]
         names[17] = "boom"

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from echolot_app.agent.catalog import ModelCatalog
 from echolot_app.agent.runtime import AgentRuntime, PydanticAIRuntime
+from echolot_app.auth import LoginLimiter
+from echolot_app.crypto import SecretBox
 from echolot_app.db import Database
 from echolot_app.runs.executor import Executor
 from echolot_app.runs.local import LocalExecutor
@@ -22,6 +25,9 @@ class AppState:
     runtime: AgentRuntime
     executor: Executor
     poller: Poller
+    secret_box: SecretBox
+    catalog: ModelCatalog
+    login_limiter: LoginLimiter
 
 
 def build_executor(settings: Settings) -> Executor:
@@ -47,4 +53,10 @@ def build_state(settings: Settings) -> AppState:
         runtime=PydanticAIRuntime(),
         executor=executor,
         poller=Poller(db, executor, settings.run_poll_interval_s),
+        secret_box=SecretBox.from_setting(
+            settings.secret_key.get_secret_value() if settings.secret_key else None,
+            settings.data_dir / "secret.key",
+        ),
+        catalog=ModelCatalog(),
+        login_limiter=LoginLimiter(settings.login_max_failures, settings.login_window_s),
     )

@@ -164,3 +164,101 @@ class RunRowsPage(BaseModel):
     input_columns: list[str]
     output_columns: list[str]
     rows: list[RunRow]
+
+
+# --- accounts (docs/PLAN.md 7.11) --------------------------------------------------------------
+
+
+class LoginIn(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class UserOut(ApiModel):
+    id: uuid.UUID
+    email: str
+    name: str
+    is_admin: bool
+    is_active: bool
+    created_at: datetime
+    last_login_at: datetime | None
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class UserCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    name: str = Field(default="", max_length=200)
+    is_admin: bool = False
+    # omitted: a temporary password is generated and returned once
+    password: str | None = Field(default=None, max_length=256)
+
+
+class UserUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    is_admin: bool | None = None
+    is_active: bool | None = None
+
+
+class UserWithPassword(BaseModel):
+    """A new account or a reset: the temporary password is shown once and never stored."""
+
+    user: UserOut
+    password: str | None
+
+
+# --- model vendors and keys (docs/PLAN.md 7.11) ------------------------------------------------
+
+
+class SuggestedModelOut(BaseModel):
+    id: str
+    label: str
+
+
+class VendorOut(BaseModel):
+    name: str
+    label: str
+    needs_key: bool
+    needs_base_url: bool
+    key_url: str
+    suggested: list[SuggestedModelOut]
+    # the user's stored key for this vendor, if any
+    has_key: bool
+    key_hint: str
+    base_url: str | None
+    key_updated_at: datetime | None
+    key_last_used_at: datetime | None
+
+
+class KeyIn(BaseModel):
+    api_key: str | None = Field(default=None, max_length=4000)
+    base_url: str | None = Field(default=None, max_length=500)
+
+
+class ModelChoiceIn(BaseModel):
+    """Null provider: the server's model."""
+
+    provider: str | None = Field(default=None, max_length=32)
+    model_id: str | None = Field(default=None, max_length=200)
+
+
+class ServerModelOut(BaseModel):
+    provider: str
+    model_id: str
+
+
+class ModelChoiceOut(BaseModel):
+    provider: str
+    model_id: str
+    source: str  # "server" or "own"
+    # the server's model, when users may use it
+    server_model: ServerModelOut | None
+    ready: bool
+    problem: str | None
+
+
+class ProbeIn(BaseModel):
+    model_id: str | None = Field(default=None, max_length=200)
