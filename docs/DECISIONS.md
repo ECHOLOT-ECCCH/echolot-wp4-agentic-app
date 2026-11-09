@@ -490,3 +490,49 @@ The owner asked to prepare the app for docker-compose deployment.
   compose stack itself; CI's new `compose` job runs `deploy/smoke.sh`, which does all of it
   through Caddy, on the first push.
 
+
+## 2026-11-09 An external Prefect server (M4.3)
+
+The owner: "prefect will be running on some external address". The Compose deployment now
+assumes that, and keeps the bundled server as an option.
+
+- **The default stack is web and app.** The app sends runs to `ECHO_PREFECT_API_URL`; the runner
+  serves the flow on that server, normally next to ECHOLOT on a host of its own
+  (docs/runner-host.md, natively or with the runner image on the host's network, so ECHOLOT
+  can stay on 127.0.0.1). `ECHO_PUBLIC_URL` defaults in `.env.example` to the site's own
+  address, which that runner reaches through Caddy's `/runner/*`.
+- **Options, by file rather than by profile.** `COMPOSE_PROFILES=runner` adds the runner to the
+  stack, with the app's Prefect settings. `docker-compose.prefect.yml` adds a Prefect server
+  of the stack's own and points the app and the runner at it (`init.sh --with-prefect` writes
+  the `.env` for it; `smoke.sh` and CI use it). A separate file, because a runner depending on
+  a server in an inactive profile is an error before Compose 2.20 (`required: false`).
+- **One name per setting.** `.env` uses the app's names (`ECHO_PREFECT_API_URL`,
+  `ECHO_PREFECT_AUTH_STRING`, `ECHO_PREFECT_API_KEY`), which reach the app through `env_file`;
+  Compose maps them to the runner's `PREFECT_API_*` and the bundled server's
+  `PREFECT_SERVER_API_AUTH_STRING`. `PREFECT_AUTH_STRING` is gone (the branch is unreleased).
+  Empty values are safe: Prefect's client sends no header for an empty key or auth string
+  (checked with 3.8.8).
+- **An API key, too.** The executor sends `Bearer <key>` when only `ECHO_PREFECT_API_KEY` is set
+  (Prefect Cloud, or a proxy with tokens), with basic auth first as in Prefect's client. A 403
+  now reads as a refusal like a 401. This extends PLAN 7.6; the routes are unchanged.
+- **The runner's Prefect follows the server.** `PREFECT_VERSION` (build argument; in `.env` for
+  Compose) installs that version over uv.lock's 3.8.8 in the runner image; checked here with
+  3.4.0 in an environment built as the image's: the runner imports and serves. The bundled
+  server's image takes the same variable.
+- **`echolot-admin check-runs`**, because we cannot test the owner's server from here: where
+  runs go (the URL without credentials, the auth kind), then the server's version from
+  `/admin/version` (or, when a server does not report it, that `/deployments/filter` answers
+  like Prefect, which catches a URL without `/api`), the deployment, and its `status`, which
+  Prefect sets to `READY` while a runner polls and `NOT_READY` 60 s after the last poll. A note
+  says who can reach `ECHO_PUBLIC_URL` when it is a loopback or a one-label (Docker) name.
+  `smoke.sh` waits for it to pass before the end-to-end check. The app also logs the Prefect
+  URL and `ECHO_PUBLIC_URL` at start.
+- **Checked against a real Prefect 3.8.8 server with basic auth** (uvx, as in M2.3): no runner →
+  "no deployment"; wrong password and an API key against basic auth → refused (401); the URL
+  without `/api` → "no Prefect API answers"; nothing listening → not reachable; with
+  `echolot_runner.serve` running → all ok at the first try; 65 s after stopping it → "no runner
+  has polled it lately". Credentials in the URL are not printed. `docker compose config`
+  renders the default stack, the runner profile, the bundled override (and refuses it without
+  an auth string) and the local-runs override; `init.sh` with and without `--with-prefect`
+  writes a `.env` that Compose reads as intended. The images and the stack are still unbuilt
+  here (no Docker daemon); CI's `compose` job covers the bundled variant.

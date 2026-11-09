@@ -32,11 +32,12 @@ class AppState:
 
 def build_executor(settings: Settings) -> Executor:
     if settings.executor == "prefect":
-        auth = settings.prefect_auth_string
+        auth, key = settings.prefect_auth_string, settings.prefect_api_key
         return PrefectExecutor(
             settings.prefect_api_url,
             settings.prefect_deployment,
             auth.get_secret_value() if auth else None,
+            key.get_secret_value() if key else None,
         )
     return LocalExecutor(
         settings.data_dir / "runner", settings.local_services_file, settings.local_runner_env_file

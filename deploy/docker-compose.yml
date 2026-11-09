@@ -1,16 +1,19 @@
 # The workbench on one host: deploy/README.md. From this directory:
-#   ./init.sh                       # .env with fresh secrets, config/ from the examples
+#   ./init.sh                       # .env with a fresh secret key, config/ from the examples
+#   $EDITOR .env                    # the site, the Prefect server, ECHO_PUBLIC_URL
 #   docker compose up -d --build
 #   docker compose exec app echolot-admin create-user you@example.org --admin
+#   docker compose exec app echolot-admin check-runs
 #
 #   web     Caddy: https (or :80 behind your proxy), the single-page app, proxy to app
-#   app     FastAPI, SQLite and files in the app-data volume; reachable only through web
-#   prefect the Prefect server the app submits runs to        (profile "runner")
-#   runner  executes scripts, holds the service keys          (profile "runner")
+#   app     FastAPI, SQLite and files in the app-data volume; reachable only through web. It
+#           sends runs to the Prefect server at ECHO_PREFECT_API_URL
+#   runner  executes the scripts and holds the service keys (profile "runner"); usually it runs
+#           next to ECHOLOT on a host of its own instead (docs/runner-host.md)
 # The runner has no access to the app's data or secrets: a script reaches the app only with its
-# run's token, and the service keys never enter the app. COMPOSE_PROFILES=runner in .env starts
-# the two; leave it empty for a Prefect and runner elsewhere (ECHO_PREFECT_API_URL), or add
-# docker-compose.local-runs.yml to run scripts inside the app container (trusted users only).
+# run's token, and the service keys never enter the app. Other set-ups, by COMPOSE_FILE in .env:
+# docker-compose.prefect.yml adds a Prefect server of this stack's own (one host, a trial), and
+# docker-compose.local-runs.yml runs scripts inside the app container (trusted users only).
 name: echolot-workbench
 
 services:
@@ -42,7 +45,8 @@ services:
       target: app
     image: ${IMAGE_PREFIX:-echolot-workbench/}app:${IMAGE_TAG:-local}
     restart: unless-stopped
-    # every ECHO_* setting of .env (models, sessions, ...: .env.example); the fixed ones below win
+    # every ECHO_* setting of .env: models, sessions, the Prefect server (ECHO_PREFECT_API_URL,
+    # ECHO_PREFECT_AUTH_STRING or ECHO_PREFECT_API_KEY), ECHO_PUBLIC_URL; the fixed ones below win
     env_file: ${APP_ENV_FILE:-.env}
     environment:
       ECHO_DATA_DIR: /data
@@ -50,46 +54,11 @@ services:
       ECHO_SECRET_KEY: ${ECHO_SECRET_KEY:?run ./init.sh or set ECHO_SECRET_KEY in deploy/.env}
       ECHO_COOKIE_SECURE: ${ECHO_COOKIE_SECURE:-true}
       ECHO_EXECUTOR: ${ECHO_EXECUTOR:-prefect}
-      ECHO_PREFECT_API_URL: ${ECHO_PREFECT_API_URL:-http://prefect:4200/api}
-      ECHO_PREFECT_AUTH_STRING: ${PREFECT_AUTH_STRING:-}
-      # where the runner fetches input and sends results: the app on this network
-      ECHO_PUBLIC_URL: ${ECHO_PUBLIC_URL:-http://app:8000}
       ECHO_LOG_JSON: ${ECHO_LOG_JSON:-true}
       # only web reaches the app (no published port); it sends one X-Forwarded-For value
       FORWARDED_ALLOW_IPS: "*"
     volumes:
       - app-data:/data
-
-  prefect:
-    profiles: ["runner"]
-    image: prefecthq/prefect:${PREFECT_VERSION:-3.8.8}-python3.12
-    restart: unless-stopped
-    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
-    environment:
-      PREFECT_HOME: /prefect
-      PREFECT_SERVER_API_AUTH_STRING: ${PREFECT_AUTH_STRING:?run ./init.sh or set PREFECT_AUTH_STRING in deploy/.env}
-      PREFECT_SERVER_UI_API_URL: http://localhost:${PREFECT_PORT:-4200}/api
-      PREFECT_SERVER_ANALYTICS_ENABLED: "false"
-    # the Prefect UI, for an SSH tunnel: ssh -L 4200:localhost:4200 <host>
-    ports:
-      - "127.0.0.1:${PREFECT_PORT:-4200}:4200"
-    volumes:
-      - prefect-data:/prefect
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - |
-          import base64, os, urllib.request as u
-          r = u.Request("http://127.0.0.1:4200/api/health")
-          a = os.environ["PREFECT_SERVER_API_AUTH_STRING"]
-          r.add_header("Authorization", "Basic " + base64.b64encode(a.encode()).decode())
-          u.urlopen(r, timeout=4)
-      interval: 10s
-      timeout: 6s
-      start_period: 20s
-      retries: 10
 
   runner:
     profiles: ["runner"]
@@ -97,13 +66,17 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
       target: runner
+      args:
+        PREFECT_VERSION: ${PREFECT_VERSION:-}
     image: ${IMAGE_PREFIX:-echolot-workbench/}runner:${IMAGE_TAG:-local}
     restart: unless-stopped
     # the service keys named by key_env in config/services.toml, e.g. ECHOLOT_API_KEY=...
     env_file: ${RUNNER_ENV_FILE:-config/runner.env}
     environment:
-      PREFECT_API_URL: http://prefect:4200/api
-      PREFECT_API_AUTH_STRING: ${PREFECT_AUTH_STRING:?run ./init.sh or set PREFECT_AUTH_STRING in deploy/.env}
+      # the app's Prefect server and credentials; the runner serves the flow there
+      PREFECT_API_URL: ${ECHO_PREFECT_API_URL:-}
+      PREFECT_API_AUTH_STRING: ${ECHO_PREFECT_AUTH_STRING:-}
+      PREFECT_API_KEY: ${ECHO_PREFECT_API_KEY:-}
       PREFECT_RUNNER_POLL_FREQUENCY: ${PREFECT_RUNNER_POLL_FREQUENCY:-2}
       RUNNER_SERVICES_FILE: /config/services.toml
       RUNNER_MAX_RUNS: ${RUNNER_MAX_RUNS:-4}
@@ -112,12 +85,8 @@ services:
     extra_hosts:
       # services on this host (ECHOLOT): http://host.docker.internal:5000 in services.toml
       - "host.docker.internal:host-gateway"
-    depends_on:
-      prefect:
-        condition: service_healthy
 
 volumes:
   app-data:
   caddy-data:
   caddy-config:
-  prefect-data:

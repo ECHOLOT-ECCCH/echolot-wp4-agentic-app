@@ -58,7 +58,10 @@ class Settings(BaseSettings):
     executor: Literal["local", "prefect"] = "local"
     public_url: str = "http://127.0.0.1:8000"
     prefect_api_url: str = "http://127.0.0.1:4200/api"
+    # user:password for a server with PREFECT_SERVER_API_AUTH_STRING, or an API key (Prefect
+    # Cloud, a proxy that wants a bearer token); the auth string wins when both are set
     prefect_auth_string: SecretStr | None = None
+    prefect_api_key: SecretStr | None = None
     prefect_deployment: str = "run-script/default"
     # the agent-facing service docs (docs/PLAN.md 7.7)
     services_dir: Path = Path("./services")

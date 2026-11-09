@@ -21,7 +21,7 @@ make deploy-smoke # docker: build the images, start deploy/docker-compose.yml, c
 ## Layout
 apps/server (FastAPI, agent, runs, SQLite) · apps/web (React) · runner (harness + Prefect flow, deployed to the
 runner host, no dependency on the app) · services/*.md (agent-facing service docs) · deploy/ (Docker Compose:
-images, Caddy, bundled Prefect and runner; deploy/README.md)
+images, Caddy, an optional runner and Prefect server; deploy/README.md)
 
 ## Conventions
 - Python 3.12, uv workspace, src layout, ruff + pyright, async SQLAlchemy 2 (aiosqlite), pydantic v2, pytest-asyncio. Public functions typed.

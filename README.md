@@ -52,13 +52,17 @@ make e2e               # browser smoke tests (start their own servers)
 
 ## Deploying for testers
 
-[deploy/README.md](deploy/README.md): Docker Compose on one host, with https (Caddy), the app, and
-a Prefect server and runner that keep the scripts away from the app's data and secrets:
+[deploy/README.md](deploy/README.md): Docker Compose on one host, with https (Caddy) and the app.
+Runs go to your Prefect server, where a runner next to ECHOLOT executes the scripts, away from
+the app's data and secrets ([docs/runner-host.md](docs/runner-host.md)); the stack can also run
+the runner, or a Prefect server of its own (`./init.sh --with-prefect`).
 
 ```bash
-cd deploy && ./init.sh             # .env with new secrets; then set SITE_ADDRESS in it
+cd deploy && ./init.sh             # .env with a new secret key; then set SITE_ADDRESS,
+                                   # ECHO_PREFECT_API_URL and its credentials, ECHO_PUBLIC_URL
 docker compose up -d --build
 docker compose exec app echolot-admin create-user you@example.org --admin
+docker compose exec app echolot-admin check-runs    # the Prefect server and the runner
 ```
 
 Testers sign in with accounts an admin makes (Settings → Users), bring their own model keys, or

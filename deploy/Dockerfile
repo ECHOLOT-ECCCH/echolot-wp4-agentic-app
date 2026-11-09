@@ -2,7 +2,7 @@
 #   web     Caddy with the built single-page app: TLS, static files, proxy to the app
 #   app     the FastAPI app (agent, runs, SQLite under /data) and echolot-admin
 #   runner  the Prefect flow that runs scripts, next to the services (docs/runner-host.md)
-# deploy/docker-compose.yml builds all three.
+# deploy/docker-compose.yml builds all three. The runner also runs alone on a runner host.
 
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 
@@ -61,10 +61,15 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=5 \
 CMD ["uvicorn", "echolot_app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM python-base AS runner
-# the runner and the Prefect version of uv.lock, which must match the Prefect server's
+# the runner and Prefect: uv.lock's version, or PREFECT_VERSION to match the Prefect server the
+# runner serves the flow on (the client should not be newer than the server)
 RUN uv sync --frozen --no-dev --no-install-workspace --package echolot-runner --extra flow
 COPY runner runner
-RUN uv sync --frozen --no-dev --no-editable --package echolot-runner --extra flow
+ARG PREFECT_VERSION=
+RUN uv sync --frozen --no-dev --no-editable --package echolot-runner --extra flow \
+ && if [ -n "$PREFECT_VERSION" ]; then \
+      uv pip install --python /opt/venv/bin/python "prefect==$PREFECT_VERSION"; \
+    fi
 ENV PATH=/opt/venv/bin:$PATH
 USER echolot
 WORKDIR /home/echolot

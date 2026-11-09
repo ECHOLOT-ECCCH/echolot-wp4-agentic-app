@@ -57,7 +57,7 @@ e2e:
 
 # placeholders for the required settings: building needs none of them, and none is baked in
 images:
-	ECHO_SECRET_KEY=unused PREFECT_AUTH_STRING=unused APP_ENV_FILE=/dev/null RUNNER_ENV_FILE=/dev/null \
+	ECHO_SECRET_KEY=unused APP_ENV_FILE=/dev/null RUNNER_ENV_FILE=/dev/null \
 	  docker compose -f deploy/docker-compose.yml --env-file /dev/null --profile runner build
 
 deploy-smoke:

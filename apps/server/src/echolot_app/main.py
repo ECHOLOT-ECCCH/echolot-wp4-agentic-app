@@ -27,6 +27,7 @@ from echolot_app.routers import (
     services,
     workspaces,
 )
+from echolot_app.runs.prefect import display_url
 from echolot_app.settings import Settings, get_settings
 from echolot_app.state import AppState, build_state
 from echolot_app.storage import NotFoundError, StorageError
@@ -78,7 +79,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await state.db.create_all()
         app.state.app = state
         state.poller.start()
-        log.info("app.started", version=__version__, data_dir=str(settings.data_dir))
+        runs = {"executor": settings.executor}
+        if settings.executor == "prefect":  # where runs go; "echolot-admin check-runs" tests it
+            runs["prefect"] = display_url(settings.prefect_api_url)
+            runs["public_url"] = settings.public_url
+        log.info("app.started", version=__version__, data_dir=str(settings.data_dir), **runs)
         try:
             yield
         finally:

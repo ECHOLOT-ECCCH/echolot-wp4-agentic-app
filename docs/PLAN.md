@@ -32,8 +32,11 @@ chat, persistence and approval code being lifted, and are worth reading before t
 
 - Current milestone: M3. M2 is complete (2026-10-27). M4 (accounts, own model keys, the Docker
   Compose deployment) is built on the branch `feat/users-and-byok` (2026-11-09), ahead of M3.4:
-  see section 12e. M4.3 waits for a host: the images have not been built on this machine (no
-  Docker daemon access); CI's `compose` job builds and checks them on the first push.
+  see section 12e. The Prefect server will be an external one (owner, 2026-11-09): the
+  Compose stack sends runs to `ECHO_PREFECT_API_URL` and brings its own Prefect only as an
+  option. M4.3 waits for a host and that server's address: the images have not been built on
+  this machine (no Docker daemon access); CI's `compose` job builds and checks them on the
+  first push.
 - Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
   M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
@@ -41,8 +44,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
   90 of 199 well-known (mostly Basque) people, e.g. Eduardo Chillida (DECISIONS 2026-10-27, M2.3).
   CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
-  - Where the Prefect server and the runner host live, and which Prefect version the server runs
-    (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
+  - The external Prefect server's address, its auth (basic or an API key) and its Prefect
+    version (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build); where the runner runs (next to
+    ECHOLOT, or in the app's stack). Needed for M4.3.
   - Whether the runner host can reach the app over HTTP (section 7.3). Needed for M2.
   - A real export of entities from ehkultura.wikibase.cloud for M3 (CSV or JSONL).
 - Last update: 2026-11-09.
@@ -274,7 +278,10 @@ class Executor(Protocol):
 - `GET /api/flow_runs/{id}`, reading `state.type` and `state.message`.
 - `POST /api/flow_runs/{id}/set_state` with body `{"state": {"type": "CANCELLING"}}`.
 - Basic auth when `ECHO_PREFECT_AUTH_STRING` is set; it is the value of the server's
-  `PREFECT_SERVER_API_AUTH_STRING`.
+  `PREFECT_SERVER_API_AUTH_STRING`. Otherwise a bearer key when `ECHO_PREFECT_API_KEY` is set
+  (Prefect Cloud, a proxy that wants a token), as Prefect's own client does.
+- `echolot-admin check-runs` also reads `GET /api/admin/version` (or, without it,
+  `POST /api/deployments/filter`) and the deployment's `status` (`READY` while a runner polls).
 
 ### 7.7 Services
 
@@ -642,9 +649,14 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
     `runner`), `init.sh` for secrets, `smoke.sh` with `smoke_check.py`, the operator's README;
     CI's `compose` job runs the smoke test. The local executor no longer passes the app's
     `ECHO_*` settings to scripts.
+  - [x] An external Prefect server by default: web and app only, runs to
+    `ECHO_PREFECT_API_URL` with basic auth or an API key; the runner in the stack is a profile,
+    the bundled server an override file (`init.sh --with-prefect`, the smoke test);
+    `PREFECT_VERSION` builds the runner image for the server's version; `echolot-admin
+    check-runs` checks the server, the deployment and that a runner polls it.
   - [ ] Acceptance: `deploy/smoke.sh` green in CI; on the owner's host, https in front, the
-    first admin created, a tester signs in with a key of their own and completes the loop with
-    ECHOLOT through the bundled runner.
+    first admin created, `check-runs` green against the external Prefect server, a tester signs
+    in with a key of their own and completes the loop with ECHOLOT through the runner.
 
 ## 13. System prompt (outline for `agent/prompts/system.md`)
 
@@ -695,14 +707,15 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
   user and can read the app's data and secrets: single users or trusted groups only. Hardening
   is in section 14.
 - **The run token travels in Prefect parameters**, visible to anyone with access to the Prefect
-  UI. It is scoped to one run and expires at its end.
+  UI. It is scoped to one run and expires at its end. On an external, shared Prefect server
+  that is everyone with access to it.
 - **The runner must reach the app.** Same host or network in M2; otherwise the object-store data
   plane.
 - **Prefect scheduling latency** (the runner polls every 10 s by default) slows the sample loop
   in the chat. Measure in M2.3; lower `PREFECT_RUNNER_POLL_FREQUENCY`; samples can stay on
   `LocalExecutor` if the app host can reach the services.
 - **Prefect versions.** The runner's `prefect` must match the server's; ECHOLOT pins a dev build.
-  Confirm with the owner before M2.
+  The runner image takes `PREFECT_VERSION`; the app's few REST routes are stable across Prefect 3.
 - **Accounts are local and in-process.** Sign-in throttling lives in memory (one process) and
   forgets on restart; there is no e-mail flow, so an admin hands out temporary passwords. Serve
   the app over https only (the cookie is Secure then) and run uvicorn with `--proxy-headers`

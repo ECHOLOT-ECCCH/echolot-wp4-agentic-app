@@ -1,26 +1,27 @@
 # Deploying the workbench with Docker Compose
 
-One host runs the whole workbench for a group of testers: the web front with https, the app,
-and a Prefect server with a runner that executes the scripts. The services the scripts call
-(ECHOLOT) run elsewhere or on the same host.
+One host runs the web front with https and the app. Runs go to a Prefect server that you give
+the app (`ECHO_PREFECT_API_URL`), where a runner serves the workbench's flow and executes the
+scripts next to the services they call (ECHOLOT). The runner can also run in this stack, and for
+a single host or a trial the stack can bring a Prefect server of its own.
 
 ```
- browser ──https──▶ web (Caddy) ──/api, /runner──▶ app (FastAPI, SQLite) ──REST──▶ prefect
-                     └─ the single-page app                ▲                         ▲ polls
-                                                           └── input, results ──── runner ──▶ ECHOLOT
-                                                               (per-run token)     (service keys)
+ browser ──https──▶ web (Caddy) ──/api, /runner──▶ app (FastAPI, SQLite) ──REST──▶ Prefect server
+                     └─ the single-page app            ▲                         (ECHO_PREFECT_API_URL)
+                                                       │                                ▲ polls
+                                                       └──── input, results ──────── runner ──▶ ECHOLOT
+                                                         (ECHO_PUBLIC_URL, per-run token)  (service keys)
 ```
 
 | Container | Image | Holds |
 |---|---|---|
 | `web` | Caddy with the built web app | certificates (`caddy-data`) |
 | `app` | the FastAPI app and `echolot-admin` | database, uploads, results (`app-data`); the secret key and the users' encrypted model keys |
-| `prefect` | `prefecthq/prefect` | the flow runs (`prefect-data`) |
-| `runner` | the runner and Prefect | the service keys (`config/runner.env`); nothing of the app |
+| `runner` (optional) | the runner and Prefect | the service keys (`config/runner.env`); nothing of the app |
+| `prefect` (optional) | `prefecthq/prefect` | the flow runs (`prefect-data`) |
 
-Only `web` is published (80 and 443; the Prefect UI on 127.0.0.1:4200). A script runs in the
-runner container: it can call the services and reach the app only with its own run's token, never
-the app's data or secrets. That is why the runner is a container of its own even on one host.
+Only `web` is published (80 and 443). A script runs where the runner runs: it can call the
+services and reach the app only with its own run's token, never the app's data or secrets.
 
 ## Requirements
 
@@ -28,24 +29,36 @@ the app's data or secrets. That is why the runner is a container of its own even
 - 2 CPUs, 4 GB of memory and a few GB of disk for the images; data grows with the uploads.
 - For automatic https: a DNS name pointing at the host, ports 80 and 443 open. Behind an
   institution's reverse proxy instead, see below.
+- A Prefect 3 server the app reaches over HTTP(S): its API URL and its credentials (basic auth
+  or an API key). The runner must reach the same server and this site.
 
 ## Install
 
 ```bash
 git clone https://github.com/ECHOLOT-ECCCH/echolot-wp4-agentic-app.git
 cd echolot-wp4-agentic-app/deploy
-./init.sh                          # .env with new secrets, config/ from the examples
-$EDITOR .env                       # SITE_ADDRESS; the model settings
-$EDITOR config/services.toml       # where the runner finds ECHOLOT (below)
-$EDITOR config/runner.env          # ECHOLOT_API_KEY=...
+./init.sh                          # .env with a new secret key, config/ from the examples
+$EDITOR .env                       # SITE_ADDRESS, ECHO_PREFECT_*, ECHO_PUBLIC_URL, the models
 docker compose up -d --build       # the first build takes a few minutes
-docker compose ps                  # app healthy, web, prefect healthy, runner up
+docker compose ps                  # app healthy, web up
 docker compose exec app echolot-admin create-user you@example.org --name "You" --admin
+docker compose exec app echolot-admin check-runs
 ```
 
-The last command prints a temporary password. Sign in at `https://<SITE_ADDRESS>`, change it
+`create-user` prints a temporary password. Sign in at `https://<SITE_ADDRESS>`, change it
 under Settings → Account, and add the testers under Settings → Users: each new account gets a
 temporary password, shown once, that you hand over privately. There is no sign-up and no e-mail.
+
+`check-runs` shows where runs go and whether the Prefect server answers, the runner's
+deployment (`run-script/default`) exists and a runner polls it:
+
+```
+Runs go to the Prefect server at https://prefect.example.org/api (basic auth), deployment run-script/default.
+ok    the Prefect server answers (3.8.8)
+ok    the deployment run-script/default exists
+ok    a runner polls it (last at 2026-11-09T10:00:02Z)
+note  the runner fetches input and sends results to https://workbench.example.org (ECHO_PUBLIC_URL)
+```
 
 ## Models
 
@@ -54,13 +67,50 @@ OpenRouter or DeepSeek, and choose the model in the chat. If `.env` sets `ECHO_M
 `ECHO_MODEL_PROVIDER` and `ECHO_MODEL_ID` are also offered to everyone as "Server default", on
 your bill. The app container must reach the vendors' APIs over https.
 
-## Runs and ECHOLOT
+## Runs
 
-The runner calls the services listed in `config/services.toml`, with the keys of
-`config/runner.env`. After changing either: `docker compose up -d --force-recreate runner`.
+The app creates each run as a flow run of the deployment `run-script/default` on the Prefect
+server in `.env`:
 
-ECHOLOT's standalone API listens on 127.0.0.1:5000 by default, which a container cannot reach.
-Either:
+```bash
+ECHO_PREFECT_API_URL=https://prefect.example.org/api   # the API, usually ending in /api
+ECHO_PREFECT_AUTH_STRING=user:password                 # basic auth (PREFECT_SERVER_API_AUTH_STRING)
+# ECHO_PREFECT_API_KEY=...                             # or a key: Prefect Cloud, a token proxy
+ECHO_PUBLIC_URL=https://workbench.example.org          # where the runner reaches this app
+```
+
+A runner serves that deployment on the same server, picks the run up, fetches its input from
+`ECHO_PUBLIC_URL` (Caddy passes `/runner/*` to the app), calls the services and sends the
+results back the same way. So the runner must reach this site, and the app must reach the
+Prefect server. Each run's parameters on the Prefect server hold its token, which opens that
+run's input and results until the run ends: keep that server's UI to the people who run the
+workbench.
+
+**The runner's Prefect version** should match the server's. The runner image has uv.lock's
+(3.8.8); for another server version set `PREFECT_VERSION` in `.env` (or `--build-arg
+PREFECT_VERSION=...` for the image alone) and rebuild. The app talks to any Prefect 3 server.
+
+Where the runner runs:
+
+- **Next to ECHOLOT, on a host of its own** (the usual case): set it up there per
+  [docs/runner-host.md](../docs/runner-host.md), natively or with this repository's runner
+  image. Nothing more to set here; `config/` is unused.
+- **In this stack:** `COMPOSE_PROFILES=runner` and `ECHO_PUBLIC_URL=http://app:8000` in
+  `.env`; the services it may call in `config/services.toml`, their keys in
+  `config/runner.env` (`ECHOLOT_API_KEY=...`). After changing either:
+  `docker compose up -d --force-recreate runner`. It uses the app's Prefect settings.
+- **In this stack, with a Prefect server of its own** (one host, a trial, no Prefect server to
+  use): `./init.sh --with-prefect` writes a `.env` that adds `docker-compose.prefect.yml` and
+  the runner, with a generated auth string; `ECHO_PREFECT_API_URL` and `ECHO_PUBLIC_URL` are
+  then not used. Its UI: `ssh -L 4200:localhost:4200 <host>`, then http://localhost:4200, with
+  `ECHO_PREFECT_AUTH_STRING`.
+- **Inside the app container**, without Prefect:
+  `COMPOSE_FILE=docker-compose.yml:docker-compose.local-runs.yml` in `.env`. Only for a single
+  user or people who trust each other: a script then runs as the app's user and can read the
+  app's data and secrets, other users' model keys included.
+
+**ECHOLOT and a runner in this stack.** ECHOLOT's standalone API listens on 127.0.0.1:5000 by
+default, which a container cannot reach. Either:
 
 - **ECHOLOT on this host, outside Docker:** let it listen on the Docker bridge (`172.17.0.1`) or
   on all interfaces behind a firewall, and keep `url = "http://host.docker.internal:5000"`.
@@ -80,17 +130,6 @@ Either:
   ```
 
 - **ECHOLOT on another host:** its URL in `services.toml`.
-
-Other ways to run scripts, set in `.env`:
-
-- **A Prefect server and runner elsewhere** (for example next to ECHOLOT, set up per
-  [docs/runner-host.md](../docs/runner-host.md)): `COMPOSE_PROFILES=` (empty),
-  `ECHO_PREFECT_API_URL`, `PREFECT_AUTH_STRING` as that server expects, and `ECHO_PUBLIC_URL`
-  set to this site's https address, which that runner must reach.
-- **Inside the app container**, without Prefect:
-  `COMPOSE_FILE=docker-compose.yml:docker-compose.local-runs.yml` and `COMPOSE_PROFILES=`. Only
-  for a single user or people who trust each other: a script then runs as the app's user and can
-  read the app's data and secrets, other users' model keys included.
 
 ## Behind a reverse proxy
 
@@ -117,6 +156,9 @@ location / {
 }
 ```
 
+A runner on another host comes in the same way (`ECHO_PUBLIC_URL`, the paths under
+`/runner/`), so the proxy must be reachable from it too.
+
 Keep `ECHO_COOKIE_SECURE=true`: the browser talks https to the proxy. Set it to `false` only
 for a plain-http trial from another machine (http://localhost works with it on).
 
@@ -127,7 +169,7 @@ for a plain-http trial from another machine (http://localhost works with it on).
 | Logs (JSON lines for the app) | `docker compose logs -f app` (or `web`, `runner`, `prefect`) |
 | Update | `git pull && docker compose up -d --build` |
 | Accounts from the shell | `docker compose exec app echolot-admin --help` (create, reset, disable, list) |
-| The Prefect UI | `ssh -L 4200:localhost:4200 <host>`, then http://localhost:4200, with `PREFECT_AUTH_STRING` |
+| Runs fail to start | `docker compose exec app echolot-admin check-runs` |
 | Stop / start | `docker compose stop` / `docker compose up -d` |
 
 The database schema is upgraded at the app's start. Run a single app container and a single
@@ -154,6 +196,7 @@ Drop the old key once every tester has re-saved theirs.
 ## Checking a build
 
 `deploy/smoke.sh` (or `make deploy-smoke` from the repository root) builds the images, starts
-the whole stack with the test model on http://127.0.0.1:8080, and checks the pages, sign-in, a
-streamed chat turn and a run through Prefect and the runner; then it removes the stack. CI runs
-it on every push. It uses neither `.env` nor `config/`.
+the whole stack with a Prefect server of its own and the test model on http://127.0.0.1:8080,
+waits for `check-runs` to pass, and checks the pages, sign-in, a streamed chat turn and a run
+through Prefect and the runner; then it removes the stack. CI runs it on every push. It uses
+neither `.env` nor `config/`.

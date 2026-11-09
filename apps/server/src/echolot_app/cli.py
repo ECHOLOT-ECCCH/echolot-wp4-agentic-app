@@ -4,6 +4,7 @@
     uv run echolot-admin set-password ana@example.org
     uv run echolot-admin list-users
     uv run echolot-admin disable-user ana@example.org   (enable-user to undo)
+    uv run echolot-admin check-runs     (the Prefect server answers, a runner serves the flow)
 
 Uses the same settings as the app (ECHO_DATA_DIR, .env). Without --password-stdin a temporary
 password is generated and printed once; the user changes it under Settings → Account.
@@ -14,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
@@ -26,7 +28,9 @@ from echolot_app.auth import (
     set_password,
 )
 from echolot_app.db import Database, User
-from echolot_app.settings import get_settings
+from echolot_app.runs.prefect import PrefectExecutor, display_url
+from echolot_app.settings import Settings, get_settings
+from echolot_app.state import build_executor
 
 
 def _password(args: argparse.Namespace) -> tuple[str, bool]:
@@ -87,8 +91,36 @@ async def _run(args: argparse.Namespace) -> int:
         await database.dispose()
 
 
+async def _check_runs(settings: Settings) -> int:
+    """Where runs go, and whether that works from here: the same settings as the app's."""
+    executor = build_executor(settings)
+    if not isinstance(executor, PrefectExecutor):
+        print("Runs execute as subprocesses of the app (ECHO_EXECUTOR=local).")
+        return 0
+    print(
+        f"Runs go to the Prefect server at {display_url(settings.prefect_api_url)} "
+        f"({executor.auth}), deployment {settings.prefect_deployment}."
+    )
+    try:
+        found = await executor.check()
+    finally:
+        await executor.aclose()
+    for fine, what in found:
+        print(f"{'ok  ' if fine else 'FAIL'}  {what}")
+    host = urlsplit(settings.public_url).hostname or ""
+    reach = f"the runner fetches input and sends results to {settings.public_url} (ECHO_PUBLIC_URL)"
+    if host in ("localhost", "127.0.0.1", "::1"):
+        reach += ": only a runner on this machine reaches that"
+    elif "." not in host:
+        reach += ": only a runner on the same Docker network reaches that"
+    print(f"note  {reach}")
+    return 0 if all(fine for fine, _ in found) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="echolot-admin", description="Manage user accounts.")
+    parser = argparse.ArgumentParser(
+        prog="echolot-admin", description="Manage user accounts; check the run setup."
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create-user", help="create an account")
     create.add_argument("email")
@@ -101,7 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("list-users", help="list accounts")
     for name in ("disable-user", "enable-user"):
         commands.add_parser(name, help=f"{name.split('-')[0]} an account").add_argument("email")
-    return asyncio.run(_run(parser.parse_args(argv)))
+    commands.add_parser("check-runs", help="check the Prefect server and the runner")
+    args = parser.parse_args(argv)
+    if args.command == "check-runs":
+        return asyncio.run(_check_runs(get_settings()))
+    return asyncio.run(_run(args))
 
 
 if __name__ == "__main__":

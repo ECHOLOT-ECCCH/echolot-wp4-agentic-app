@@ -1,0 +1,53 @@
+# A Prefect server of this stack's own, with the runner next to it: everything on one host, for
+# a trial or when there is no Prefect server to use (deploy/smoke.sh uses it too). In .env
+# (./init.sh --with-prefect writes these):
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prefect.yml
+#   COMPOSE_PROFILES=runner
+#   ECHO_PREFECT_AUTH_STRING=echolot:<something random>
+# The app and the runner then use this server, whatever ECHO_PREFECT_API_URL and ECHO_PUBLIC_URL
+# say. Its UI listens on the host's 127.0.0.1:4200, for an SSH tunnel.
+services:
+  prefect:
+    image: prefecthq/prefect:${PREFECT_VERSION:-3.8.8}-python3.12
+    restart: unless-stopped
+    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
+    environment:
+      PREFECT_HOME: /prefect
+      PREFECT_SERVER_API_AUTH_STRING: ${ECHO_PREFECT_AUTH_STRING:?set ECHO_PREFECT_AUTH_STRING=user:password in deploy/.env}
+      PREFECT_SERVER_UI_API_URL: http://localhost:${PREFECT_PORT:-4200}/api
+      PREFECT_SERVER_ANALYTICS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${PREFECT_PORT:-4200}:4200"
+    volumes:
+      - prefect-data:/prefect
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import base64, os, urllib.request as u
+          r = u.Request("http://127.0.0.1:4200/api/health")
+          a = os.environ["PREFECT_SERVER_API_AUTH_STRING"]
+          r.add_header("Authorization", "Basic " + base64.b64encode(a.encode()).decode())
+          u.urlopen(r, timeout=4)
+      interval: 10s
+      timeout: 6s
+      start_period: 20s
+      retries: 10
+
+  app:
+    environment:
+      ECHO_PREFECT_API_URL: http://prefect:4200/api
+      # the runner of this stack reaches the app on the stack's network
+      ECHO_PUBLIC_URL: http://app:8000
+
+  runner:
+    environment:
+      PREFECT_API_URL: http://prefect:4200/api
+    depends_on:
+      prefect:
+        condition: service_healthy
+
+volumes:
+  prefect-data:

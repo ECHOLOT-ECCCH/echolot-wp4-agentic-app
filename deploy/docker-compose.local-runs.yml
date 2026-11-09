@@ -1,9 +1,8 @@
-# Scripts run as subprocesses of the app (ECHO_EXECUTOR=local), without Prefect: one container
-# less, samples start at once. Only for a single user or a group that trusts each other: a
-# script then runs as the app's user, so it can read the app's data and secrets, other users'
-# stored model keys included. In .env:
+# Scripts run as subprocesses of the app (ECHO_EXECUTOR=local), without Prefect or a runner:
+# samples start at once. Only for a single user or a group that trusts each other: a script then
+# runs as the app's user, so it can read the app's data and secrets, other users' stored model
+# keys included. In .env (without COMPOSE_PROFILES=runner):
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.local-runs.yml
-#   COMPOSE_PROFILES=
 services:
   app:
     # the service keys join the app's environment; the runner subprocess inherits them
