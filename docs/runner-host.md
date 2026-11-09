@@ -1,5 +1,9 @@
 # The runner host
 
+The Docker Compose deployment ([deploy/README.md](../deploy/README.md)) brings its own Prefect
+server and runner as containers. This guide is for a runner on a host of its own, for example
+next to ECHOLOT, with the app's `ECHO_EXECUTOR=prefect` pointing at it.
+
 The runner executes workspace scripts record by record, next to the services they call. It is
 a Prefect deployment (`run-script/default`) served by `python -m echolot_runner.serve`; the app
 creates flow runs over Prefect's REST API and never runs scripts itself (docs/PLAN.md 7.2–7.7).

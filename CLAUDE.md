@@ -16,10 +16,12 @@ make web          # Vite on :5173, proxies /api and /runner to :8000
 make check        # ruff, pyright, pytest (server + runner), web lint, tsc, vitest. Must pass before every commit.
 uv run echolot-admin create-user you@example.org --admin   # an account (prints a temporary password)
 make e2e          # playwright smoke (test model, LocalExecutor, fake service)
+make deploy-smoke # docker: build the images, start deploy/docker-compose.yml, check it end to end
 
 ## Layout
 apps/server (FastAPI, agent, runs, SQLite) · apps/web (React) · runner (harness + Prefect flow, deployed to the
-runner host, no dependency on the app) · services/*.md (agent-facing service docs)
+runner host, no dependency on the app) · services/*.md (agent-facing service docs) · deploy/ (Docker Compose:
+images, Caddy, bundled Prefect and runner; deploy/README.md)
 
 ## Conventions
 - Python 3.12, uv workspace, src layout, ruff + pyright, async SQLAlchemy 2 (aiosqlite), pydantic v2, pytest-asyncio. Public functions typed.

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from echolot_app.runs.executor import ExecState
-from echolot_app.runs.local import LocalExecutor, read_env_file
+from echolot_app.runs.local import LocalExecutor, read_env_file, runner_environment
 
 
 async def test_a_relative_data_dir_still_finds_the_params(
@@ -79,3 +79,19 @@ def test_env_file_lines(tmp_path: Path) -> None:
     )
     assert read_env_file(path) == {"A": "1", "B": "two words", "D": "x=y"}
     assert read_env_file(tmp_path / "missing.env") == {}
+
+
+def test_the_apps_own_settings_stay_out_of_the_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ECHO_SECRET_KEY", "the app's secret")
+    monkeypatch.setenv("ECHO_MODEL_API_KEY", "sk-server")
+    monkeypatch.setenv("SOME_PROXY_SETTING", "kept")
+    env_file = tmp_path / "runner.env"
+    env_file.write_text("ECHOLOT_API_KEY=service-key\nECHO_TEST_RUNNER_KEY=asked-for\n")
+    env = runner_environment(env_file)
+    assert "ECHO_SECRET_KEY" not in env and "ECHO_MODEL_API_KEY" not in env
+    assert env["SOME_PROXY_SETTING"] == "kept"
+    # what runner.env names on purpose gets through, whatever its name
+    assert env["ECHOLOT_API_KEY"] == "service-key"
+    assert env["ECHO_TEST_RUNNER_KEY"] == "asked-for"

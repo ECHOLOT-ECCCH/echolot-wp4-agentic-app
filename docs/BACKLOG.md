@@ -12,4 +12,5 @@ Move an item into docs/PLAN.md when it is scheduled. Elexifier's backlog is in `
 - Enrichment as the second use case: verify reconciliation candidates against Wikidata's public API (wbgetentities: description, birth and death dates) as a second service.
 - Dataset-level scripts (`process_all(records, ctx)`) for deduplication and clustering.
 - A result cache keyed by service, request body and script hash, so re-runs do not repeat identical service calls.
-- XLSX input (openpyxl), Alembic migrations, a one-container deployment (server with the built web), conversation compaction, cost per turn.
+- XLSX input (openpyxl), Alembic migrations, conversation compaction, cost per turn.
+- Publish the three images to ghcr.io from CI (tags per branch and release), so a host pulls instead of building (`IMAGE_PREFIX`, `IMAGE_TAG` in deploy/.env are ready for it).

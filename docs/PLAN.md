@@ -30,8 +30,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
 
 ## 1. Status
 
-- Current milestone: M3. M2 is complete (2026-10-27). M4 (accounts and own model keys) is
-  built on the branch `feat/users-and-byok` (2026-11-09), ahead of M3.4: see section 12e.
+- Current milestone: M3. M2 is complete (2026-10-27). M4 (accounts, own model keys, the Docker
+  Compose deployment) is built on the branch `feat/users-and-byok` (2026-11-09), ahead of M3.4:
+  see section 12e. M4.3 waits for a host: the images have not been built on this machine (no
+  Docker daemon access); CI's `compose` job builds and checks them on the first push.
 - Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
   M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
@@ -136,6 +138,7 @@ plan.
 ```
 CLAUDE.md  README.md  Makefile  pyproject.toml (uv workspace: apps/server, runner)  pnpm-workspace.yaml
 docs/PLAN.md  docs/DECISIONS.md  docs/BACKLOG.md  docs/runner-host.md  docs/archive/elexifier/
+deploy/                        # Docker Compose: Dockerfile (web, app, runner), Caddyfile, README
 apps/server/src/echolot_app/
   main.py  settings.py  db.py  storage.py  records.py  viewing.py
   auth.py  crypto.py  user_models.py  cli.py          # accounts, key encryption, echolot-admin (7.11)
@@ -633,9 +636,15 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
 - [x] M4.2 Web: sign-in page and guard, user menu, Settings (model keys, account, users), the
   model picker in the chat. Acceptance: the Playwright smoke signs in; a new test signs out,
   comes back to the same workspace after signing in, and picks a model.
-- [ ] M4.3 Pilot deployment with the owner: https in front, `ECHO_SECRET_KEY` and
-  `ECHO_PUBLIC_URL` set, uvicorn with `--proxy-headers`, the first admin created; a tester signs
-  in with a key of their own and completes the loop.
+- [ ] M4.3 Docker Compose deployment and a pilot with the owner.
+  - [x] `deploy/`: one Dockerfile with three targets (web: Caddy and the built app; app; runner
+    with Prefect), the compose file with a bundled Prefect server and runner (profile
+    `runner`), `init.sh` for secrets, `smoke.sh` with `smoke_check.py`, the operator's README;
+    CI's `compose` job runs the smoke test. The local executor no longer passes the app's
+    `ECHO_*` settings to scripts.
+  - [ ] Acceptance: `deploy/smoke.sh` green in CI; on the owner's host, https in front, the
+    first admin created, a tester signs in with a key of their own and completes the loop with
+    ECHOLOT through the bundled runner.
 
 ## 13. System prompt (outline for `agent/prompts/system.md`)
 
@@ -674,14 +683,17 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
 - Enrichment as the second use case, for example verifying candidates against Wikidata's public
   API (`wbgetentities`) as a second service in the same script.
 - Dataset-level scripts (`process_all(records, ctx)`) for deduplication and clustering.
-- XLSX input; Alembic; a one-container deployment (server with the built web); conversation
-  compaction; cost per turn.
+- XLSX input; Alembic; images published to a registry by CI; conversation compaction; cost per
+  turn.
 
 ## 15. Risks and fallbacks
 
 - **Scripts run unsandboxed on the runner host** with its network, disk and environment,
   including the service keys. Mitigation: every agent-submitted run needs approval; the run
-  card names the services; trusted users only. Hardening is in section 14.
+  card names the services; the Compose deployment runs them in a runner container that holds
+  nothing of the app (deploy/README.md). With `ECHO_EXECUTOR=local` a script runs as the app's
+  user and can read the app's data and secrets: single users or trusted groups only. Hardening
+  is in section 14.
 - **The run token travels in Prefect parameters**, visible to anyone with access to the Prefect
   UI. It is scoped to one run and expires at its end.
 - **The runner must reach the app.** Same host or network in M2; otherwise the object-store data

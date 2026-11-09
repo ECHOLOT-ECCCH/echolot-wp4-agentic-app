@@ -59,3 +59,13 @@ jobs:
             apps/web/playwright-report
             apps/web/test-results
           retention-days: 7
+
+  compose:
+    name: Docker images and compose stack
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      # builds web, app and runner, starts them with Prefect, and checks pages, sign-in, a
+      # streamed chat turn and a run through the runner, all through Caddy
+      - run: deploy/smoke.sh

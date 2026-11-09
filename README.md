@@ -50,26 +50,20 @@ make check             # lint, types, unit tests
 make e2e               # browser smoke tests (start their own servers)
 ```
 
-## Running it for testers
+## Deploying for testers
 
-- **Accounts.** There is no sign-up. Create the first admin on the server with
-  `uv run echolot-admin create-user <e-mail> --admin`; then add testers under Settings → Users (each
-  gets a temporary password, shown once, that they change under Settings → Account). The same
-  command resets passwords and disables accounts (`echolot-admin --help`).
-- **https only.** Put the app behind a reverse proxy with TLS and set `ECHO_PUBLIC_URL` to the
-  https address: the session cookie is then marked Secure. Run uvicorn with
-  `--proxy-headers --forwarded-allow-ips=<proxy address>`, so sign-in throttling sees the
-  testers' addresses, not the proxy's. The chat streams: the proxy must not buffer
-  `/api/…/chat` (nginx: the app already sends `X-Accel-Buffering: no`).
-- **Secrets.** Set `ECHO_SECRET_KEY` (a Fernet key: `python -c "from cryptography.fernet import
-  Fernet; print(Fernet.generate_key().decode())"`); it encrypts the testers' model keys. Without
-  it a key is generated into the data directory, next to the database it protects. Changing it
-  makes stored keys unreadable (testers re-enter them); to rotate, list the new key first,
-  comma-separated with the old one.
-- **Models.** Testers bring their own keys under Settings → Model keys. If `ECHO_MODEL_API_KEY`
-  is set, the server's `ECHO_MODEL_PROVIDER`/`ECHO_MODEL_ID` is offered to everyone as "Server
-  default", on your bill; leave it unset to require own keys. `ECHO_ALLOW_CUSTOM_ENDPOINTS=1`
-  lets testers add their own OpenAI-compatible endpoint (the server then calls URLs they enter).
+[deploy/README.md](deploy/README.md): Docker Compose on one host, with https (Caddy), the app, and
+a Prefect server and runner that keep the scripts away from the app's data and secrets:
+
+```bash
+cd deploy && ./init.sh             # .env with new secrets; then set SITE_ADDRESS in it
+docker compose up -d --build
+docker compose exec app echolot-admin create-user you@example.org --admin
+```
+
+Testers sign in with accounts an admin makes (Settings → Users), bring their own model keys, or
+use the server's model if `.env` provides one. `make deploy-smoke` builds the images and checks
+the whole stack end to end.
 
 ## License
 

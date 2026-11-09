@@ -1,0 +1,14 @@
+# Services a script may call through ctx.service("<name>") (docs/PLAN.md 7.7), as the runner
+# container reaches them. Copy to services.toml (./init.sh does). Names match the app's
+# services/<name>.md. Keys are not written here: key_env names the variable in runner.env.
+
+[echolot]
+# ECHOLOT on this host, listening on the Docker bridge or on all interfaces (not only on
+# 127.0.0.1); on a shared Docker network use its service name instead (deploy/README.md)
+url = "http://host.docker.internal:5000"
+auth_header = "X-API-Key"
+key_env = "ECHOLOT_API_KEY"
+concurrency = 4
+timeout_s = 70
+retry_statuses = [502]
+retries = 3

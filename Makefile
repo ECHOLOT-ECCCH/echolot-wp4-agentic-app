@@ -7,7 +7,7 @@ unexport VIRTUAL_ENV
 WEB := apps/web
 NODE_MIN := 22
 
-.PHONY: help setup check-node api web check test e2e
+.PHONY: help setup check-node api web check test e2e images deploy-smoke
 
 help:
 	@echo "Targets:"
@@ -17,6 +17,8 @@ help:
 	@echo "  check     lint, types, unit tests (python + web)"
 	@echo "  test      python tests only"
 	@echo "  e2e       playwright smoke tests"
+	@echo "  images    build the docker images (web, app, runner) with deploy/docker-compose.yml"
+	@echo "  deploy-smoke  build and start the compose stack, check it end to end, remove it"
 
 check-node:
 	@v=$$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0); \
@@ -52,3 +54,11 @@ check: check-node
 
 e2e:
 	pnpm -C $(WEB) e2e
+
+# placeholders for the required settings: building needs none of them, and none is baked in
+images:
+	ECHO_SECRET_KEY=unused PREFECT_AUTH_STRING=unused APP_ENV_FILE=/dev/null RUNNER_ENV_FILE=/dev/null \
+	  docker compose -f deploy/docker-compose.yml --env-file /dev/null --profile runner build
+
+deploy-smoke:
+	deploy/smoke.sh
