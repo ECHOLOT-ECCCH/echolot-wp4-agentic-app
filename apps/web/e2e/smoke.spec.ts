@@ -3,9 +3,26 @@ import { fileURLToPath } from 'node:url'
 
 import { expect, test, type Page } from '@playwright/test'
 
+import { E2E_USER } from './account'
+
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const PEOPLE = path.join(HERE, 'fixtures/people.csv')
 const stamp = () => new Date().toISOString().replace(/\D/g, '').slice(0, 14)
+
+async function signIn(page: Page, next = '/') {
+  await page.goto(next)
+  await page.waitForURL(/\/login/)
+  await page.getByLabel('E-mail').fill(E2E_USER.email)
+  await page.getByLabel('Password').fill(E2E_USER.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  // the sign-in page has the app's heading too: wait until the browser has left it
+  await page.waitForURL((url) => !url.pathname.startsWith('/login'))
+}
+
+test.beforeEach(async ({ page }) => {
+  await signIn(page)
+  await page.getByRole('heading', { name: 'ECHOLOT Workbench' }).waitFor()
+})
 
 async function createWorkspace(page: Page, name: string) {
   await page.goto('/')
@@ -114,4 +131,34 @@ test('write a script, run a sample, read the results, export', async ({ page }) 
   expect(lines).toHaveLength(21)
   expect(lines[3]).toContain('Jorge Oteiza')
   expect(lines[3]).toContain('error,ValueError: no idea who this is')
+})
+
+test('sign out, sign back in where you were, and pick the model', async ({ page }) => {
+  await createWorkspace(page, `Account ${stamp()}`)
+  const workspaceUrl = page.url()
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.waitForURL(/\/login/)
+  // a signed-out visit to a workspace goes to the sign-in page and comes back after it
+  await signIn(page, new URL(workspaceUrl).pathname)
+  await page.waitForURL(workspaceUrl)
+  await page.getByText('Nothing selected').waitFor()
+
+  // the test model as one's own "vendor" (it needs no key), chosen in the model picker
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.waitForURL(/\/settings/)
+  const row = page.getByRole('listitem').filter({ hasText: 'Test model (development only)' })
+  await row.getByRole('button', { name: /^(Add key|Replace)$/ }).click()
+  await row.getByRole('button', { name: 'Save' }).click()
+  await expect(row.getByText('Set up')).toBeVisible()
+  await page.getByRole('button', { name: 'Choose the model' }).click()
+  await page.getByRole('button', { name: 'Test model (development only)' }).click()
+  await page.getByRole('button', { name: /Test model \(canned answers\)/ }).click()
+  await expect(page.getByRole('button', { name: 'Choose the model' })).toHaveText(/^test/)
+  // back to the server's model for the other tests
+  await page.getByRole('button', { name: 'Choose the model' }).click()
+  await page.getByRole('button', { name: 'Server default' }).click()
+  await page.getByRole('button', { name: 'Use', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Choose the model' })).toHaveText(/Server default/)
+  await row.getByRole('button', { name: 'Remove' }).click()
+  await expect(row.getByText('No key')).toBeVisible()
 })

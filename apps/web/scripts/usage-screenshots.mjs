@@ -1,9 +1,13 @@
 // Step-by-step usage screenshots (screenshots/README.md), taken against a running app with a
 // real model and the local executor, on an empty data directory:
 //
+//   echo 'shots-password' | ECHO_DATA_DIR=/tmp/shots uv run echolot-admin create-user \
+//     demo@example.org --name Demo --admin --password-stdin
 //   ECHO_DATA_DIR=/tmp/shots make api      # .env with a model key; services.toml, runner.env
 //   make web
 //   cd apps/web && node scripts/usage-screenshots.mjs ../../screenshots ../../demo/people-demo.csv
+//
+// SHOTS_EMAIL and SHOTS_PASSWORD override the account above.
 //
 // The agent's words differ from run to run; steps 14 and 15 assume demo/people-demo.csv.
 import { chromium } from '@playwright/test'
@@ -35,8 +39,15 @@ async function say(text) {
   await waitTurn()
 }
 
-// 1-3: workspaces, create one, the empty workspace
+// sign in
 await page.goto('http://localhost:5173/')
+await page.waitForURL(/\/login/)
+await page.getByLabel('E-mail').fill(process.env.SHOTS_EMAIL ?? 'demo@example.org')
+await page.getByLabel('Password').fill(process.env.SHOTS_PASSWORD ?? 'shots-password')
+await page.getByRole('button', { name: 'Sign in' }).click()
+await page.waitForURL((url) => !url.pathname.startsWith('/login'))
+
+// 1-3: workspaces, create one, the empty workspace
 await page.getByRole('heading', { name: 'ECHOLOT Workbench' }).waitFor()
 await shot('01-workspaces')
 await page.getByRole('button', { name: /new workspace/i }).click()

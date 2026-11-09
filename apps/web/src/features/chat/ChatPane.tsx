@@ -10,7 +10,8 @@ import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { Button } from '@/components/ui/button'
 import { makeGenericToolCard } from '@/features/chat/GenericToolCard'
 import { ApprovalAwareToolGroup } from '@/features/chat/ToolGroup'
-import { api } from '@/lib/api'
+import { ModelPicker } from '@/features/settings/ModelPicker'
+import { api, chatErrorMessage, redirectToLogin, REQUEST_HEADERS } from '@/lib/api'
 import {
   keys,
   refreshAfterAction,
@@ -39,6 +40,9 @@ export function ChatPane({ workspace }: { workspace: Workspace }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-2">
+        <div className="max-w-[45%] min-w-0 shrink">
+          <ModelPicker compact />
+        </div>
         <select
           className="bg-background h-7 min-w-0 flex-1 truncate rounded-md border px-1 text-xs"
           value={activeId ?? ''}
@@ -119,6 +123,17 @@ function LiveThread({
       new AssistantChatTransport({
         api: `/api/workspaces/${workspace.id}/conversations/${conversationId}/chat`,
         credentials: 'same-origin',
+        headers: REQUEST_HEADERS,
+        fetch: async (input, init) => {
+          const response = await fetch(input, init)
+          // a session that ended mid-conversation goes back to the sign-in page
+          if (response.status === 401) redirectToLogin()
+          if (response.ok) return response
+          // a refused turn ("add a key first"): the thread shows the body as the error, so
+          // hand it the detail instead of the JSON around it
+          const detail = chatErrorMessage(new Error(await response.text()))
+          return new Response(detail, { status: response.status, statusText: response.statusText })
+        },
         // what is open in the middle pane goes along, so "this row" means something to the model
         prepareSendMessagesRequest: ({ id, messages, trigger, messageId, body }) => ({
           body: {

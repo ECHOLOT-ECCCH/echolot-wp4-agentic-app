@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
+import { E2E_USER } from './e2e/account'
+
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 const apiURL = process.env.E2E_API_URL ?? 'http://127.0.0.1:8000'
 const ci = Boolean(process.env.CI)
@@ -22,8 +24,12 @@ export default defineConfig({
     ? undefined
     : [
         {
-          // the test model answers without a key and calls every tool it sees
-          command: 'uv run uvicorn echolot_app.main:app --host 127.0.0.1 --port 8000',
+          // the test model answers without a key and calls every tool it sees; the e2e account
+          // is created first (on a reused data directory it is already there, which is fine)
+          command:
+            `echo '${E2E_USER.password}' | uv run echolot-admin create-user ${E2E_USER.email} ` +
+            `--admin --password-stdin; ` +
+            'uv run uvicorn echolot_app.main:app --host 127.0.0.1 --port 8000',
           cwd: '../..',
           env: {
             ECHO_DATA_DIR: './data/e2e',

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 import { ThreePane } from '@/app/ThreePane'
+import { UserMenu } from '@/features/auth/UserMenu'
 import { ChatPane } from '@/features/chat/ChatPane'
 import { PreviewErrorBoundary } from '@/features/preview/PreviewErrorBoundary'
 import { PreviewHost } from '@/features/preview/PreviewHost'
@@ -31,7 +32,12 @@ function WorkspaceRoute() {
   }
   return (
     <ThreePane
-      header={<span className="truncate text-sm font-medium">{workspace.data.name}</span>}
+      header={
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{workspace.data.name}</span>
+          <UserMenu />
+        </div>
+      }
       left={<LeftPane workspace={workspace.data} />}
       middle={
         <PreviewErrorBoundary>
