@@ -14,6 +14,7 @@ The Elexifier app this repo was cut from: commit 98999b1, docs in docs/archive/e
 make api          # FastAPI with reload on :8000 (SQLite and files under ECHO_DATA_DIR, default ./data)
 make web          # Vite on :5173, proxies /api and /runner to :8000
 make check        # ruff, pyright, pytest (server + runner), web lint, tsc, vitest. Must pass before every commit.
+uv run echolot-admin create-user you@example.org --admin   # an account (prints a temporary password)
 make e2e          # playwright smoke (test model, LocalExecutor, fake service)
 
 ## Layout
@@ -30,13 +31,15 @@ runner host, no dependency on the app) · services/*.md (agent-facing service do
 
 ## Invariants
 - Whole files never go to a model; the model sees at most 20 records per call (PLAN 7.10). The browser gets paged records.
-- The model key is a SecretStr in app settings, never logged. Service keys exist only on the runner host, never in the
-  app, the browser or the model's context.
+- Model keys (the server's as a SecretStr in settings, users' Fernet-encrypted in the database) are never logged,
+  never returned to the browser beyond a 4-character hint, never in the model's context. Service keys exist only on
+  the runner host, never in the app, the browser or the model's context.
 - Approval-gated: submit_run, retry_failed, and any delete tool. Runs started by the user in the UI need no card.
 - Scripts reach services only through ctx.service(name). The app never executes scripts in its own process.
 - The app has no Prefect dependency; it talks to Prefect over REST. Prefect lives in runner/ only.
-- Do not add Postgres, Redis, Celery, brokers, Procrastinate, Next.js or another agent framework. No auth in the POC:
-  the app binds to 127.0.0.1.
+- Every /api route except sign-in needs a session; every route under /api/workspaces/{id} checks ownership (PLAN 7.11).
+  Unsafe /api requests need the X-Echolot-Request header. Accounts are local, made by an admin; no sign-up.
+- Do not add Postgres, Redis, Celery, brokers, Procrastinate, Next.js or another agent framework.
 
 ## Git
 Conventional commits, one task per commit, `make check` green first. Follow the session's attribution instructions.

@@ -30,7 +30,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 
 ## 1. Status
 
-- Current milestone: M3. M2 is complete (2026-10-27).
+- Current milestone: M3. M2 is complete (2026-10-27). M4 (accounts and own model keys) is
+  built on the branch `feat/users-and-byok` (2026-11-09), ahead of M3.4: see section 12e.
 - Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
   M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
@@ -42,7 +43,7 @@ chat, persistence and approval code being lifted, and are worth reading before t
     (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
   - Whether the runner host can reach the app over HTTP (section 7.3). Needed for M2.
   - A real export of entities from ehkultura.wikibase.cloud for M3 (CSV or JSONL).
-- Last update: 2026-10-27.
+- Last update: 2026-11-09.
 
 Update this block at the end of every task.
 
@@ -64,8 +65,9 @@ This app lets the user do it with an agent:
 The task-specific knowledge lives in the service documentation the agent reads and in the script
 it writes, not in the platform. A new kind of task needs a service description, not new code.
 
-This is a proof of concept: one trusted user or a small trusted group, no login, a single process
-with SQLite. It is deliberately much smaller than the Elexifier app it was cut from.
+This is a proof of concept for a small group of testers, each with an account made by an admin,
+in a single process with SQLite. It is deliberately much smaller than the Elexifier app it was
+cut from.
 
 ## 3. Decisions (fixed)
 
@@ -81,8 +83,8 @@ with SQLite. It is deliberately much smaller than the Elexifier app it was cut f
 | Chat UI | assistant-ui on AI SDK 7, lifted | Tool cards, approval cards and streaming already work. |
 | Database | SQLite through SQLAlchemy 2 async (aiosqlite), WAL mode, `create_all` at startup, no Alembic yet | No database server. Add Alembic when the schema stabilises. |
 | Storage | Local disk under `ECHO_DATA_DIR` | No object store. |
-| Auth | None. The app binds to 127.0.0.1; expose it only behind a proxy that authenticates | Lightweight POC. The OIDC code is in the archive commit. |
-| Model | One model configured from the environment (provider, model id, key, base URL) | No bring-your-own-key UI. `openai_compatible` covers local models. |
+| Auth | Local accounts (e-mail and password) made by an admin; server-side sessions in SQLite behind an HttpOnly cookie; workspaces private to their owner (7.11). Changed 2026-11-09 | Real testers need their own space; no identity provider to run. The OIDC code is in the archive commit if one is wanted later. |
+| Model | Each user picks a vendor and a model and brings their own key (stored encrypted), or uses the server's model from the environment when the operator provides one (7.11). Changed 2026-11-09 | Testers pay for and choose their own models; `openai_compatible` covers local models. |
 | Background work | One asyncio poller in the app lifespan; no queue, no worker process | Execution is remote. |
 | Live updates | The browser polls (TanStack Query `refetchInterval`) | No SSE, no NOTIFY. |
 | Package managers | `uv` workspace (Python), `pnpm` (web) | |
@@ -136,9 +138,10 @@ CLAUDE.md  README.md  Makefile  pyproject.toml (uv workspace: apps/server, runne
 docs/PLAN.md  docs/DECISIONS.md  docs/BACKLOG.md  docs/runner-host.md  docs/archive/elexifier/
 apps/server/src/echolot_app/
   main.py  settings.py  db.py  storage.py  records.py  viewing.py
-  routers/{workspaces,files,task,scripts,runs,chat,services,runner_io}.py
+  auth.py  crypto.py  user_models.py  cli.py          # accounts, key encryption, echolot-admin (7.11)
+  routers/{workspaces,files,task,scripts,runs,chat,services,runner_io,auth,admin,models}.py
   runs/{executor,local,prefect,poller,tokens}.py
-  agent/{agent,deps,runtime,contracts,ui_messages,models}.py
+  agent/{agent,deps,runtime,contracts,ui_messages,models,catalog,probe}.py
   agent/tools/{files,task,services,scripts,runs,dev}.py
   agent/prompts/system.md
 runner/src/echolot_runner/
@@ -326,13 +329,53 @@ model.
 - The browser gets records paged (at most 200 per request); raw text previews only for files up
   to 5 MB.
 - Tool `data` is capped at about 6,000 tokens; the lifted `to_tool_return` truncates above that.
-- The model provider key is a `SecretStr` in the app settings, never logged. Service keys exist
-  only on the runner host.
+- The server's model key is a `SecretStr` in the app settings; users' keys are encrypted at rest
+  (7.11). No model key is logged, returned to the browser, or put in the model's context. Service
+  keys exist only on the runner host.
 - Data does leave for the services named on the approval card; that is the point of a run.
+
+### 7.11 Accounts and model keys (2026-11-09)
+
+- **Accounts.** `users` (e-mail, stored lower-case and unique; name; scrypt password hash;
+  `is_admin`; `is_active`). No sign-up: an admin creates accounts in Settings → Users or with
+  `echolot-admin create-user` (which also makes the first admin). A new account gets a
+  generated temporary password, shown once. Passwords have at least 12 characters.
+- **Sessions.** `POST /api/auth/login` sets the cookie `echolot_session` (HttpOnly,
+  SameSite=Lax, Secure when `ECHO_PUBLIC_URL` is https or `ECHO_COOKIE_SECURE`); the database
+  keeps only the token's SHA-256. A session ends after `ECHO_SESSION_DAYS` (14) without use, at
+  sign-out, when the password changes (that browser gets a new one), and when the account is
+  disabled. Failed sign-ins are limited per e-mail and per client address
+  (`ECHO_LOGIN_MAX_FAILURES` in `ECHO_LOGIN_WINDOW_S`, then 429).
+- **CSRF.** Every POST, PUT, PATCH and DELETE under `/api/` must carry `X-Echolot-Request`
+  (any value), or it is refused with 403. `/runner/` keeps its bearer tokens (7.3).
+- **Ownership.** A workspace belongs to the user who made it. Every route under
+  `/api/workspaces/{workspace_id}` checks it in a router dependency and answers 404 to anyone
+  else; admins see only their own. Workspaces from before accounts are adopted by the first
+  admin. `/api/services` needs a session; `/healthz` does not.
+- **Vendors.** `anthropic`, `openai`, `google`, `mistral` (its OpenAI-compatible API),
+  `openrouter`, `deepseek`; `openai_compatible` only with `ECHO_ALLOW_CUSTOM_ENDPOINTS` (the server
+  would call any URL a user enters); `test` only with `ECHO_ENABLE_TEST_MODEL`.
+- **Keys.** `provider_keys`: one per user and vendor, Fernet-encrypted with `ECHO_SECRET_KEY`
+  (comma-separated keys, the first encrypts; unset, a key is generated into
+  `<data_dir>/secret.key` with mode 0600). Responses carry `key_hint` (the last four
+  characters), never the key. A vendor that needs a key never falls back to one in the
+  environment.
+- **The model choice.** `users.model` is `{"provider", "model_id"}`, or empty for the server's
+  model (`ECHO_MODEL_*`), which is offered only when it is usable (its key is set, or it needs
+  none). A chat turn without a usable model answers 409 with what to do. `agent_runs.model`
+  records `{"provider", "model_id", "key": "own"|"server"}`.
+- **Model lists.** `GET /api/vendors/{provider}/models` asks the vendor with the user's key,
+  drops models that cannot chat, puts the suggested ones first and caches the list for an hour;
+  when the vendor cannot be asked, the suggested models come back with the reason. Any model id
+  can be typed in.
 
 ## 8. Data model (SQLite, UUID primary keys as text, timestamps everywhere)
 
-- `workspaces` (name, description, task_md)
+- `users` (email, name, password_hash, is_admin, is_active, model json, last_login_at),
+  `user_sessions` (token_hash primary key, user_id, expires_at, last_seen_at),
+  `provider_keys` (user_id, provider, encrypted_key, key_hint, base_url, last_used_at); unique
+  (user_id, provider)
+- `workspaces` (owner_id, name, description, task_md)
 - `files` (workspace_id, kind input|result|export, name, rel_path, size, sha256, mime, meta json:
   format, columns, record_count, dialect, encoding, records_rel_path)
 - `scripts` (workspace_id, version, code, sha256, note, author agent|user, services json);
@@ -356,6 +399,12 @@ On disk under `ECHO_DATA_DIR`:
 ## 9. API routes
 
 - `GET /healthz`
+- Accounts (7.11): `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/me`,
+  `POST /api/me/password`; admins: `GET/POST /api/admin/users`, `PATCH /api/admin/users/{uid}`,
+  `POST /api/admin/users/{uid}/reset-password`
+- Models (7.11): `GET /api/vendors`, `GET /api/vendors/{provider}/models`,
+  `PUT/DELETE /api/me/keys/{provider}`, `POST /api/me/keys/{provider}/test`,
+  `GET/PUT /api/me/model`
 - Workspaces: `GET/POST /api/workspaces`, `GET/PATCH/DELETE /api/workspaces/{wid}`,
   `GET/PUT /api/workspaces/{wid}/task`
 - Files: `GET/POST .../files` (streaming upload, sha256 while streaming, normalization to
@@ -376,7 +425,8 @@ A run started from the UI (`POST .../runs`) is a human action and needs no appro
 
 ## 10. Frontend structure
 
-- Routes: `/` (workspaces), `/w/$workspaceId`.
+- Routes: `/login`, `/` (workspaces), `/w/$workspaceId`, `/settings` (model keys, account,
+  users for admins). Everything but `/login` sits behind `AuthGuard`.
 - `ThreePane` as is.
 - **Left pane:** files with upload, the task notes, script versions, runs with status badges.
 - **Middle pane (`PreviewHost`):**
@@ -570,6 +620,23 @@ Goal: the first real use case, end to end, with a person confirming matches.
 - [ ] M3.4 Owner acceptance with a real ehkultura export: discuss in chat, task notes, script,
   sample of 20, full run, review, export. Tag `m3`.
 
+## 12e. Milestone 4: Accounts and own model keys (checklist)
+
+Goal: the app can be put in front of real testers: each signs in, works in private workspaces
+and uses a model of their choice with their own key. Built on the branch `feat/users-and-byok`.
+
+- [x] M4.1 Server: accounts, sessions, the CSRF header, workspace ownership, vendors, encrypted
+  keys, the model choice, model lists, the key test, `echolot-admin` (7.11).
+  Acceptance: tests for sign-in and out, throttling, expiry, disabling, password change, the
+  CSRF refusal, every workspace route closed to other users and to strangers, an old database
+  upgraded, keys never returned and encrypted at rest, the user's key driving the model.
+- [x] M4.2 Web: sign-in page and guard, user menu, Settings (model keys, account, users), the
+  model picker in the chat. Acceptance: the Playwright smoke signs in; a new test signs out,
+  comes back to the same workspace after signing in, and picks a model.
+- [ ] M4.3 Pilot deployment with the owner: https in front, `ECHO_SECRET_KEY` and
+  `ECHO_PUBLIC_URL` set, uvicorn with `--proxy-headers`, the first admin created; a tester signs
+  in with a key of their own and completes the loop.
+
 ## 13. System prompt (outline for `agent/prompts/system.md`)
 
 - **Role.** You are the data engineer for a domain expert. You work in a workbench where the
@@ -602,7 +669,8 @@ Goal: the first real use case, end to end, with a person confirming matches.
 - Isolation: a Prefect Docker work pool, so a script cannot read the runner's environment or
   disk; a service gateway, so keys are not in the script's process at all.
 - An object-store data plane when the runner cannot reach the app (presigned URLs, same harness).
-- Login (the OIDC BFF from the archive), when more than a trusted group uses it.
+- Single sign-on (the OIDC BFF from the archive) next to local accounts, if testers come from
+  an institution with an identity provider.
 - Enrichment as the second use case, for example verifying candidates against Wikidata's public
   API (`wbgetentities`) as a second service in the same script.
 - Dataset-level scripts (`process_all(records, ctx)`) for deduplication and clustering.
@@ -623,7 +691,13 @@ Goal: the first real use case, end to end, with a person confirming matches.
   `LocalExecutor` if the app host can reach the services.
 - **Prefect versions.** The runner's `prefect` must match the server's; ECHOLOT pins a dev build.
   Confirm with the owner before M2.
-- **No auth.** Bind to 127.0.0.1; expose only behind an authenticating proxy.
+- **Accounts are local and in-process.** Sign-in throttling lives in memory (one process) and
+  forgets on restart; there is no e-mail flow, so an admin hands out temporary passwords. Serve
+  the app over https only (the cookie is Secure then) and run uvicorn with `--proxy-headers`
+  behind the proxy, so throttling sees the client's address.
+- **Users' keys sit on the server.** Encrypted, but the encryption key is on the same machine:
+  set `ECHO_SECRET_KEY` from the environment rather than the generated file, and keep it out of
+  backups of the data directory.
 - **SQLite under concurrent writes** (the poller and requests): WAL, `busy_timeout`, short
   transactions.
 

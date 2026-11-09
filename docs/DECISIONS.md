@@ -373,3 +373,69 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   which was then fast-forwarded into `main`; `main` is the branch to deploy, and PLAN 16 points
   there.
 - The old repositories stay with their owner, to be archived.
+
+## 2026-11-09 Accounts and bring-your-own model keys (M4.1, M4.2; branch `feat/users-and-byok`)
+
+The owner asked for login and for users to bring their own keys and pick among model vendors,
+"nice and simple, but robust enough to deploy for real testing with real users". Both existed in
+Elexifier (`6ed7527` OIDC login with Keycloak, `84b1b04` credentials and catalogs) and were cut
+for the demo. PLAN section 3 (Auth, Model) and the new contract 7.11 change with this entry.
+
+- **Local accounts, not OIDC.** Elexifier's login needed a Keycloak next to the app; that is the
+  part that made it heavy. Accounts here are e-mail and password, made by an admin (no sign-up:
+  testers are invited), stored in the app's SQLite. Single sign-on stays possible later
+  (BACKLOG). Passwords: stdlib scrypt with OWASP's N=2^15, r=8, p=3 (no new dependency),
+  verified in a thread; unknown addresses are checked against a dummy hash so they take as long
+  as a wrong password; at least 12 characters (between NIST's 8 and its 15 for password-only
+  sign-in, as testers get a generated one first).
+- **Server-side sessions** rather than signed cookies, so sign-out, a password change and
+  disabling an account end sessions at once. The cookie holds a random token; the table holds
+  its SHA-256. Expiry slides by use, written at most hourly.
+- **CSRF by a required header** (`X-Echolot-Request`) on unsafe `/api/` requests, on top of
+  SameSite=Lax: a page elsewhere cannot add the header without a CORS preflight that this app
+  never answers. Simpler than Elexifier's double-submit token: no token to fetch or rotate. Done
+  as pure ASGI middleware so the streamed chat and uploads pass untouched.
+- **Throttling in memory** per e-mail and per client address. One process (PLAN section 3);
+  a restart forgets the counts, acceptable for a pilot.
+- **Workspaces are private.** Owner column, checked by a router dependency on every router under
+  `/api/workspaces/{workspace_id}`, so a route that never loads the workspace is covered too.
+  The test enumerates the routes from the OpenAPI schema (FastAPI 0.162 nests included routers,
+  so `app.routes` does not list them) and expects 404 for another user and 401 for nobody. The
+  workspace's own routes take the workspace as a dependency, so ownership is checked before the
+  body is validated. Admins see only their own workspaces; nothing is shared yet.
+- **Old databases.** No Alembic yet: `create_all` makes the new tables, and a short list of
+  added columns is applied with `ALTER TABLE` at startup (`workspaces.owner_id`). Workspaces
+  without an owner go to the first admin created.
+- **One key per vendor per user**, Fernet-encrypted (`cryptography`, now a direct dependency)
+  with `ECHO_SECRET_KEY` or a generated `<data_dir>/secret.key` (0600). Labelled multiple
+  credentials per vendor (Elexifier) were dropped as more than testers need.
+- **Vendors**: Anthropic, OpenAI, Google, Mistral, OpenRouter, DeepSeek. Mistral is new (an
+  EU vendor, relevant to an EU project); it goes through `OpenAIChatModel` on
+  `https://api.mistral.ai/v1`, because pydantic-ai's own Mistral provider needs the `mistralai`
+  package. `openai_compatible` for users is off unless `ECHO_ALLOW_CUSTOM_ENDPOINTS`: a
+  user-entered base URL lets a signed-in user make the server call internal addresses (SSRF);
+  the operator's own `ECHO_MODEL_BASE_URL` is unaffected.
+- **No silent fallback.** The SDKs read e.g. `OPENAI_API_KEY` when given no key; `build_model`
+  now refuses a vendor that needs a key without one, so a user without a key never runs on a
+  key in the server's environment.
+- **The model choice is per user**, not per conversation or workspace: one place to look, and
+  the agent run records which model and whose key served each turn. The server's
+  `ECHO_MODEL_*` model is offered as "Server default" only when it is usable; with no key it is
+  hidden and the chat answers 409 "add a key".
+- **Model lists** come live from each vendor with the user's key (Elexifier's catalog, slimmed:
+  no prices or capabilities), suggested models first, non-chat models (embeddings, speech,
+  images) dropped, cached an hour per key; on failure the suggestions come back with the reason,
+  and any id can be typed. A "Test" button sends one tiny request; its errors are shown with
+  anything key-like masked.
+- **Web.** `/login` and an `AuthGuard` around the rest; any 401 (API, upload, chat stream) goes
+  to sign-in and back to the same page (`next` only accepts paths on this site). Settings has
+  model keys, account and (for admins) users; a new user's temporary password is shown once.
+  The model picker sits in the chat header. The chat transport now turns a refused turn's JSON
+  body into its detail, which assistant-ui shows inline.
+- Checked: `make check` (145 Python and 30 web tests) and `make e2e` (5 smoke tests, signing in
+  with an account `playwright.config.ts` creates through `echolot-admin`). In a real browser:
+  sign-in, the settings tabs, a Mistral key with a fake value (the vendor refused the listing,
+  the suggestions appeared with the reason), a new user's temporary password, the picker in the
+  chat header, and a turn refused for lack of a model showing the plain reason.
+- Not done (M4.3): a pilot behind https with the owner.
+
