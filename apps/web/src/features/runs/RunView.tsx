@@ -8,7 +8,7 @@ import { Pager } from '@/features/preview/RecordsTable'
 import { RunStatusBadge } from '@/features/runs/RunStatusBadge'
 import { ApiError } from '@/lib/api'
 import { CellValue } from '@/features/preview/CellValue'
-import { cellTitle, formatScore, isCandidateList } from '@/lib/cells'
+import { cellTitle, decisionOptions, isCandidateList } from '@/lib/cells'
 import { formatDate } from '@/lib/format'
 import { PAGE_SIZE, pageStart } from '@/lib/paging'
 import {
@@ -207,12 +207,12 @@ export function RunView({
   )
 }
 
-/** The output column holding reconciliation candidates, if any. */
-function candidateColumn(outputColumns: string[], rows: RunRow[]): string | null {
-  for (const column of outputColumns) {
-    if (rows.some((r) => isCandidateList(r.output[column]))) return column
-  }
-  return outputColumns.includes('matches') ? 'matches' : null
+/** The output columns holding reconciliation candidates: usually "matches", or one column per
+ * algorithm when a script compares them. */
+function candidateColumns(outputColumns: string[], rows: RunRow[]): string[] {
+  const found = outputColumns.filter((c) => rows.some((r) => isCandidateList(r.output[c])))
+  if (found.length) return found
+  return outputColumns.includes('matches') ? ['matches'] : []
 }
 
 /** A reviewer's choice for one row: one of its candidates, "none of these", or undecided. */
@@ -222,17 +222,13 @@ function DecisionSelect({
   onDecide,
 }: {
   row: RunRow
-  candidates: unknown
+  candidates: unknown[]
   onDecide: (row: number, qid: string | null | undefined) => void
 }) {
-  const options = isCandidateList(candidates)
-    ? candidates.filter((c) => Boolean(c.wikidata_item_id))
-    : []
+  const options = decisionOptions(candidates)
   const current = !row.decision ? '' : row.decision.qid === null ? NONE_OF_THESE : row.decision.qid
   const known =
-    current === '' ||
-    current === NONE_OF_THESE ||
-    options.some((c) => c.wikidata_item_id === current)
+    current === '' || current === NONE_OF_THESE || options.some((o) => o.qid === current)
   return (
     <select
       aria-label={`Decision for row ${row.row}`}
@@ -245,10 +241,10 @@ function DecisionSelect({
       }}
     >
       <option value="">—</option>
-      {options.map((c, i) => (
-        <option key={c.wikidata_item_id} value={c.wikidata_item_id ?? ''}>
-          {i + 1}. {c.wikidata_item_id} {c.title ?? ''}
-          {typeof c.score === 'number' ? ` (${formatScore(c.score)})` : ''}
+      {options.map((o, i) => (
+        <option key={o.qid} value={o.qid}>
+          {i + 1}. {o.qid} {o.title}
+          {o.notes.length ? ` (${o.notes.join(', ')})` : ''}
         </option>
       ))}
       {!known && <option value={current}>{current}</option>}
@@ -274,14 +270,16 @@ function RunRowsTable({
   onDecide: (row: number, qid: string | null | undefined) => void
 }) {
   const cell = 'max-w-96 truncate border-b px-2 py-1'
-  const candidates = candidateColumn(outputColumns, rows)
+  const candidates = candidateColumns(outputColumns, rows)
   return (
     <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
       <thead className="bg-background sticky top-0 z-10">
         <tr>
           <th className="text-muted-foreground border-b px-2 py-1.5 text-right font-medium">#</th>
           <th className="border-b px-2 py-1.5 text-left font-medium">status</th>
-          {candidates && <th className="border-b px-2 py-1.5 text-left font-medium">decision</th>}
+          {candidates.length > 0 && (
+            <th className="border-b px-2 py-1.5 text-left font-medium">decision</th>
+          )}
           {outputColumns.map((c) => (
             <th key={`out-${c}`} className="border-b px-2 py-1.5 text-left font-medium">
               {c}
@@ -315,10 +313,14 @@ function RunRowsTable({
             <td className={`border-b px-2 py-1 ${r.status === 'error' ? 'text-destructive' : ''}`}>
               {r.status}
             </td>
-            {candidates && (
+            {candidates.length > 0 && (
               <td className="border-b px-2 py-1">
                 {r.status === 'ok' && (
-                  <DecisionSelect row={r} candidates={r.output[candidates]} onDecide={onDecide} />
+                  <DecisionSelect
+                    row={r}
+                    candidates={candidates.map((c) => r.output[c])}
+                    onDecide={onDecide}
+                  />
                 )}
               </td>
             )}

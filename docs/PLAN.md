@@ -49,7 +49,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
     ECHOLOT, or in the app's stack). Needed for M4.3.
   - Whether the runner host can reach the app over HTTP (section 7.3). Needed for M2.
   - A real export of entities from ehkultura.wikibase.cloud for M3 (CSV or JSONL).
-- Last update: 2026-11-09.
+- ECHOLOT has three reconciliation algorithms (`?algorithm=wikifier|llm_based|rule_based`,
+  2026-11-10): `services/echolot.md`, the runner and the run review follow them (DECISIONS
+  2026-11-10). Not tried live: the ECHOLOT on this machine still runs the version without them.
+- Last update: 2026-11-10.
 
 Update this block at the end of every task.
 
@@ -186,10 +189,13 @@ def process(record: dict[str, Any], ctx) -> dict[str, Any]:
 - The return value is a dict. Keys starting with `_` are reserved. Flat values become CSV columns;
   nested values are exported as JSON strings.
 - An exception fails that record only (`_status: "error"`), never the run.
-- `ctx.service(name)` returns a client with `get(path, params=None)` and `post(path, json=None)`.
-  Each returns the parsed JSON body. The client adds the service's auth header, applies its
-  timeout, retries its retryable statuses and timeouts with backoff, and limits concurrency per
-  service. After the retries it raises `ServiceError(status, body_excerpt)`.
+- `ctx.service(name)` returns a client with `get(path, params=None)` and
+  `post(path, json=None, params=None)` (`params`: the query string, e.g. ECHOLOT's
+  `{"algorithm": "rule_based"}`). Each returns the parsed JSON body. The client adds the
+  service's auth header, applies its timeout, retries its retryable statuses and timeouts with
+  backoff, and limits concurrency per service, and lower for requests carrying a configured
+  query value (`concurrency_for`). After the retries it raises `ServiceError(status,
+  body_excerpt)`.
 - `ctx.log(message)` writes to the run log. `ctx.params` holds the run's `script_params` (a dict,
   empty by default) for values the user may want to change between runs, such as thresholds.
 - Scripts must not open network connections themselves. This is stated in the agent's prompt and
@@ -298,7 +304,8 @@ url = "http://127.0.0.1:5000"
 auth_header = "X-API-Key"
 key_env = "ECHOLOT_API_KEY"
 concurrency = 4
-timeout_s = 70
+concurrency_for = { "algorithm=llm_based" = 2 }   # fewer calls at a time for these requests
+timeout_s = 180
 retry_statuses = [502]
 retries = 3
 ```

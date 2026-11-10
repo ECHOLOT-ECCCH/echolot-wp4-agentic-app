@@ -38,7 +38,9 @@ uv pip install --python /opt/echolot-runner/.venv ./runner "prefect==<the server
 Copy `runner/services.example.toml` to `/opt/echolot-runner/services.toml` and list every
 service a script may call. The names must match the app's `services/<name>.md`. Keys are not
 written in the file: `key_env` names the environment variable that holds the key, and the runner
-sends it in `auth_header`.
+sends it in `auth_header`. `concurrency_for` keeps ECHOLOT's `llm_based` to fewer calls at a time
+(each makes six Wikidata requests, and Wikidata rate-limits); the timeout covers the first
+`rule_based` call after ECHOLOT starts, which waits while its table is indexed.
 
 ```toml
 [echolot]
@@ -46,7 +48,8 @@ url = "http://127.0.0.1:5000"
 auth_header = "X-API-Key"
 key_env = "ECHOLOT_API_KEY"
 concurrency = 4
-timeout_s = 70
+concurrency_for = { "algorithm=llm_based" = 2 }   # fewer calls at a time for these requests
+timeout_s = 180
 retry_statuses = [502]
 retries = 3
 ```

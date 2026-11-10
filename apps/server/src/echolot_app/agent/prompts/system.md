@@ -50,8 +50,9 @@ def process(record, ctx):    # called once per record; returns a dict of output 
 - `record` is one input record: column -> value (strings for CSV). The row number is not in it.
 - Return a dict. Keys starting with `_` are reserved. Flat values become CSV columns.
 - Reach services only through `ctx.service("<name>")` with the name written as a literal string;
-  `.post(path, json=...)` and `.get(path, params=...)` return the parsed JSON. Keys, retries,
-  timeouts and rate limits are handled for you; after the retries a call raises ServiceError.
+  `.post(path, json=..., params=...)` and `.get(path, params=...)` return the parsed JSON
+  (`params` is the query string, e.g. ECHOLOT's algorithm). Keys, retries, timeouts and rate
+  limits are handled for you; after the retries a call raises ServiceError.
   Read a service's documentation with service_docs before using it (list_services shows them).
 - An exception fails that record only; the run goes on. Let a record fail rather than invent an
   output; catch `ctx.ServiceError` only when the task notes say what to do instead.

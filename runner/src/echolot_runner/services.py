@@ -8,6 +8,7 @@ import os
 import threading
 import time
 import tomllib
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,9 @@ class ServiceConfig:
     auth_header: str | None = None
     key_env: str | None = None
     concurrency: int = 4
+    # fewer calls at a time for requests with a query parameter value, "<name>=<value>": n,
+    # e.g. {"algorithm=llm_based": 2}; they also count against concurrency
+    concurrency_for: dict[str, int] = field(default_factory=dict)
     timeout_s: float = 60.0
     retry_statuses: tuple[int, ...] = (502, 503, 504)
     retries: int = 3
@@ -56,6 +60,19 @@ class ServiceConfig:
         values = dict(raw)
         if "retry_statuses" in values:
             values["retry_statuses"] = tuple(int(s) for s in values["retry_statuses"])
+        limits = values.get("concurrency_for", {})
+        if not isinstance(limits, dict) or not all(
+            isinstance(key, str)
+            and key.partition("=")[0]
+            and key.partition("=")[1]
+            and isinstance(n, int)
+            and n >= 1
+            for key, n in limits.items()
+        ):
+            raise ServicesConfigError(
+                f'service {name!r}: concurrency_for maps "<parameter>=<value>" to a number of '
+                'calls, e.g. { "algorithm=llm_based" = 2 }'
+            )
         return cls(name=name, **values)
 
     def key(self) -> str | None:
@@ -94,6 +111,10 @@ class ServiceClient:
         self.config = config
         self._http = http
         self._slots = threading.BoundedSemaphore(max(1, config.concurrency))
+        self._slots_for = {
+            tuple(key.split("=", 1)): threading.BoundedSemaphore(n)
+            for key, n in config.concurrency_for.items()
+        }
         headers = dict(config.headers)
         key = config.key()
         if key is not None and config.auth_header:
@@ -103,18 +124,25 @@ class ServiceClient:
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         return self.request("GET", path, params=params)
 
-    def post(self, path: str, json: Any = None) -> Any:
-        return self.request("POST", path, json=json)
+    def post(self, path: str, json: Any = None, params: dict[str, Any] | None = None) -> Any:
+        return self.request("POST", path, json=json, params=params)
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
         url = self.config.url.rstrip("/") + "/" + path.lstrip("/")
+        query = httpx.URL(url).copy_merge_params(kwargs.get("params") or {}).params
+        slots = [  # the narrower limits first, always in the same order, then the service's
+            *(s for (k, v), s in self._slots_for.items() if v in query.get_list(k)),
+            self._slots,
+        ]
         attempts = max(1, self.config.retries)
         last: ServiceError | None = None
         for attempt in range(attempts):
             if attempt:
                 time.sleep(self.config.backoff_s * 2 ** (attempt - 1))
             try:
-                with self._slots:
+                with ExitStack() as held:
+                    for slot in slots:
+                        held.enter_context(slot)
                     response = self._http.request(
                         method, url, headers=self._headers, timeout=self.config.timeout_s, **kwargs
                     )

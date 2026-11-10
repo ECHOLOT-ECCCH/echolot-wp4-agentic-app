@@ -536,3 +536,39 @@ assumes that, and keeps the bundled server as an option.
   an auth string) and the local-runs override; `init.sh` with and without `--with-prefect`
   writes a `.env` that Compose reads as intended. The images and the stack are still unbuilt
   here (no Docker daemon); CI's `compose` job covers the bundled variant.
+
+## 2026-11-10 ECHOLOT's three reconciliation algorithms
+
+ECHOLOT's `POST /reconcile` takes `?algorithm=wikifier|llm_based|rule_based` (default
+`wikifier`), and that is its only per-request choice. The owner passed on the service's own
+contract for dashboards; this app follows it in four places. Prefect is left as it was.
+
+- **The agent's doc (`services/echolot.md`)** now describes the three: what each reads (for
+  `rule_based` only `name`, `entity_type == "person"` and `information.gender`), what its
+  matches look like (Wikipedia URLs for `wikifier`, Wikidata or ULAN URLs for the others), what
+  its score means (`llm_based`: always 1.0, no confidence), and its traps: an empty reply from
+  `llm_based` can be a failed Wikidata lookup, `rule_based` only knows its table and can change
+  answers after a restart, scores are not comparable, agreement is by `wikidata_item_id`. A 503
+  naming the algorithm means "not configured here", not "retry". The example script takes the
+  algorithm from `ctx.params`, so the user switches between runs without a new script; a second
+  example compares the algorithms per record (one column per algorithm, an `agreement` column).
+  Both are run against a fake ECHOLOT in `test_service_docs.py`.
+- **Matches are tagged with their algorithm** by the scripts (`{**m, "algorithm": a}`), because
+  the reply's `algorithm` is outside the match list the review reads. The review then shows
+  `llm_based`'s pick as "selected" instead of 1.00, names the algorithm in a list that mixes
+  them, and the decision select offers every candidate column's QIDs once, with who proposed
+  each ("wikifier 0.98, llm_based selected"). The server stores any QID, so nothing changed
+  there.
+- **The runner** gets `post(path, json, params)` (PLAN 7.1; a query in the path also works) and
+  `concurrency_for` in `services.toml`: a lower limit for requests with a given query value,
+  `{ "algorithm=llm_based" = 2 }` in the examples, because each such call makes six Wikidata
+  requests and Wikidata's rate limit shows up as silent "no match". The narrower slot is taken
+  before the service's, in a fixed order. In the runner, not in the script or the run's
+  thread count, so a comparison script with 16 threads still keeps `llm_based` at 2.
+- **Timeouts**: the examples go from 70 s to 180 s (the contract says at least 120: the first
+  `rule_based` call indexes its table, `llm_based` retries Wikidata). 503 stays out of
+  `retry_statuses`.
+- Not changed: `uri` is still required; extra fields such as `algorithm` in our match lists are
+  ours. Not tried against a live ECHOLOT: the instance on 127.0.0.1:5000 here still answers
+  without the parameter (its `openapi.json` has none); the checkout next to this repository has
+  the new code (`bdfd048`), whose registry and wikifier module match the contract.

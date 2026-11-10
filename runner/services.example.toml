@@ -7,6 +7,13 @@ url = "http://127.0.0.1:5000"
 auth_header = "X-API-Key"
 key_env = "ECHOLOT_API_KEY"
 concurrency = 4
-timeout_s = 70
+# llm_based makes six Wikidata requests per entity, and Wikidata rate-limits: when it does,
+# llm_based answers "no match" without an error
+concurrency_for = { "algorithm=llm_based" = 2 }
+# the first rule_based call after ECHOLOT starts waits while its table is indexed (over a minute
+# for the Wikidata dump), and llm_based can take minutes when Wikidata is slow
+timeout_s = 180
+# 502: Wikifier or the language model failed, safe to retry. Not 503: the algorithm is not
+# configured on that ECHOLOT, and a retry will not help
 retry_statuses = [502]
 retries = 3

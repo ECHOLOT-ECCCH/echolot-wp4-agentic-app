@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from typing import Any
 
 import httpx
@@ -108,6 +110,58 @@ def test_service_concurrency_caps_the_run() -> None:
         services=service(concurrency=3),
     )
     assert gauge.peak == 3
+
+
+def test_a_narrower_limit_for_one_query_value() -> None:
+    peaks: dict[str, int] = {}
+    current: dict[str, int] = {}
+    lock = threading.Lock()
+
+    def reconcile(request: httpx.Request) -> httpx.Response:
+        algorithm = request.url.params.get("algorithm", "wikifier")
+        with lock:
+            current[algorithm] = current.get(algorithm, 0) + 1
+            peaks[algorithm] = max(peaks.get(algorithm, 0), current[algorithm])
+            peaks["all"] = max(peaks.get("all", 0), sum(current.values()))
+        time.sleep(0.02)
+        with lock:
+            current[algorithm] -= 1
+        return httpx.Response(200, json={"algorithm": algorithm, "matches": []})
+
+    script = (
+        "def process(record, ctx):\n"
+        '    params = {"algorithm": record["algorithm"]} if record["algorithm"] else None\n'
+        '    return ctx.service("echo").post("/reconcile", json={}, params=params)\n'
+    )
+    records = [{"algorithm": ["llm_based", "rule_based", ""][i % 3]} for i in range(90)]
+    world = FakeWorld(records=records, services={"echo.test": reconcile})
+    run(
+        params(script, services=["echo"], concurrency=16),
+        http=world.client(),
+        services=service(concurrency=6, concurrency_for={"algorithm=llm_based": 2}),
+    )
+    assert peaks["llm_based"] == 2
+    assert peaks["all"] == 6
+    assert [line["algorithm"] for line in world.lines()[:3]] == [
+        "llm_based",
+        "rule_based",
+        "wikifier",
+    ]
+
+
+def test_a_query_in_the_path_counts_too() -> None:
+    gauge = InFlight()
+    script = (
+        "def process(record, ctx):\n"
+        '    return ctx.service("echo").post("/reconcile?algorithm=llm_based", json=1)\n'
+    )
+    world = FakeWorld(records=[{"i": i} for i in range(30)], services={"echo.test": gauge})
+    run(
+        params(script, services=["echo"], concurrency=8),
+        http=world.client(),
+        services=service(concurrency=8, concurrency_for={"algorithm=llm_based": 1}),
+    )
+    assert gauge.peak == 1
 
 
 def test_a_service_outside_the_run_fails_that_record() -> None:

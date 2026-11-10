@@ -1,4 +1,11 @@
-import { type Candidate, formatScore, isCandidateList, SCORE_NOTE, wikidataUrl } from '@/lib/cells'
+import {
+  type Candidate,
+  candidateScore,
+  isCandidateList,
+  SCORE_NOTE,
+  SELECTED_NOTE,
+  wikidataUrl,
+} from '@/lib/cells'
 import { cellText } from '@/lib/format'
 
 const URL_RE = /^https?:\/\/\S+$/
@@ -19,10 +26,12 @@ function External({ href, children }: { href: string; children: React.ReactNode 
   )
 }
 
-/** Reconciliation candidates in one line: QID (Wikidata), title (Wikipedia), score. */
+/** Reconciliation candidates in one line: QID (Wikidata), title (Wikipedia, Wikidata or ULAN),
+ * score; the algorithm too when one list holds several algorithms' candidates. */
 function CandidateList({ items }: { items: Candidate[] }) {
   const shown = items.slice(0, MAX_CANDIDATES)
   const rest = items.length - shown.length
+  const mixed = new Set(items.map((c) => c.algorithm ?? '')).size > 1
   return (
     <span className="inline-flex items-center gap-1.5" data-testid="candidates">
       {shown.map((c, i) => (
@@ -35,14 +44,22 @@ function CandidateList({ items }: { items: Candidate[] }) {
           )}
           {c.title &&
             (c.url ? <External href={c.url}>{c.title}</External> : <span>{c.title}</span>)}
-          {typeof c.score === 'number' && (
-            <span className="text-muted-foreground tabular-nums" title={`score: ${SCORE_NOTE}`}>
-              {formatScore(c.score)}
-            </span>
-          )}
+          {mixed && c.algorithm && <span className="text-muted-foreground">{c.algorithm}</span>}
+          <Score candidate={c} />
         </span>
       ))}
       {rest > 0 && <span className="text-muted-foreground">+{rest} more</span>}
+    </span>
+  )
+}
+
+function Score({ candidate }: { candidate: Candidate }) {
+  const score = candidateScore(candidate)
+  if (score === null) return null
+  const note = score === 'selected' ? SELECTED_NOTE : `score: ${SCORE_NOTE}`
+  return (
+    <span className="text-muted-foreground tabular-nums" title={note}>
+      {score}
     </span>
   )
 }
