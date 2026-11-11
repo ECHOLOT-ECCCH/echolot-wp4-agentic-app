@@ -56,8 +56,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
   Latxa.
 - M5 (enrichment from Wikidata) is planned on the branch `feat/wikidata-statements` (off
   `feat/users-and-byok`): section 12f. M5.1 (the endpoint, in the ECHOLOT checkout's branch
-  `feat/wikidata-statements`) and M5.2 (the agent's doc) are done; next: M5.3, the agent's
-  instructions and the check with a real model.
+  `feat/wikidata-statements`) and M5.2 (the agent's doc) are done, and M5.3's prompt lines are
+  in; next: M5.3's acceptance, a session with a real model in the app.
 - Last update: 2026-11-11.
 
 Update this block at the end of every task.
@@ -700,7 +700,8 @@ agent to settle per dataset; the platform does not prescribe them (DECISIONS 202
   rate limits, the 4,000-character view of a record when exploring) with a short example that
   `test_service_docs.py` runs against a fake endpoint.
 - [ ] M5.3 The agent's instructions: what it can do with Wikidata (explore a sample's QIDs,
-  suggest data, extract), and that the final script must work end to end on its own. Acceptance:
+  suggest data, extract), and that the final script must work end to end on its own. (The
+  prompt lines are in, 2026-11-11; the acceptance below is open.) Acceptance:
   with a real model, a session explores a sample's QIDs, suggests data, and writes a script that
   gets the QIDs and extracts the chosen data, run on a sample.
 

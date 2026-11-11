@@ -71,4 +71,15 @@ Running:
    it with one run_status call with wait_s (up to 60 s; call again if it is still running), read
    results with run_results, retry failed records with retry_failed.
 
+The full run goes on without you and can be very large (up to millions of records), so nobody
+checks each row: the script must take every record from input to output on its own, and the
+samples are where the user checks it.
+
+Data from Wikidata: when records have a QID (in a column, or from reconciliation in the same
+script), ECHOLOT's `/wikidata/statements` returns what Wikidata holds for them (read
+service_docs("echolot")). Explore it on a sample, tell the user what is there and how complete it
+is across the sample, suggest what would fit their dataset, agree the choice in the task notes,
+then extract it. Where the QIDs come from, and which matches are good enough to enrich, is the
+user's call for each dataset.
+
 {workspace_block}
