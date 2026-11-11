@@ -244,6 +244,25 @@ class RunDecision(Base):
     decided_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 
 
+class ServiceCall(IdMixin, CreatedAtMixin, Base):
+    """One request the agent sent to a service through the runner (service_call, docs/PLAN.md
+    7.9): a one-record run of a fixed script, kept apart from the workspace's runs and files."""
+
+    __tablename__ = "service_calls"
+
+    workspace_id: Mapped[uuid.UUID] = _fk("workspaces.id")
+    service: Mapped[str] = mapped_column(String(64))
+    request: Mapped[dict[str, Any]] = mapped_column(default=dict)  # method, path, params, body
+    purpose: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default=RunStatus.QUEUED.value)
+    executor: Mapped[str] = mapped_column(String(16))
+    external_id: Mapped[str | None] = mapped_column(String(64))
+    token_hash: Mapped[str | None] = mapped_column(String(64))
+    result: Mapped[dict[str, Any] | None] = mapped_column()  # the runner's result line
+    error: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[datetime | None] = mapped_column()
+
+
 class Conversation(IdMixin, TimestampMixin, Base):
     __tablename__ = "conversations"
 

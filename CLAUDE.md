@@ -36,7 +36,7 @@ images, Caddy, an optional runner and Prefect server; deploy/README.md)
 - Model keys (the server's as a SecretStr in settings, users' Fernet-encrypted in the database) are never logged,
   never returned to the browser beyond a 4-character hint, never in the model's context. Service keys exist only on
   the runner host, never in the app, the browser or the model's context.
-- Approval-gated: submit_run, retry_failed, and any delete tool. Runs started by the user in the UI need no card.
+- Approval-gated: submit_run, retry_failed, service_call, and any delete tool. Runs started by the user in the UI need no card.
 - Scripts reach services only through ctx.service(name). The app never executes scripts in its own process.
 - The app has no Prefect dependency; it talks to Prefect over REST. Prefect lives in runner/ only.
 - Every /api route except sign-in needs a session; every route under /api/workspaces/{id} checks ownership (PLAN 7.11).

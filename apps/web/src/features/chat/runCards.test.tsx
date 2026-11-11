@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { SubmitRunArgs } from '@/features/chat/runCards'
+import { ServiceCallArgs, SubmitRunArgs } from '@/features/chat/runCards'
 import { mockApi, renderWithProviders } from '@/test/utils'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -60,5 +60,40 @@ describe('SubmitRunArgs', () => {
     )
     expect(await screen.findByText(/on all 1,234 records of people\.csv/)).toBeInTheDocument()
     expect(await screen.findByText(/no services/)).toBeInTheDocument()
+  })
+})
+
+describe('ServiceCallArgs', () => {
+  it('shows the exact request the user approves', () => {
+    renderWithProviders(
+      <ServiceCallArgs
+        argsText={JSON.stringify({
+          service: 'echolot',
+          path: '/wikidata/statements',
+          purpose: 'See what Wikidata holds for Chillida',
+          body: { ids: ['Q156736'], properties: ['P569'] },
+        })}
+      />,
+    )
+    expect(screen.getByText('See what Wikidata holds for Chillida')).toBeInTheDocument()
+    expect(screen.getByText('echolot')).toBeInTheDocument()
+    expect(screen.getByText('POST /wikidata/statements')).toBeInTheDocument()
+    expect(screen.getByText(/"Q156736"/)).toBeInTheDocument()
+  })
+
+  it('shows a GET with its query and no body', () => {
+    renderWithProviders(
+      <ServiceCallArgs
+        argsText={JSON.stringify({
+          service: 'echolot',
+          path: '/reconcile',
+          method: 'GET',
+          params: { algorithm: 'rule_based' },
+          purpose: 'x',
+        })}
+      />,
+    )
+    expect(screen.getByText('GET /reconcile?algorithm=rule_based')).toBeInTheDocument()
+    expect(screen.getByTestId('service-call-args').querySelector('pre')).toBeNull()
   })
 })

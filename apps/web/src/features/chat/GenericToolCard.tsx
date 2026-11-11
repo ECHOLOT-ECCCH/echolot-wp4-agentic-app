@@ -3,7 +3,7 @@ import { PaperclipIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { ToolFallback } from '@/components/assistant-ui/elements/tool-fallback.aui'
-import { RunBody, SubmitRunArgs } from '@/features/chat/runCards'
+import { RunBody, ServiceCallArgs, SubmitRunArgs } from '@/features/chat/runCards'
 import { TOOL_LABELS } from '@/features/chat/toolLabels'
 import { fileDownloadUrl } from '@/lib/api'
 import type { ToolResultPayload } from '@/lib/types'
@@ -28,6 +28,7 @@ const TOOL_ARGS: Record<
   (props: { argsText?: string; workspaceId: string }) => React.ReactNode
 > = {
   submit_run: SubmitRunArgs,
+  service_call: ServiceCallArgs,
 }
 
 function isToolResult(value: unknown): value is ToolResultPayload {

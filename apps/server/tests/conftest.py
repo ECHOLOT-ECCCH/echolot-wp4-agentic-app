@@ -7,6 +7,7 @@ import json
 import os
 import socket
 import threading
+import urllib.parse
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
@@ -199,6 +200,16 @@ def process(record, ctx):
 class FakeService(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         pass
+
+    def do_GET(self) -> None:
+        url = urllib.parse.urlsplit(self.path)
+        query = dict(urllib.parse.parse_qsl(url.query))
+        body = json.dumps({"path": url.path, "query": query}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self) -> None:
         name = json.loads(self.rfile.read(int(self.headers["Content-Length"])))["name"]

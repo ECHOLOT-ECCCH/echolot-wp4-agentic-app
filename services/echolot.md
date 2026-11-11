@@ -238,7 +238,10 @@ ctx.service("echolot").post("/wikidata/statements", json={"ids": [qid], "propert
 
 Returns what Wikidata holds for items, as values a script can use. Use it to see what a sample's
 items hold, to suggest to the user what could be added to the dataset, and then to extract what
-the user chose, record by record, in the script that runs on the whole file.
+the user chose, record by record, in the script that runs on the whole file. To look at one item,
+send the request with service_call instead of a script: `service="echolot"`,
+`path="/wikidata/statements"`, `body={"ids": ["Q156736"]}` (a famous item's overview is long, and
+replies over about 6,000 tokens are cut: ask for `properties` when you know them).
 
 The QID can come from a column of the file, from `/reconcile` in the same script, or both:
 settle with the user, per dataset, where it comes from and which matches are good enough to

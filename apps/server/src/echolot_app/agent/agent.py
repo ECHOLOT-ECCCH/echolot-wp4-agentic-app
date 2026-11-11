@@ -81,12 +81,12 @@ async def workspace_block(deps: AgentDeps) -> str:
     return "\n".join(lines)
 
 
-GATED_RUN_TOOLS = frozenset({"submit_run", "retry_failed"})
+GATED_RUN_TOOLS = frozenset({"submit_run", "retry_failed", "service_call"})
 
 
 def _not_gated_for_canned_model(ctx: RunContext[AgentDeps], tool: ToolDefinition) -> bool:
     """The dev/CI test model calls every tool it sees with generated arguments; it gets the one
-    demo approval, not a run approval on every turn."""
+    demo approval, not a run or call approval on every turn."""
     return tool.name not in GATED_RUN_TOOLS or not isinstance(ctx.model, TestModel)
 
 
@@ -94,7 +94,7 @@ def toolsets_for(*, dev_tools: bool = False) -> list[AbstractToolset[AgentDeps]]
     toolsets: list[AbstractToolset[AgentDeps]] = [
         files_toolset,
         task_toolset,
-        services_toolset,
+        services_toolset.filtered(_not_gated_for_canned_model),
         scripts_toolset,
         runs_toolset.filtered(_not_gated_for_canned_model),
     ]

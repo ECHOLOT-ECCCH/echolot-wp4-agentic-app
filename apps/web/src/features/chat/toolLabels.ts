@@ -10,6 +10,7 @@ export const TOOL_LABELS: Record<string, string> = {
   script_write: 'Writing the script',
   list_services: 'Listing the services',
   service_docs: 'Reading a service description',
+  service_call: 'Calling a service',
   submit_run: 'Running the script',
   run_status: 'Checking a run',
   run_results: 'Reading run results',

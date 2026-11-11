@@ -130,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scripts.router)
     app.include_router(runs.router)
     app.include_router(runner_io.router)
+    app.include_router(runner_io.calls_router)
     app.include_router(services.router)
     app.include_router(chat.router)
     return app

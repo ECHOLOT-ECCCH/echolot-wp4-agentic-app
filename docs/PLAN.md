@@ -58,7 +58,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 - M5 (enrichment from Wikidata) is planned on the branch `feat/wikidata-statements` (off
   `feat/users-and-byok`): section 12f. M5.1 (the endpoint, in the ECHOLOT checkout's branch
   `feat/wikidata-statements`) and M5.2 (the agent's doc) are done, and M5.3's prompt lines are
-  in; next: M5.3's acceptance, a session with a real model in the app.
+  in, and M5.4 (`service_call`, single requests on a card) is built; next: M5.3's acceptance, a
+  session with a real model in the app.
 - Last update: 2026-11-11.
 
 Update this block at the end of every task.
@@ -245,6 +246,9 @@ def process(record: dict[str, Any], ctx) -> dict[str, Any]:
 - `POST /runner/runs/{run_id}/progress`: `{"done", "total", "ok", "error"}`, at most every 2 s and
   once at the end.
 - `PUT /runner/runs/{run_id}/result`: the results JSONL (7.4), streamed.
+- The same three under `/runner/calls/{call_id}/` for the agent's single requests
+  (`service_call`, 7.9; 2026-11-11): the input is one line whose record is the request, the
+  script is the platform's own, and the result line's `reply` goes back to the agent.
 - Tokens: 32 random bytes, stored as a SHA-256 hash, valid only for that run and only until it
   reaches a terminal status. Any other run id answers 404.
 - The runner reaches the app at `ECHO_PUBLIC_URL`. When the runner host cannot reach the app, the
@@ -338,6 +342,7 @@ model.
 | `distinct_values(file_id, column, limit≤50)` | value and count |
 | `task_read`, `task_update(markdown)` | the agreed description of the function |
 | `list_services`, `service_docs(name)` | from `services/*.md` |
+| `service_call(service, path, purpose, body=None, params=None, method=POST)` | **approval**; one request through the runner, the reply returned; card shows the service, method, path, query and body (2026-11-11) |
 | `script_read(version=None)`, `script_write(code, note)` | validation per 7.1; opens the script |
 | `submit_run(file_id, purpose, limit=None, script_version=None, concurrency=None, script_params=None)` | **approval**; card shows script version, file, record count, services, purpose |
 | `run_status(run_id)` | status, progress, counts, the first errors |
@@ -707,6 +712,12 @@ agent to settle per dataset; the platform does not prescribe them (DECISIONS 202
   prompt lines are in, 2026-11-11; the acceptance below is open.) Acceptance:
   with a real model, a session explores a sample's QIDs, suggests data, and writes a script that
   gets the QIDs and extracts the chosen data, run on a sample.
+- [x] M5.4 `service_call`: the agent sends one request to a service and gets the reply, without a
+  script or a run, approved on a card every time (owner, 2026-11-11). It travels like a one-record
+  run through the executor and the runner (7.3), so service keys stay on the runner; it leaves
+  no run, script version or file. Acceptance: tests through the local executor for a reply, a
+  GET with a query, a service error, a denied call, bad arguments and the call endpoints' token;
+  the card's own tests.
 
 ## 13. System prompt (outline for `agent/prompts/system.md`)
 

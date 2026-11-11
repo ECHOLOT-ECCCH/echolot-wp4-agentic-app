@@ -665,3 +665,25 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
   docs, its API key required, and a run over three names (`rule_based`, then
   `/wikidata/statements`) through Prefect and the runner in 7 s with the expected QIDs and
   birth dates. The earlier ECHOLOT installation on the host is stopped, for its owner to remove.
+
+## 2026-11-11 `service_call`: single requests on a card (M5.4)
+
+- **Why:** looking at one QID, or trying one record, meant writing or changing the workspace's
+  script, which makes a version, then a sample run. The M5 decision left this to be revisited
+  when the cards got in the way; the owner chose a general tool over a Wikidata-specific one in
+  the app, and a card for every call.
+- **How it travels:** a call is stored apart from runs (`service_calls`) and goes through the
+  executor like a one-record run. The runner gets the platform's own script, which sends the
+  request with `ctx.service(name)`, and three endpoints under `/runner/calls/{id}` (PLAN 7.3)
+  with a per-call token. So the service keys stay on the runner, as for runs, and both
+  executors work unchanged. A call leaves no run, script version or result file; the tool waits
+  up to 200 s (a service's 180 s timeout and its retries) and cancels after that.
+- **The card** shows the purpose, the service, the method, path and query, and the body, so
+  what leaves for the service is visible before it does. Only `service_call` is new on the
+  approval list (CLAUDE.md, PLAN 7.9).
+- **Limits:** POST or GET, a path from the service's doc (no URLs), a body up to 100,000
+  characters, a reply kept up to 2 MB and shown to the model up to about 6,000 tokens, like any
+  tool output. The prompt and `services/echolot.md` say when to use it (one item, one record,
+  checking a request) and when to write a script instead.
+- **Speed:** about the time of a sample run of one record: instant with the local executor, a
+  few seconds through Prefect, where the runner checks for work every 2 s.
