@@ -633,3 +633,35 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
   each list cut to fit (checked on a fake item with 480 statements: under 4,000 characters), and
   an extracting script with one column per chosen property, values joined with `; ` and a
   `_qid` column beside item labels. The fake ECHOLOT in `run_script` now answers both endpoints.
+
+## 2026-11-11 Deployed to echolot.ijs.si (M4.3)
+
+- **Topology:** one host inside the institute's network, behind the institute's nginx front,
+  which ends TLS (Let's Encrypt, webroot challenge, like its other sites) and forwards to the
+  host's own nginx on port 80. That nginx accepts only the front and sends `/service/` to
+  ECHOLOT's API and everything else to the workbench's web container. Both containers publish
+  on the host's 127.0.0.1 only: Docker's published ports bypass `ufw`, so a port bound to the
+  host's address would be open to the whole internal network.
+- **One Compose project** with the stack's own Prefect server and runner (`./init.sh
+  --with-prefect`'s layout, the owner's choice here instead of an external Prefect server) and
+  ECHOLOT's API, added by a Compose file kept on the host. The runner calls it as
+  `http://echolot:5000`. ECHOLOT runs with `--root-path /service`, so its `/docs` work behind
+  the prefix while the runner's calls without it still route.
+- **Shared maintenance:** code in `/opt/echolot` (git checkouts), configuration and secrets in
+  `/etc/echolot` (the deploy `.env` is a link to it), both owned by an `echolot` group with
+  setgid directories and `core.sharedRepository=group`; a system-wide `safe.directory` lets
+  any member pull. Maintainers are in `echolot` and `docker`. A README on the host describes
+  the layout, updates, keys and operation.
+- **Code:** the organization disables deploy keys, so the owner made both repositories public;
+  the host clones over https with no credentials. Both run `feat/wikidata-statements`.
+- **Keys:** none copied from anyone's machine. The secret key, the Prefect password and
+  ECHOLOT's API key were generated on the host; Wikifier and OpenRouter keys are to be added
+  there at the end (until then `wikifier` and `llm_based` answer 503); no server model key,
+  testers bring their own.
+- **Found on the way:** the runner (uid 10001) must be able to read the mounted
+  `services.toml`; a group-only file fails every run at setup with `PermissionError`. It holds
+  no secrets and stays world-readable.
+- **Checked from outside:** the certificate, the pages, sign-in required, ECHOLOT's health and
+  docs, its API key required, and a run over three names (`rule_based`, then
+  `/wikidata/statements`) through Prefect and the runner in 7 s with the expected QIDs and
+  birth dates. The earlier ECHOLOT installation on the host is stopped, for its owner to remove.

@@ -34,9 +34,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
   Compose deployment) is built on the branch `feat/users-and-byok` (2026-11-09), ahead of M3.4:
   see section 12e. The Prefect server will be an external one (owner, 2026-11-09): the
   Compose stack sends runs to `ECHO_PREFECT_API_URL` and brings its own Prefect only as an
-  option. M4.3 waits for a host and that server's address: the images have not been built on
-  this machine (no Docker daemon access); CI's `compose` job builds and checks them on the
-  first push.
+  option. Deployed on 2026-11-11 to https://echolot.ijs.si with a Prefect server of its own
+  (the owner's choice for this host) and ECHOLOT's API at /service/ (DECISIONS 2026-11-11);
+  what M4.3 still lacks is a tester completing the loop with their own key, and the Wikifier
+  and OpenRouter keys on the host.
 - Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
   M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
@@ -667,6 +668,8 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
     the bundled server an override file (`init.sh --with-prefect`, the smoke test);
     `PREFECT_VERSION` builds the runner image for the server's version; `echolot-admin
     check-runs` checks the server, the deployment and that a runner polls it.
+  - [x] On echolot.ijs.si (2026-11-11): https in front, the first admin, `check-runs` green
+    against the stack's own Prefect server, a run through the runner and ECHOLOT.
   - [ ] Acceptance: `deploy/smoke.sh` green in CI; on the owner's host, https in front, the
     first admin created, `check-runs` green against the external Prefect server, a tester signs
     in with a key of their own and completes the loop with ECHOLOT through the runner.
