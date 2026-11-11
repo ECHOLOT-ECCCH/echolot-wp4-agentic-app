@@ -572,3 +572,31 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
   ours. Not tried against a live ECHOLOT: the instance on 127.0.0.1:5000 here still answers
   without the parameter (its `openapi.json` has none); the checkout next to this repository has
   the new code (`bdfd048`), whose registry and wikifier module match the contract.
+
+## 2026-11-11 Enrichment from Wikidata (M5, planned)
+
+- **What the owner wants:** the agent looks up what Wikidata holds for a sample's QIDs, suggests
+  and analyses what to add, and writes the script that extracts the chosen data. Review happens
+  on samples only: the datasets can have millions of rows, so the final script must run end to
+  end, unattended. Everything per record is therefore one script (get the QID, however it is
+  got, then extract), not a chain of runs.
+- **Not prescribed:** where the QIDs come from (a column, reconciliation, reconciling only the
+  rows without one, or reconciling anyway), the order of the steps, and the script's parameters.
+  The user and the agent settle them per dataset; the docs show building blocks, not a flow.
+- **Where the Wikidata access lives:** an endpoint in the ECHOLOT service,
+  `POST /wikidata/statements`, not the app and not raw Wikidata from scripts. Turning Wikidata's
+  JSON into usable values (item labels, dates at their precision, ranks) should be written once,
+  not by the agent in every script; ECHOLOT already has the code for `/enrich`; caching,
+  Wikimedia's User-Agent rule and rate limits belong in one place; and a large dataset may later
+  need a local Wikidata copy behind the same endpoint, which scripts would not notice.
+- **No new agent tools:** the agent explores through a sample run, like any service call, with
+  the usual approval card. A direct lookup tool would make the app call a service itself (today
+  only the runner does, with config and keys on the runner host). Revisit if the cards get in
+  the way.
+- **Two modes, one shape:** without `properties`, every property with a count and one example
+  (exploring); with `properties`, every value of those (extracting). A famous person has
+  hundreds of statements, most of them external identifiers, so an exploring script must
+  condense what it returns: the agent reads at most 4,000 characters of a record.
+- **Scale, noted for later:** at M2.3's rate (200 records in 53 s with `wikifier`) a million
+  records take about three days to reconcile, before any Wikidata lookups, and Wikidata's
+  public API is not meant for millions of requests. The app has not been run beyond 200 rows.
