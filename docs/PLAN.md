@@ -55,7 +55,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
   `rule_based` with the ULAN table, `llm_based` with Llama 3.3 70B on OpenRouter in place of
   Latxa.
 - M5 (enrichment from Wikidata) is planned on the branch `feat/wikidata-statements` (off
-  `feat/users-and-byok`): section 12f. Next task there: M5.1, the endpoint in ECHOLOT.
+  `feat/users-and-byok`): section 12f. M5.1 (the endpoint, in the ECHOLOT checkout's branch
+  `feat/wikidata-statements`) is done; next: M5.2, the agent's doc.
 - Last update: 2026-11-11.
 
 Update this block at the end of every task.
@@ -677,9 +678,9 @@ end to end on the whole dataset without the agent. Where the QIDs come from (a c
 reconciliation, both), the order of steps and the script's parameters are for the user and the
 agent to settle per dataset; the platform does not prescribe them (DECISIONS 2026-11-11).
 
-- [ ] M5.1 ECHOLOT: `POST /wikidata/statements` in the standalone API, on the branch
+- [x] M5.1 ECHOLOT: `POST /wikidata/statements` in the standalone API, on the branch
   `feat/wikidata-statements` of `echolot-wp4-api-service` (off `llm-and-rule-based`), for its
-  owner to review.
+  owner to review. Done 2026-11-11 (`eecc6a9` there; not pushed).
   - Request: `ids` (1 to 50 QIDs or entity URLs), `properties` (optional property ids), `lang`
     (default `en`; labels fall back to English and `mul`).
   - Reply: per requested id, in order: the item's id (after redirects), label, description and

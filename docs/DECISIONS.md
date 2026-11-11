@@ -600,3 +600,23 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
 - **Scale, noted for later:** at M2.3's rate (200 records in 53 s with `wikifier`) a million
   records take about three days to reconcile, before any Wikidata lookups, and Wikidata's
   public API is not meant for millions of requests. The app has not been run beyond 200 rows.
+
+## 2026-11-11 `POST /wikidata/statements` in ECHOLOT (M5.1)
+
+- Built in `echolot-wp4-api-service` on the branch `feat/wikidata-statements` (`eecc6a9`, off
+  `llm-and-rule-based`, not pushed), on the Wikidata helpers `/enrich` uses: batches of 50,
+  the label cache, dates at their precision. New: values keep their statement's rank
+  (preferred first), carry typed fields beside `text` (`id` and `label` of items, `time`,
+  `precision` and `calendar`, `amount` and `unit`, `language`), and a requested property the
+  item lacks comes back as `count: 0`. Unknown QIDs are `found: false`, not an error; a
+  redirect is followed and the reply's `id` is the target. Qualifiers and references are left
+  out for now.
+- That repository had no tests on this branch: pytest is added as a dev dependency, and 15
+  tests run the endpoint against canned Wikidata replies (both modes, typed values, language
+  fallback, the Julian calendar, redirects, unknown ids, bad input, 401, Wikidata failures).
+- Live, 2026-11-11: summary of Q5593 and Q156736 together in 8.3 s with a cold label cache
+  (92 KB; Picasso 435 properties, 365 of them external identifiers; Chillida 191 and 147);
+  six chosen properties of both in 2.3 s, labels in Basque. Through the running service on
+  127.0.0.1:5002, three properties of Aurelio Arteta in 0.8 s.
+- Wikidata's data is not always right: on that day it gave Tel Aviv (Q33935) as Chillida's
+  place of birth. The doc tells the agent to say values are copied as they stand.
