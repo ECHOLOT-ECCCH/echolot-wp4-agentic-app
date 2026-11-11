@@ -1,12 +1,13 @@
 ---
 name: echolot
-description: Proposes Wikidata items for one entity record, with one of three algorithms (wikifier, llm_based, rule_based); reconciliation candidates, not decisions
+description: Proposes Wikidata items for one entity record, with one of three algorithms (wikifier, llm_based, rule_based); reconciliation candidates, not decisions. Also returns what Wikidata holds for items with a QID, for enriching a dataset
 ---
-# echolot: entity reconciliation against Wikidata
+# echolot: entity reconciliation against Wikidata, and Wikidata data for enrichment
 
-Send one entity record, get back candidate Wikidata items from the algorithm you choose. The
-service only proposes candidates: it does not decide, verify or write anything back. A person
-confirms.
+Two endpoints. `/reconcile`: send one entity record, get back candidate Wikidata items from the
+algorithm you choose. The service only proposes candidates: it does not decide, verify or write
+anything back. A person confirms. `/wikidata/statements` (last section): send QIDs, get back what
+Wikidata holds for them, to explore and then extract data for the dataset.
 
 ## Call
 
@@ -228,3 +229,145 @@ whole file.
   with `llm_based`, a rerun of those records later (the lookups may have failed); with
   `rule_based`, that the person may not be in its table, and another algorithm.
 - A person confirms the choice per record; the candidates are proposals.
+
+## Wikidata statements: data for items that have a QID
+
+```
+ctx.service("echolot").post("/wikidata/statements", json={"ids": [qid], "properties": ["P569", "P19"], "lang": "en"})
+```
+
+Returns what Wikidata holds for items, as values a script can use. Use it to see what a sample's
+items hold, to suggest to the user what could be added to the dataset, and then to extract what
+the user chose, record by record, in the script that runs on the whole file.
+
+The QID can come from a column of the file, from `/reconcile` in the same script, or both:
+settle with the user, per dataset, where it comes from and which matches are good enough to
+enrich. The script that runs on the whole file must get from a record to its data on its own.
+
+### Request
+
+- `ids`: 1 to 50 QIDs or entity URLs (`"Q5593"`, `"http://www.wikidata.org/entity/Q5593"`). A
+  script sends the one QID of its record.
+- `properties` (optional): property ids. **Left out: every property the item has, with its
+  count and one example value** (to explore). **Given: every value of those properties** (to
+  extract).
+- `lang` (default `en`): the language of labels (`"eu"` for Basque), falling back to English.
+
+### Reply
+
+```
+{"summary": false, "items": [{"requested": "Q5593", "found": true, "id": "Q5593",
+  "label": "Pablo Picasso", "description": "Spanish painter (1881–1973)", "statements": [
+    {"property": "P569", "label": "date of birth", "datatype": "time", "count": 1,
+     "values": [{"text": "1881-10-25", "rank": "normal", "time": "+1881-10-25T00:00:00Z", "precision": 11}]},
+    {"property": "P19", "label": "place of birth", "datatype": "wikibase-item", "count": 1,
+     "values": [{"text": "Málaga", "rank": "normal", "id": "Q8851", "label": "Málaga"}]},
+    {"property": "P27", "label": "country of citizenship", "datatype": "wikibase-item", "count": 0, "values": []}]}]}
+```
+
+- Every value has `text` (short and readable) and `rank`; preferred values come first. By type:
+  `id` and `label` for items (places, occupations, people), `time` and `precision` (11 day,
+  10 month, 9 year) for dates, whose `text` is already cut to the precision ("1924" when only
+  the year is known), `amount`, `unit`, `unit_label` for quantities, `language` for texts.
+- A property asked for that the item lacks has `count: 0`. Deprecated statements and "unknown
+  value" are left out. Qualifiers (start and end dates of a position, for example) and
+  references are not included.
+- `found: false` means the QID does not exist on Wikidata: report it, do not raise. `id` is the
+  item after a redirect and can differ from the QID sent: keep `id`.
+- External identifiers (`datatype: "external-id"`: VIAF, ULAN, GND, ISNI, …) are properties
+  like any other, and often worth adding.
+
+Errors: 422 is a malformed QID or property id (fix the script); 502 is Wikidata failing or not
+answering, retried by the runner, then the record fails and can be retried later; 401 and 503
+as for `/reconcile`.
+
+### Exploring a sample
+
+A well-known person has hundreds of properties, most of them external identifiers (Pablo
+Picasso: 435, 365 of them identifiers), and you see at most 4,000 characters of a record's
+output. So an exploring script condenses: one line per property, identifiers by name only, each
+list cut to fit. Run it on 10 to 20 records, then count across the sample how many items have
+each property.
+
+```python
+def fit(parts, limit):
+    text = ""
+    for i, part in enumerate(parts):
+        if len(text) + len(part) > limit:
+            return f"{text} … +{len(parts) - i} more"
+        text = f"{text} | {part}" if text else part
+    return text
+
+
+def process(record, ctx):
+    qid = (record.get("wikidata") or "").rstrip("/").rsplit("/", 1)[-1]
+    if not qid.startswith("Q"):
+        return {"qid": None}
+    reply = ctx.service("echolot").post("/wikidata/statements", json={"ids": [qid]})
+    item = reply["items"][0]
+    if not item["found"]:
+        return {"qid": qid, "found": False}
+    data, identifiers = [], []
+    for s in item["statements"]:
+        if s["datatype"] == "external-id":
+            identifiers.append(f"{s['property']} {s['label']}")
+        else:
+            many = f" ({s['count']})" if s["count"] > 1 else ""
+            data.append(f"{s['property']} {s['label']}{many}: {s['values'][0]['text']}")
+    return {
+        "qid": item["id"],
+        "label": item["label"],
+        "description": item.get("description"),
+        "properties": len(item["statements"]),
+        "data": fit(data, 2200),
+        "identifiers": fit(identifiers, 1000),
+    }
+```
+
+### Extracting what the user chose
+
+One column per chosen property (the names agreed with the user), several values joined with
+`; `, and the QID beside the label for items:
+
+```python
+PROPERTIES = {"P569": "birth_date", "P19": "birth_place", "P106": "occupation", "P245": "ulan_id"}
+
+
+def process(record, ctx):
+    qid = (record.get("wikidata") or "").rstrip("/").rsplit("/", 1)[-1]
+    if not qid.startswith("Q"):
+        return {"wikidata_qid": None, "wikidata_status": "no QID"}
+    reply = ctx.service("echolot").post(
+        "/wikidata/statements", json={"ids": [qid], "properties": list(PROPERTIES)}
+    )
+    item = reply["items"][0]
+    if not item["found"]:
+        return {"wikidata_qid": qid, "wikidata_status": "not on Wikidata"}
+    out = {"wikidata_qid": item["id"], "wikidata_status": "found"}
+    for s in item["statements"]:
+        column = PROPERTIES[s["property"]]
+        out[column] = "; ".join(v["text"] for v in s["values"]) or None
+        if s["datatype"] == "wikibase-item":
+            out[f"{column}_qid"] = "; ".join(v["id"] for v in s["values"]) or None
+    return out
+```
+
+### Speed and limits
+
+- One call per record: a Wikidata request plus label lookups, which the service caches, so it
+  gets faster as a run goes on. Exploring a famous item takes a few seconds; extracting a few
+  properties well under a second.
+- Wikidata's public API is shared and rate-limited: a run of tens of thousands of records takes
+  hours, and very large files need planning with the user (where the QIDs come from, which
+  records to enrich, how long it will take).
+
+### When presenting
+
+- After exploring: per property, how many of the sampled items have it, grouped (dates and
+  places, occupations and roles, relations, identifiers), with an example value. Suggest what
+  fits the dataset and what is too sparse to be worth a column.
+- Say which values can be several (occupations: Picasso has 31) and how the script will join
+  them, and that dates come at the precision Wikidata has.
+- **Values are Wikidata's as they stand, errors included.** On 2026-11-11 Wikidata gave Tel Aviv
+  as Eduardo Chillida's place of birth (he was born in San Sebastián). Show the user a sample of
+  extracted values before the whole run.

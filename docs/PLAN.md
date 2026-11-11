@@ -56,7 +56,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
   Latxa.
 - M5 (enrichment from Wikidata) is planned on the branch `feat/wikidata-statements` (off
   `feat/users-and-byok`): section 12f. M5.1 (the endpoint, in the ECHOLOT checkout's branch
-  `feat/wikidata-statements`) is done; next: M5.2, the agent's doc.
+  `feat/wikidata-statements`) and M5.2 (the agent's doc) are done; next: M5.3, the agent's
+  instructions and the check with a real model.
 - Last update: 2026-11-11.
 
 Update this block at the end of every task.
@@ -695,7 +696,7 @@ agent to settle per dataset; the platform does not prescribe them (DECISIONS 202
   - Acceptance: tests with canned Wikidata replies for both modes, redirects, unknown items,
     bad input and an upstream failure; a live call for Q5593 and Q156736 in both modes; the
     README section.
-- [ ] M5.2 `services/echolot.md`: the endpoint for the agent (request, reply, errors, speed and
+- [x] M5.2 `services/echolot.md`: the endpoint for the agent (request, reply, errors, speed and
   rate limits, the 4,000-character view of a record when exploring) with a short example that
   `test_service_docs.py` runs against a fake endpoint.
 - [ ] M5.3 The agent's instructions: what it can do with Wikidata (explore a sample's QIDs,

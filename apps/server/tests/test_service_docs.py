@@ -28,11 +28,13 @@ def example_scripts(body: str) -> list[str]:
 def run_script(
     code: str,
     records: list[dict[str, Any]],
-    reply: Callable[[dict[str, Any], str], list[dict[str, Any]]],
+    reply: Callable[[dict[str, Any], str], list[dict[str, Any]]] | None = None,
     script_params: dict[str, Any] | None = None,
+    statements: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[tuple[str, dict[str, Any]]]]:
     """Runs a doc's script through the harness against a fake ECHOLOT: ``reply(entity,
-    algorithm)`` gives the matches. Returns the summary, the result lines and what was sent."""
+    algorithm)`` gives the matches of /reconcile, ``statements(body)`` the reply of
+    /wikidata/statements. Returns the summary, the result lines and what was sent."""
     sent: list[tuple[str, dict[str, Any]]] = []
     result: list[bytes] = []
 
@@ -46,6 +48,12 @@ def run_script(
             if request.url.path.endswith("/result"):
                 result.append(request.read())
             return httpx.Response(204)
+        if request.url.path == "/wikidata/statements":
+            assert statements is not None, "the script asked for statements"
+            body = json.loads(request.content)
+            sent.append(("statements", body))
+            return httpx.Response(200, json=statements(body))
+        assert reply is not None, "the script asked for reconciliation"
         algorithm = request.url.params.get("algorithm", "wikifier")
         entity = json.loads(request.content)
         sent.append((algorithm, entity))
@@ -81,7 +89,7 @@ def test_the_shipped_docs_parse() -> None:
     docs = load_service_docs(SERVICES)
     assert "echolot" in docs
     assert docs["echolot"].description.startswith("Proposes Wikidata items")
-    assert len(example_scripts(docs["echolot"].body)) == 2
+    assert len(example_scripts(docs["echolot"].body)) == 4
 
 
 def test_the_echolot_example_script_works() -> None:
@@ -168,3 +176,140 @@ def test_the_echolot_comparison_script_works() -> None:
     _summary, lines, sent = run_script(code, records, reply, {"algorithms": ["wikifier"]})
     assert {a for a, _ in sent} == {"wikifier"}
     assert "rule_based" not in lines[0]
+
+
+# --- /wikidata/statements: a fake that answers like ECHOLOT, from whole items
+
+
+def prop(pid: str, label: str, datatype: str, *values: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "property": pid,
+        "label": label,
+        "datatype": datatype,
+        "count": len(values),
+        "values": list(values),
+    }
+
+
+def item_value(qid: str, label: str) -> dict[str, Any]:
+    return {"text": label, "rank": "normal", "id": qid, "label": label}
+
+
+def text_value(text: str) -> dict[str, Any]:
+    return {"text": text, "rank": "normal"}
+
+
+PICASSO = {
+    "id": "Q5593",
+    "label": "Pablo Picasso",
+    "description": "Spanish painter",
+    "statements": [
+        prop("P569", "date of birth", "time", text_value("1881-10-25")),
+        prop("P19", "place of birth", "wikibase-item", item_value("Q8851", "Málaga")),
+        prop(
+            "P106",
+            "occupation",
+            "wikibase-item",
+            item_value("Q1028181", "painter"),
+            item_value("Q1281618", "sculptor"),
+        ),
+        prop("P245", "Union List of Artist Names ID", "external-id", text_value("500009666")),
+    ],
+}
+CHILLIDA = {
+    "id": "Q156736",
+    "label": "Eduardo Chillida",
+    "statements": [prop("P569", "date of birth", "time", text_value("1924"))],
+}
+FAMOUS = {  # as many statements as a very well-known person has
+    "id": "Q1",
+    "label": "Someone famous",
+    "statements": [
+        prop(f"P{1000 + i}", f"some property number {i}", "string", text_value(f"value {i}"))
+        for i in range(80)
+    ]
+    + [
+        prop(f"P{5000 + i}", f"some catalogue identifier {i}", "external-id", text_value(str(i)))
+        for i in range(400)
+    ],
+}
+ITEMS = {"Q5593": PICASSO, "Q999": PICASSO, "Q156736": CHILLIDA, "Q1": FAMOUS}
+LABELS = {s["property"]: (s["label"], s["datatype"]) for s in PICASSO["statements"]}
+
+
+def fake_statements(body: dict[str, Any]) -> dict[str, Any]:
+    properties = body.get("properties") or []
+    items = []
+    for requested in body["ids"]:
+        found = ITEMS.get(requested.rsplit("/", 1)[-1])
+        if found is None:
+            items.append({"requested": requested, "found": False, "statements": []})
+            continue
+        if properties:
+            have = {s["property"]: s for s in found["statements"]}
+            shown = [have.get(p) or prop(p, *LABELS[p]) for p in properties]
+        else:
+            shown = [{**s, "values": s["values"][:1]} for s in found["statements"]]
+        items.append({**found, "requested": requested, "found": True, "statements": shown})
+    return {"lang": body.get("lang", "en"), "summary": not properties, "items": items}
+
+
+def test_the_wikidata_exploring_script_works() -> None:
+    code = example_scripts(load_service_docs(SERVICES)["echolot"].body)[2]
+    assert check_script(code).services == ["echolot"]
+    records = [
+        {"wikidata": "http://www.wikidata.org/entity/Q5593"},
+        {"wikidata": "Q1"},
+        {"wikidata": ""},
+        {"wikidata": "Q404"},
+    ]
+
+    summary, lines, sent = run_script(code, records, statements=fake_statements)
+
+    assert summary == {**summary, "total": 4, "ok": 4}
+    assert all("properties" not in body for _, body in sent)  # everything, one example each
+    picasso, famous, no_qid, unknown = lines
+    assert picasso["qid"] == "Q5593"
+    assert picasso["properties"] == 4
+    assert "P106 occupation (2): painter" in picasso["data"]
+    assert picasso["identifiers"] == "P245 Union List of Artist Names ID"
+    # condensed to what the agent can read of a record
+    output = {k: v for k, v in famous.items() if not k.startswith("_")}
+    assert len(json.dumps(output, ensure_ascii=False)) < 4000
+    assert famous["data"].endswith("more") and famous["identifiers"].endswith("more")
+    assert no_qid["qid"] is None
+    assert unknown == {**unknown, "qid": "Q404", "found": False}
+
+
+def test_the_wikidata_extracting_script_works() -> None:
+    code = example_scripts(load_service_docs(SERVICES)["echolot"].body)[3]
+    assert check_script(code).services == ["echolot"]
+    records = [
+        {"wikidata": "http://www.wikidata.org/entity/Q5593"},
+        {"wikidata": "Q999"},
+        {"wikidata": "Q156736"},
+        {"wikidata": "Q404"},
+        {"wikidata": ""},
+    ]
+
+    summary, lines, sent = run_script(code, records, statements=fake_statements)
+
+    assert summary == {**summary, "total": 5, "ok": 5}
+    assert sent[0] == ("statements", {"ids": ["Q5593"], "properties": list(LABELS)})
+    picasso, redirected, chillida, unknown, no_qid = lines
+    assert picasso == {
+        **picasso,
+        "wikidata_qid": "Q5593",
+        "wikidata_status": "found",
+        "birth_date": "1881-10-25",
+        "birth_place": "Málaga",
+        "birth_place_qid": "Q8851",
+        "occupation": "painter; sculptor",
+        "occupation_qid": "Q1028181; Q1281618",
+        "ulan_id": "500009666",
+    }
+    assert redirected["wikidata_qid"] == "Q5593"  # the item the redirect leads to
+    # what the item lacks comes back empty
+    assert chillida == {**chillida, "birth_date": "1924", "birth_place": None, "ulan_id": None}
+    assert unknown == {**unknown, "wikidata_qid": "Q404", "wikidata_status": "not on Wikidata"}
+    assert no_qid == {**no_qid, "wikidata_qid": None, "wikidata_status": "no QID"}

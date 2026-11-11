@@ -620,3 +620,16 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
   127.0.0.1:5002, three properties of Aurelio Arteta in 0.8 s.
 - Wikidata's data is not always right: on that day it gave Tel Aviv (Q33935) as Chillida's
   place of birth. The doc tells the agent to say values are copied as they stand.
+
+## 2026-11-11 The Wikidata statements in the agent's doc (M5.2)
+
+- `services/echolot.md` gets a last section on `/wikidata/statements`: the call, both modes,
+  the reply with its typed values, errors, speed, and what to present. It names where a QID can
+  come from (a column, `/reconcile` in the same script, both) without choosing: that is settled
+  with the user per dataset. The front matter's description mentions it, so `list_services`
+  shows it.
+- Two short examples, both run through the harness against a fake in `test_service_docs.py`:
+  an exploring script that condenses an item to one line per property and identifiers by name,
+  each list cut to fit (checked on a fake item with 480 statements: under 4,000 characters), and
+  an extracting script with one column per chosen property, values joined with `; ` and a
+  `_qid` column beside item labels. The fake ECHOLOT in `run_script` now answers both endpoints.
