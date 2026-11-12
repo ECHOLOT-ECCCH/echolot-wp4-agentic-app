@@ -4,6 +4,7 @@ POC web app: upload a dataset, agree with an LLM agent what to do with each reco
 function as a Python script, and the script runs per record on a Prefect deployment that calls services
 (ECHOLOT reconciliation first; enrichment and others later).
 Plan and status: docs/PLAN.md. Decisions log: docs/DECISIONS.md. Ideas: docs/BACKLOG.md.
+What was added when, by commit, and what is deployed: CHANGELOG.md.
 The Elexifier app this repo was cut from: commit 98999b1, docs in docs/archive/elexifier/.
 
 ## Session start
@@ -45,3 +46,5 @@ images, Caddy, an optional runner and Prefect server; deploy/README.md)
 
 ## Git
 Conventional commits, one task per commit, `make check` green first. Follow the session's attribution instructions.
+Every commit that changes what the app does gets a row in CHANGELOG.md (in a follow-up commit if need be, since a
+commit cannot name its own hash), and so does every deployment.

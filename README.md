@@ -24,7 +24,8 @@ approvals, versioned scripts, runs on a local executor or a Prefect deployment (
 private workspaces, and bring-your-own model keys (PLAN 7.11).
 Still open: the checks with a real model and the owner's own data (M1.7, M3.1, M3.4). See
 [docs/PLAN.md](docs/PLAN.md) for the architecture, contracts, milestones and current status,
-[docs/DECISIONS.md](docs/DECISIONS.md) for the decision log, and
+[docs/DECISIONS.md](docs/DECISIONS.md) for the decision log, [CHANGELOG.md](CHANGELOG.md) for
+what was added when (by commit, and what is deployed), and
 [docs/runner-host.md](docs/runner-host.md) for setting up the runner next to the services.
 
 ## Requirements
