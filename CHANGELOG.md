@@ -11,7 +11,8 @@ its own changelog.
 | Date | Where | Workbench | ECHOLOT API | What changed |
 |---|---|---|---|---|
 | 2026-11-11 | https://echolot.ijs.si | `8a9e25c` | `eecc6a9` | First deployment: web, app, Prefect server, runner and ECHOLOT's API in one Compose project; the API at `/service/` |
-| 2026-11-12 | https://echolot.ijs.si | head of `feat/wikidata-statements` with `46eeae1` | head of `feat/wikidata-statements` with `eecc6a9` | `service_call` (single requests on a card); the changelogs |
+| 2026-11-12 | https://echolot.ijs.si | `1cebcda` | `d0af95e` | `service_call` (single requests on a card); the changelogs |
+| 2026-11-12 | https://echolot.ijs.si | `67fed4e` | `ce6175f` | `llm_based` through HiTZ's hosted Latxa service, with the server's own HiTZ key |
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
 
@@ -22,7 +23,8 @@ first deployment.
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-12 | `llm_based` now runs through HiTZ's hosted Latxa service when ECHOLOT has HiTZ's key (that change is in ECHOLOT's repository): the agent's doc says so, with its speed and results; DECISIONS records the service and the choice | `services/echolot.md`, `docs/DECISIONS.md` |
+| (this commit) | 2026-11-12 | The deployment of `67fed4e` recorded, and the hashes of the rows above filled in | `CHANGELOG.md` |
+| `67fed4e` | 2026-11-12 | `llm_based` now runs through HiTZ's hosted Latxa service when ECHOLOT has HiTZ's key (that change is in ECHOLOT's repository): the agent's doc says so, with its speed and results; DECISIONS records the service and the choice | `services/echolot.md`, `docs/DECISIONS.md` |
 | `1cebcda` | 2026-11-12 | This changelog | `CHANGELOG.md`, `README.md`, `CLAUDE.md` |
 | `46eeae1` | 2026-11-11 | **`service_call` (M5.4):** the agent sends one request to a service and gets the reply, e.g. one QID's Wikidata statements or one record reconciled, without writing a script or starting a run. Every call needs the user's approval on a card showing the service, method, path, query and body. Calls go through the executor and the runner like a one-record run, so service keys stay on the runner, and leave no run, script version or file. | `runs/calls.py`, `agent/tools/services.py`, `routers/runner_io.py` (`/runner/calls/{id}`), `db.py` (`service_calls`), web `runCards.tsx`; PLAN 7.3 and 7.9, CLAUDE.md |
 | `e2839fd` | 2026-11-11 | The deployment to echolot.ijs.si recorded (M4.3): topology, shared layout, generated keys, the end-to-end check | `docs/DECISIONS.md`, `docs/PLAN.md` |
