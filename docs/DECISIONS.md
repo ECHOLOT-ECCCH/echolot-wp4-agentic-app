@@ -687,3 +687,27 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
   checking a request) and when to write a script instead.
 - **Speed:** about the time of a sample run of one record: instant with the local executor, a
   few seconds through Prefect, where the runner checks for work every 2 s.
+
+## 2026-11-12 `llm_based` through HiTZ's hosted service
+
+- **The service:** HiTZ runs the Latxa reconciliation pipeline at
+  `POST https://zerbitzuak.hitz.eus/api/reconciliation` (`name`, `info` as one text,
+  `context`, `vector`, `top_k`). Its docs page shows no key for this endpoint, but it needs
+  one, in an `apikey` header; keys come from https://zerbitzuak.hitz.eus/tresnak, Profile,
+  Generate new API Key. Its reply has the draft's own fields (`desambiguation_result`,
+  `full_results`, plus `reasoning`), so it is the hosted version of what `llm_based` ran locally.
+- **Tried 2026-11-12:** Eduardo Chillida, Kirmen Uribe and Aurelio Arteta right (where
+  `wikifier` found nothing or the wrong person), Pablo Picasso right, a made-up name "None";
+  6 to 12 s per entity, 0.5 s with no candidates. With `vector` on it missed Arteta although
+  the right candidate was in its list, so it stays off.
+- **In ECHOLOT, not as a service of its own:** `llm_based` calls HiTZ whenever ECHOLOT has
+  `HITZ_API_KEY`, and the local draft (the OpenAI-compatible path) otherwise. The algorithm name,
+  its match format (one match, score 1.0) and the runner's `concurrency_for` stay as they were,
+  so scripts, the review and the public API need nothing new. A key HiTZ refuses answers 503
+  (not configured), not 502, so the runner does not retry every record.
+- **For the agent:** `services/echolot.md` says what runs `llm_based`, its speed (about 500
+  records an hour per concurrent call, so weeks for a million records at 2 calls), and these
+  results.
+- **Keys:** the local test used the owner's key on their machine; the server gets its own,
+  added by the owner to `/etc/echolot/api-service.env`. Until then the server's `llm_based`
+  keeps using the Llama stand-in on OpenRouter.

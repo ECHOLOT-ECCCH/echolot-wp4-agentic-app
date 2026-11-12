@@ -22,7 +22,8 @@ first deployment.
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this file) | 2026-11-12 | This changelog | `CHANGELOG.md` |
+| (this commit) | 2026-11-12 | `llm_based` now runs through HiTZ's hosted Latxa service when ECHOLOT has HiTZ's key (that change is in ECHOLOT's repository): the agent's doc says so, with its speed and results; DECISIONS records the service and the choice | `services/echolot.md`, `docs/DECISIONS.md` |
+| `1cebcda` | 2026-11-12 | This changelog | `CHANGELOG.md`, `README.md`, `CLAUDE.md` |
 | `46eeae1` | 2026-11-11 | **`service_call` (M5.4):** the agent sends one request to a service and gets the reply, e.g. one QID's Wikidata statements or one record reconciled, without writing a script or starting a run. Every call needs the user's approval on a card showing the service, method, path, query and body. Calls go through the executor and the runner like a one-record run, so service keys stay on the runner, and leave no run, script version or file. | `runs/calls.py`, `agent/tools/services.py`, `routers/runner_io.py` (`/runner/calls/{id}`), `db.py` (`service_calls`), web `runCards.tsx`; PLAN 7.3 and 7.9, CLAUDE.md |
 | `e2839fd` | 2026-11-11 | The deployment to echolot.ijs.si recorded (M4.3): topology, shared layout, generated keys, the end-to-end check | `docs/DECISIONS.md`, `docs/PLAN.md` |
 | `8a9e25c` | 2026-11-11 | **The agent's instructions (M5.3):** the full run is unattended and can be millions of records, so a script must work end to end; with QIDs, the agent explores a sample on Wikidata, suggests data and extracts what the user chose | `agent/prompts/system.md` |

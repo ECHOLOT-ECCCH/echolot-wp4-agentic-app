@@ -61,19 +61,22 @@ A sample run shows all of these on its first records, before the full run.
 
 | | `wikifier` (default) | `llm_based` | `rule_based` |
 |---|---|---|---|
-| How | Sends the whole entity as English text to Wikifier (an entity linker over English Wikipedia) and keeps the pages linked from the name. | Searches Wikidata for the name, describes the top 5 hits, and asks a language model which one, if any, is the same person. | Looks the name up in a table of people (Getty ULAN, about 291,000 people, mostly artists, or a Wikidata dump), with phonetic blocking, biographical rules and name similarity. |
+| How | Sends the whole entity as English text to Wikifier (an entity linker over English Wikipedia) and keeps the pages linked from the name. | Searches Wikidata for the name, describes the top 5 hits, and asks a language model which one, if any, is the same person: HiTZ's Latxa service when this ECHOLOT has HiTZ's key, otherwise a stand-in model run by ECHOLOT itself. | Looks the name up in a table of people (Getty ULAN, about 291,000 people, mostly artists, or a Wikidata dump), with phonetic blocking, biographical rules and name similarity. |
 | Uses | Every field, as text; `name` and `context` most. | `name`, all of `information` (only the first 5 `publication` entries), `context`. | `name`, `entity_type`, `information.gender`. Nothing else: `birth_year` and `context` have no effect. |
 | For | Any entity type | People | People only |
 | Matches | 0 or more | 0 or 1 | 0 or 1; several only when the top candidates tie |
 | `url` | `http://en.wikipedia.org/wiki/…` | `http://www.wikidata.org/entity/Q…` | `http://www.wikidata.org/entity/Q…`, or `http://vocab.getty.edu/ulan/…` for a person the table has no Wikidata link for |
 | `wikidata_item_id` | Usually; can be `null` | Always | `null` for a ULAN-only match |
 | `score` | Wikifier's link confidence, 0 to 1 | Always `1.0`: the model picks one or none; there is no confidence | 0.9 to 1; whatever comes back passed the server's threshold |
-| Speed | One external call | Six Wikidata requests and a model call per entity; minutes when Wikidata is slow | Fast, except the first call after ECHOLOT starts (it indexes its table: seconds for ULAN, over a minute for the Wikidata dump) |
+| Speed | One external call | 6 to 12 s per entity through HiTZ (under a second when the name has no candidates); about 500 records an hour per concurrent call | Fast, except the first call after ECHOLOT starts (it indexes its table: seconds for ULAN, over a minute for the Wikidata dump) |
 
 How to pick, when the user has no preference:
 
-- **People with good descriptions** (dates, works, roles): `llm_based` reads them; it is slow,
-  so try it on a sample first.
+- **People with good descriptions** (dates, works, roles): `llm_based` reads them, and it knows
+  Basque people well (2026-11-12, through HiTZ: Eduardo Chillida, Kirmen Uribe and Aurelio Arteta
+  right, where `wikifier` found nothing or the wrong person). It is slow: try it on a sample, and
+  for a large file tell the user how long it will take (the runner keeps it to 2 calls at a time,
+  so a million records would take weeks).
 - **Artists and other people likely in ULAN**, or many records fast: `rule_based`. It only uses
   the name and gender, so namesakes look the same to it.
 - **Anything that is not a person**, or people famous enough for an English Wikipedia
