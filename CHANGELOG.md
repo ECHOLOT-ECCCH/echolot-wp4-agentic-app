@@ -16,6 +16,19 @@ its own changelog.
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
 
+## Branch `feat/runner-hardening` (not merged; builds on `feat/wikidata-statements`)
+
+Work by andrazrepar, 2026-11-23. Milestone 6 (running scripts safely on a shared host), after a
+review of what a script can reach on echolot.ijs.si (DECISIONS 2026-11-23).
+
+| Commit | Date | What it adds | Where |
+|---|---|---|---|
+| (this commit) | 2026-11-23 | This section | `CHANGELOG.md` |
+| `1bbd7d5` | 2026-11-23 | **Limits on the runner's container (M6.2):** memory with no swap beyond it (`RUNNER_MEMORY`, 2g), CPUs (`RUNNER_CPUS`, 2), processes and threads (`RUNNER_PIDS`, 512), a read-only filesystem with `/tmp` (`RUNNER_TMP_SIZE`, 1g) and the home directory in memory. A script that exhausts the memory fails its own run; the smoke check runs one and then a normal run. | `deploy/docker-compose.yml`, `deploy/smoke_check.py`, `deploy/README.md` |
+| `a9766d1` | 2026-11-23 | **Run timeout (M6.3):** the poller stops a running run in which no record has finished for `ECHO_RUN_STALL_MINUTES` (30) or that has run for `ECHO_RUN_MAX_HOURS` (24), through the executor's cancel, so Prefect kills a script stuck in a loop; the run ends failed with the reason. The agent's workspace block names both limits. | `runs/poller.py`, `runs/service.py`, `settings.py`, `agent/agent.py`, `tests/test_run_limits.py` |
+| `714746e` | 2026-11-23 | **The runner's network (M6.1):** with the bundled Prefect server the runner is only on the internal network `runs`: the app, Prefect and the services that join it, not the internet or the host's network. The bridge is named (`echolot-runs`) for the host's firewall. The smoke check runs a script that tries to reach the internet. | `deploy/docker-compose.prefect.yml`, `deploy/smoke.sh`, `deploy/smoke_check.py`, `deploy/README.md`, `CLAUDE.md` |
+| `5004988` | 2026-11-23 | Milestone 6 planned: what a script can reach today, the order of the fixes, what is left to the owner | `docs/PLAN.md`, `docs/DECISIONS.md` |
+
 ## Branch `feat/wikidata-statements` (not merged; builds on `feat/users-and-byok`)
 
 Work by andrazrepar, 2026-11-11 and 2026-11-12. Milestone 5 (enrichment from Wikidata) and the
