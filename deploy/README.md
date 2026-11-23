@@ -143,6 +143,17 @@ sudo ufw insert 1 deny in on echolot-runs    # with ufw; it persists
 Traffic between the containers on `runs` does not pass this rule. To check it, run a script
 that connects to that address on port 22: it should time out.
 
+**The runner's limits** (whenever the runner runs in this stack). A script that runs away fails
+its own run instead of taking the host down: the runner's container has a memory limit with no
+swap beyond it (`RUNNER_MEMORY`, default `2g`), CPUs (`RUNNER_CPUS`, `2`; at most the host's),
+processes and threads (`RUNNER_PIDS`, `512`), and a read-only filesystem except `/tmp`
+(`RUNNER_TMP_SIZE`, `1g`) and the home directory, both in memory. `/tmp` holds a run's input
+and results while it runs, and counts towards the memory limit: for large files raise both.
+A run whose script exhausts the memory ends failed; the runner carries on with the next. The
+app also stops a run in which no record has finished for `ECHO_RUN_STALL_MINUTES` (30) or that
+has run for `ECHO_RUN_MAX_HOURS` (24; 0 for no limit). After changing a limit:
+`docker compose up -d runner` (or `app` for the two `ECHO_` ones).
+
 **ECHOLOT and a runner in this stack, with an external Prefect server.** The runner is then on
 the default network, with a route out (it has to reach the Prefect server and `ECHO_PUBLIC_URL`;
 limiting where else it goes is that host's firewall's job). ECHOLOT's standalone API listens on

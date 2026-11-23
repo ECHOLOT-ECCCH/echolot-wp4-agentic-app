@@ -8,7 +8,8 @@ have ECHO_MODEL_PROVIDER=test), uploads a CSV, runs a script over three records 
 configured executor and checks the results. --api-only skips the checks of the web front
 (Caddy), for an app reached directly. --runner-offline also runs a script that tries to reach
 the internet and expects no connection (the runner on the internal network of
-docker-compose.prefect.yml).
+docker-compose.prefect.yml). --runner-limits also runs a script that allocates memory without
+end and expects that run to fail and the next one to work (the runner's memory limit).
 """
 
 from __future__ import annotations
@@ -34,6 +35,13 @@ PROBE = (
     '        return {"internet": "reached"}\n'
     "    except OSError as exc:\n"
     '        return {"internet": "blocked", "why": type(exc).__name__}\n'
+)
+# takes memory until the runner's limit ends its run
+HOG = (
+    "def process(record, ctx):\n"
+    "    hog = []\n"
+    "    while True:\n"
+    "        hog.append(bytearray(64 << 20))\n"
 )
 CSV = b"name,born\nAna,1901\nJon,1902\nMiren,1903\nIker,1904\n"
 
@@ -95,14 +103,20 @@ def web_front(check: Check) -> None:
     ok(status == 200 and "immutable" in headers.get("Cache-Control", ""), "assets are cached")
 
 
-def run_script(check: Check, wid: str, fid: str, code: str, limit: int) -> list[dict[str, Any]]:
-    """Save ``code`` as the workspace's script, run it over ``limit`` records, return the rows."""
+def start_and_wait(check: Check, wid: str, fid: str, code: str, limit: int) -> dict[str, Any]:
+    """Save ``code`` as the workspace's script, run it over ``limit`` records until it ends."""
     check.json("POST", f"/api/workspaces/{wid}/scripts", {"code": code}, expect=201)
     run = check.json("POST", f"/api/workspaces/{wid}/runs", {"file_id": fid, "limit": limit}, 201)
     deadline = time.monotonic() + 180
     while run["status"] in ("queued", "running") and time.monotonic() < deadline:
         time.sleep(1)
         run = check.json("GET", f"/api/workspaces/{wid}/runs/{run['id']}")
+    return run
+
+
+def run_script(check: Check, wid: str, fid: str, code: str, limit: int) -> list[dict[str, Any]]:
+    """Run ``code`` over ``limit`` records, check that every record succeeds, return the rows."""
+    run = start_and_wait(check, wid, fid, code, limit)
     ok(run["status"] == "done", f"the run finishes ({run['executor']})", json.dumps(run)[:500])
     counts = run["counts"]
     ok(counts.get("ok") == limit, f"all {limit} record(s) succeed", json.dumps(counts))
@@ -117,6 +131,9 @@ def main() -> None:
     parser.add_argument("--api-only", action="store_true", help="skip the web front checks")
     parser.add_argument(
         "--runner-offline", action="store_true", help="expect the runner to have no route out"
+    )
+    parser.add_argument(
+        "--runner-limits", action="store_true", help="expect the runner to have a memory limit"
     )
     args = parser.parse_args()
     check = Check(args.base_url)
@@ -175,6 +192,13 @@ def main() -> None:
             "a script cannot reach the internet",
             json.dumps(row["output"]),
         )
+
+    # --- a script that takes memory without end, then a run that should not notice
+    if args.runner_limits:
+        run = start_and_wait(check, wid, fid, HOG, 1)
+        ok(run["status"] == "failed", "a run that exhausts the memory fails", json.dumps(run)[:500])
+        rows = run_script(check, wid, fid, SCRIPT, 3)
+        ok(rows[0]["output"].get("upper") == "ANA", "the next run works")
 
     check.json("DELETE", f"/api/workspaces/{wid}", expect=204)
     check.request("POST", "/api/auth/logout")

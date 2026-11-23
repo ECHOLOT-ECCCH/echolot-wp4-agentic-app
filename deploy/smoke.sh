@@ -3,7 +3,8 @@
 # runner: docker-compose.prefect.yml) and the test model on http://127.0.0.1:${SMOKE_PORT:-8080},
 # creates an account, waits for "echolot-admin check-runs" to pass and runs smoke_check.py
 # through the front: pages, sign-in, a streamed chat turn, a run through Prefect and the runner,
-# and a run whose script finds no route out of the runner's network.
+# a run whose script finds no route out of the runner's network, and one that exhausts the
+# runner's memory without harm to the next run.
 # The stack and its volumes are removed afterwards; deploy/.env and deploy/config are not used.
 #   deploy/smoke.sh            (make deploy-smoke; CI runs it too)
 set -eu
@@ -56,4 +57,4 @@ until compose exec -T app echolot-admin check-runs > "$tmp/check-runs.txt" 2>&1;
   sleep 2
 done
 cat "$tmp/check-runs.txt"
-python3 smoke_check.py "http://127.0.0.1:$port" smoke@example.org "$password" --runner-offline
+python3 smoke_check.py "http://127.0.0.1:$port" smoke@example.org "$password" --runner-offline --runner-limits

@@ -80,6 +80,17 @@ services:
       PREFECT_RUNNER_POLL_FREQUENCY: ${PREFECT_RUNNER_POLL_FREQUENCY:-2}
       RUNNER_SERVICES_FILE: /config/services.toml
       RUNNER_MAX_RUNS: ${RUNNER_MAX_RUNS:-4}
+    # Limits (docs/PLAN.md M6.2): a script is any Python, so one that runs away fails its own run
+    # instead of taking the host down. tmpfs counts towards the memory limit; /tmp holds each
+    # run's input and results while it runs.
+    mem_limit: ${RUNNER_MEMORY:-2g}
+    memswap_limit: ${RUNNER_MEMORY:-2g}
+    cpus: ${RUNNER_CPUS:-2}
+    pids_limit: ${RUNNER_PIDS:-512}
+    read_only: true
+    tmpfs:
+      - /tmp:size=${RUNNER_TMP_SIZE:-1g},mode=1777
+      - /home/echolot:size=128m,uid=10001,gid=10001,mode=0700
     volumes:
       - ${SERVICES_FILE:-./config/services.toml}:/config/services.toml:ro
     extra_hosts:
