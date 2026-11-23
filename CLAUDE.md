@@ -39,6 +39,8 @@ images, Caddy, an optional runner and Prefect server; deploy/README.md)
   the runner host, never in the app, the browser or the model's context.
 - Approval-gated: submit_run, retry_failed, service_call, and any delete tool. Runs started by the user in the UI need no card.
 - Scripts reach services only through ctx.service(name). The app never executes scripts in its own process.
+- With the bundled Prefect (deploy/docker-compose.prefect.yml) the runner is only on the internal network `runs`:
+  a service it calls joins `runs`; never give the runner a network with a route out (PLAN M6.1).
 - The app has no Prefect dependency; it talks to Prefect over REST. Prefect lives in runner/ only.
 - Every /api route except sign-in needs a session; every route under /api/workspaces/{id} checks ownership (PLAN 7.11).
   Unsafe /api requests need the X-Echolot-Request header. Accounts are local, made by an admin; no sign-up.

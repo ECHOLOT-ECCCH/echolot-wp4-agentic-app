@@ -61,8 +61,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
   in, and M5.4 (`service_call`, single requests on a card) is built; next: M5.3's acceptance, a
   session with a real model in the app.
 - M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
-  (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. Next: M6.1, the runner's
-  network.
+  (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 (the runner's
+  network) is built and passes the smoke check; its check on the server waits for deployment.
+  Next: M6.3, the run timeout (before M6.2, which needs the server's size).
 - Last update: 2026-11-23.
 
 Update this block at the end of every task.
@@ -738,7 +739,9 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   host's own addresses: the host's firewall refuses that (deploy/README.md gives the rule).
   Acceptance: the smoke check runs a script that tries to reach the internet and gets no
   connection, besides the normal run; on the server, a script reaches ECHOLOT through
-  `ctx.service` and neither the internet, the IJS network nor the host's ssh.
+  `ctx.service` and neither the internet, the IJS network nor the host's ssh. (Built
+  2026-11-23: the smoke check passes, the probe finds no route out; the server's part is open
+  until it is deployed, with ECHOLOT added to `runs` in `/etc/echolot`.)
 - [ ] M6.2 Limits on the runner's container: memory (`RUNNER_MEMORY`, default 2g, no swap
   beyond it), CPUs (`RUNNER_CPUS`, 2), processes and threads (`RUNNER_PIDS`, 512), and a
   read-only root filesystem with `/tmp` and the home directory on size-capped tmpfs

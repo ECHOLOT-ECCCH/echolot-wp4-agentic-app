@@ -6,6 +6,12 @@
 #   ECHO_PREFECT_AUTH_STRING=echolot:<something random>
 # The app and the runner then use this server, whatever ECHO_PREFECT_API_URL and ECHO_PUBLIC_URL
 # say. Its UI listens on the host's 127.0.0.1:4200, for an SSH tunnel.
+#
+# The runner is only on the network "runs", which has no route out (internal): it reaches the app,
+# this Prefect server and the services that join "runs" in their own Compose file, and nothing
+# else, neither the internet nor the host's network (deploy/README.md, "The runner's network").
+# Docker's internal networks still let a container reach the host's own addresses; the bridge has
+# a fixed name, RUNS_BRIDGE (default echolot-runs), for the host's firewall to refuse that.
 services:
   prefect:
     image: prefecthq/prefect:${PREFECT_VERSION:-3.8.8}-python3.12
@@ -18,6 +24,7 @@ services:
       PREFECT_SERVER_ANALYTICS_ENABLED: "false"
     ports:
       - "127.0.0.1:${PREFECT_PORT:-4200}:4200"
+    networks: [default, runs]
     volumes:
       - prefect-data:/prefect
     healthcheck:
@@ -39,15 +46,24 @@ services:
   app:
     environment:
       ECHO_PREFECT_API_URL: http://prefect:4200/api
-      # the runner of this stack reaches the app on the stack's network
+      # the runner of this stack reaches the app on the network "runs"
       ECHO_PUBLIC_URL: http://app:8000
+    networks: [default, runs]
 
   runner:
     environment:
       PREFECT_API_URL: http://prefect:4200/api
+    networks: [runs]
     depends_on:
       prefect:
         condition: service_healthy
+
+networks:
+  runs:
+    internal: true
+    driver_opts:
+      # a Linux interface name: at most 15 characters
+      com.docker.network.bridge.name: ${RUNS_BRIDGE:-echolot-runs}
 
 volumes:
   prefect-data:

@@ -103,14 +103,50 @@ Where the runner runs:
   use): `./init.sh --with-prefect` writes a `.env` that adds `docker-compose.prefect.yml` and
   the runner, with a generated auth string; `ECHO_PREFECT_API_URL` and `ECHO_PUBLIC_URL` are
   then not used. Its UI: `ssh -L 4200:localhost:4200 <host>`, then http://localhost:4200, with
-  `ECHO_PREFECT_AUTH_STRING`.
+  `ECHO_PREFECT_AUTH_STRING`. The runner is then on a network with no route out: see
+  "The runner's network" below.
 - **Inside the app container**, without Prefect:
   `COMPOSE_FILE=docker-compose.yml:docker-compose.local-runs.yml` in `.env`. Only for a single
   user or people who trust each other: a script then runs as the app's user and can read the
   app's data and secrets, other users' model keys included.
 
-**ECHOLOT and a runner in this stack.** ECHOLOT's standalone API listens on 127.0.0.1:5000 by
-default, which a container cannot reach. Either:
+**The runner's network** (with `docker-compose.prefect.yml`). A script is any Python a user, or
+a dataset that steers the agent, gets to run, so the runner is only on the internal network
+`runs`: it reaches the app, the Prefect server and the services that join `runs`, and neither
+the internet nor this host's network. Scripts reach the outside only through `ctx.service`,
+that is through the services. A service joins `runs` in a Compose file of its own, added to
+`COMPOSE_FILE` in `.env`; this is how echolot.ijs.si runs ECHOLOT's API in this project:
+
+```yaml
+services:
+  echolot:
+    build: /opt/echolot/api-service
+    env_file: /etc/echolot/api-service.env
+    networks: [default, runs]   # default: its own route out, to Wikidata and the like
+```
+
+with `url = "http://echolot:5000"` in `services.toml`. A service in a Compose project of its own
+joins the network by its full name instead (`networks: {runs: {external: true, name:
+echolot-workbench_runs}}`). A service on this host outside Docker is out of the runner's
+reach in this set-up.
+
+Docker's internal networks stop traffic to other networks but not to the host's own addresses,
+so a script could still reach what this host serves on all its addresses (ssh, a web server).
+The network's bridge has a fixed name, `echolot-runs` (`RUNS_BRIDGE` in `.env`), for the host's
+firewall. If `ip -br addr show echolot-runs` shows an address, refuse what comes in from it:
+
+```bash
+sudo ufw insert 1 deny in on echolot-runs    # with ufw; it persists
+# or, until the next reboot: sudo iptables -I INPUT -i echolot-runs -j DROP
+```
+
+Traffic between the containers on `runs` does not pass this rule. To check it, run a script
+that connects to that address on port 22: it should time out.
+
+**ECHOLOT and a runner in this stack, with an external Prefect server.** The runner is then on
+the default network, with a route out (it has to reach the Prefect server and `ECHO_PUBLIC_URL`;
+limiting where else it goes is that host's firewall's job). ECHOLOT's standalone API listens on
+127.0.0.1:5000 by default, which a container cannot reach. Either:
 
 - **ECHOLOT on this host, outside Docker:** let it listen on the Docker bridge (`172.17.0.1`) or
   on all interfaces behind a firewall, and keep `url = "http://host.docker.internal:5000"`.

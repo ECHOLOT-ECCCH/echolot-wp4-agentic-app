@@ -2,7 +2,8 @@
 # Builds the images, starts the whole stack with a Prefect server of its own (web, app, Prefect,
 # runner: docker-compose.prefect.yml) and the test model on http://127.0.0.1:${SMOKE_PORT:-8080},
 # creates an account, waits for "echolot-admin check-runs" to pass and runs smoke_check.py
-# through the front: pages, sign-in, a streamed chat turn, a run through Prefect and the runner.
+# through the front: pages, sign-in, a streamed chat turn, a run through Prefect and the runner,
+# and a run whose script finds no route out of the runner's network.
 # The stack and its volumes are removed afterwards; deploy/.env and deploy/config are not used.
 #   deploy/smoke.sh            (make deploy-smoke; CI runs it too)
 set -eu
@@ -32,6 +33,7 @@ SITE_ADDRESS=:80
 HTTP_PORT=127.0.0.1:$port
 HTTPS_PORT=127.0.0.1:$((port + 363))
 PREFECT_PORT=$((port + 1))
+RUNS_BRIDGE=echosmoke-runs
 ECHO_SECRET_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
 ECHO_PREFECT_AUTH_STRING=smoke:$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 ECHO_COOKIE_SECURE=false
@@ -54,4 +56,4 @@ until compose exec -T app echolot-admin check-runs > "$tmp/check-runs.txt" 2>&1;
   sleep 2
 done
 cat "$tmp/check-runs.txt"
-python3 smoke_check.py "http://127.0.0.1:$port" smoke@example.org "$password"
+python3 smoke_check.py "http://127.0.0.1:$port" smoke@example.org "$password" --runner-offline

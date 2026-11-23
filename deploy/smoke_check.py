@@ -6,7 +6,9 @@ stack). Standard library only.
 It signs in, loads the app's pages, runs one chat turn with the test model (the server must
 have ECHO_MODEL_PROVIDER=test), uploads a CSV, runs a script over three records through the
 configured executor and checks the results. --api-only skips the checks of the web front
-(Caddy), for an app reached directly.
+(Caddy), for an app reached directly. --runner-offline also runs a script that tries to reach
+the internet and expects no connection (the runner on the internal network of
+docker-compose.prefect.yml).
 """
 
 from __future__ import annotations
@@ -23,6 +25,16 @@ from typing import Any
 
 HEADER = {"X-Echolot-Request": "1"}
 SCRIPT = 'def process(record, ctx):\n    return {"upper": record["name"].upper()}\n'
+# opens a connection to a public address, not a name, so that DNS does not decide the outcome
+PROBE = (
+    "import socket\n"
+    "def process(record, ctx):\n"
+    "    try:\n"
+    '        socket.create_connection(("1.1.1.1", 443), timeout=5).close()\n'
+    '        return {"internet": "reached"}\n'
+    "    except OSError as exc:\n"
+    '        return {"internet": "blocked", "why": type(exc).__name__}\n'
+)
 CSV = b"name,born\nAna,1901\nJon,1902\nMiren,1903\nIker,1904\n"
 
 
@@ -83,12 +95,29 @@ def web_front(check: Check) -> None:
     ok(status == 200 and "immutable" in headers.get("Cache-Control", ""), "assets are cached")
 
 
+def run_script(check: Check, wid: str, fid: str, code: str, limit: int) -> list[dict[str, Any]]:
+    """Save ``code`` as the workspace's script, run it over ``limit`` records, return the rows."""
+    check.json("POST", f"/api/workspaces/{wid}/scripts", {"code": code}, expect=201)
+    run = check.json("POST", f"/api/workspaces/{wid}/runs", {"file_id": fid, "limit": limit}, 201)
+    deadline = time.monotonic() + 180
+    while run["status"] in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(1)
+        run = check.json("GET", f"/api/workspaces/{wid}/runs/{run['id']}")
+    ok(run["status"] == "done", f"the run finishes ({run['executor']})", json.dumps(run)[:500])
+    counts = run["counts"]
+    ok(counts.get("ok") == limit, f"all {limit} record(s) succeed", json.dumps(counts))
+    return check.json("GET", f"/api/workspaces/{wid}/runs/{run['id']}/rows")["rows"]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("base_url")
     parser.add_argument("email")
     parser.add_argument("password")
     parser.add_argument("--api-only", action="store_true", help="skip the web front checks")
+    parser.add_argument(
+        "--runner-offline", action="store_true", help="expect the runner to have no route out"
+    )
     args = parser.parse_args()
     check = Check(args.base_url)
 
@@ -135,16 +164,17 @@ def main() -> None:
     ok(b'"type":"finish"' in stream, "the streamed answer finishes")
 
     # --- a run over three records, through the configured executor and back
-    check.json("POST", f"/api/workspaces/{wid}/scripts", {"code": SCRIPT}, expect=201)
-    run = check.json("POST", f"/api/workspaces/{wid}/runs", {"file_id": fid, "limit": 3}, 201)
-    deadline = time.monotonic() + 180
-    while run["status"] in ("queued", "running") and time.monotonic() < deadline:
-        time.sleep(1)
-        run = check.json("GET", f"/api/workspaces/{wid}/runs/{run['id']}")
-    ok(run["status"] == "done", f"the run finishes ({run['executor']})", json.dumps(run)[:500])
-    ok(run["counts"].get("ok") == 3, "all three records succeed", json.dumps(run["counts"]))
-    rows = check.json("GET", f"/api/workspaces/{wid}/runs/{run['id']}/rows")["rows"]
+    rows = run_script(check, wid, fid, SCRIPT, 3)
     ok([r["output"]["upper"] for r in rows] == ["ANA", "JON", "MIREN"], "the results are right")
+
+    # --- a script that tries to leave the runner's network
+    if args.runner_offline:
+        [row] = run_script(check, wid, fid, PROBE, 1)
+        ok(
+            row["output"].get("internet") == "blocked",
+            "a script cannot reach the internet",
+            json.dumps(row["output"]),
+        )
 
     check.json("DELETE", f"/api/workspaces/{wid}", expect=204)
     check.request("POST", "/api/auth/logout")
