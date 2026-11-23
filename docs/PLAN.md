@@ -60,7 +60,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
   `feat/wikidata-statements`) and M5.2 (the agent's doc) are done, and M5.3's prompt lines are
   in, and M5.4 (`service_call`, single requests on a card) is built; next: M5.3's acceptance, a
   session with a real model in the app.
-- Last update: 2026-11-11.
+- M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
+  (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. Next: M6.1, the runner's
+  network.
+- Last update: 2026-11-23.
 
 Update this block at the end of every task.
 
@@ -718,6 +721,48 @@ agent to settle per dataset; the platform does not prescribe them (DECISIONS 202
   no run, script version or file. Acceptance: tests through the local executor for a reply, a
   GET with a query, a service error, a denied call, bad arguments and the call endpoints' token;
   the card's own tests.
+
+## 12g. Milestone 6: Running scripts safely on a shared host (checklist)
+
+Goal: a script, which is any Python a signed-in user (or a dataset steering the agent) gets to
+run, cannot reach beyond the services it is meant to call, cannot take the host down, and cannot
+read the runner's secrets or other users' runs. Ordered by what each step stops for its cost;
+the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
+`feat/runner-hardening` (off `feat/wikidata-statements`).
+
+- [ ] M6.1 The runner's network. In the one-host set-up (`docker-compose.prefect.yml`) the runner
+  is only on an internal network, `runs`, with no route out: the app and Prefect are on it and
+  on the default network, and a service the runner calls joins it in its own Compose file (on
+  echolot.ijs.si, ECHOLOT's in `/etc/echolot`). The network's bridge has a fixed name,
+  `echolot-runs`, because Docker's internal networks stop forwarding but not traffic to the
+  host's own addresses: the host's firewall refuses that (deploy/README.md gives the rule).
+  Acceptance: the smoke check runs a script that tries to reach the internet and gets no
+  connection, besides the normal run; on the server, a script reaches ECHOLOT through
+  `ctx.service` and neither the internet, the IJS network nor the host's ssh.
+- [ ] M6.2 Limits on the runner's container: memory (`RUNNER_MEMORY`, default 2g, no swap
+  beyond it), CPUs (`RUNNER_CPUS`, 2), processes and threads (`RUNNER_PIDS`, 512), and a
+  read-only root filesystem with `/tmp` and the home directory on size-capped tmpfs
+  (`RUNNER_TMP_SIZE`, 1g; tmpfs counts towards the memory limit). A script that exhausts them
+  fails its own run or is killed with it; the app, Prefect and the host carry on. Acceptance:
+  the smoke check passes with the limits; a run whose script allocates without end ends failed
+  and the next run works.
+- [ ] M6.3 A run timeout in the app. The poller cancels, through the executor, a running run in
+  which no record has finished for `ECHO_RUN_STALL_MINUTES` (default 30), or that has run for
+  `ECHO_RUN_MAX_HOURS` (default 24; 0 for no limit). Prefect then kills the run's process, so
+  a script stuck in a loop stops too. The run ends failed with the reason. Acceptance: tests
+  with the local executor for both limits, a run that keeps finishing records, and a cancel
+  that fails (tried again on the next pass).
+- [ ] M6.4 Scripts without the runner's secrets. The script runs in a child process with an
+  empty environment; the runner's process keeps the Prefect credentials and the service keys,
+  makes the service requests for it over a pipe (`ctx.service` unchanged for scripts) and
+  cannot be read by the child. Design in DECISIONS before building it.
+- [ ] M6.5 Small fixes: ECHOLOT's image runs as a user, not root (its repository); the API
+  documentation pages are off in production (the app's `/api/docs` and ECHOLOT's `/docs`).
+
+For the owner, outside the code: kernel updates and reboots on the backend; ssh without
+passwords; the hop from the frontend to the backend, which is plain HTTP across the IJS network
+(HTTPS, or a firewall that admits only the frontend); the frontend's CentOS 7, which has had no
+security updates since June 2024.
 
 ## 13. System prompt (outline for `agent/prompts/system.md`)
 

@@ -711,3 +711,39 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
 - **Keys:** the local test used the owner's key on their machine; the server gets its own,
   added by the owner to `/etc/echolot/api-service.env`. Until then the server's `llm_based`
   keeps using the Llama stand-in on OpenRouter.
+
+## 2026-11-23 Running scripts safely on a shared host (M6, planned)
+
+- **Why now:** echolot.ijs.si runs every user's scripts on one host, inside the IJS network. A
+  script is any Python, by design, and comes from a signed-in user, someone with a stolen
+  password, or a dataset whose text steers the agent and a user who approves without reading.
+  Reviewed on 2026-11-23 against the code and the deployment. Without an account there is little
+  to attack (sessions on every route, scrypt, throttled sign-in, runner endpoints 404 without the
+  run's token; `/enrich` only fetches `*.wikipedia.org`). A script, though, can today:
+  - reach the internet, the IJS network and the host's own services;
+  - use unlimited memory, CPU, processes and disk, and run for ever;
+  - read the runner's environment: ECHOLOT's API key (usable from anywhere, since the API is
+    public at /service/) and Prefect's credentials, and through Prefect every run's parameters:
+    other users' scripts, and the tokens of runs in progress, enough to download their input
+    and overwrite their results.
+  Taking over the host still needs a way out of the container, an unpatched kernel or runtime
+  flaw: the runner is not privileged, has no Docker socket, sees no host directory but
+  `services.toml` (read-only) and runs as uid 10001.
+- **The order (PLAN 12g):** the network first (M6.1) and limits (M6.2, M6.3): Compose and a few
+  lines in the poller, and they stop the reach into the institute, the outage and the endless
+  run. Then the secrets (M6.4), which needs the harness split in two processes. Small fixes last.
+- **The network:** only in the one-host set-up, where Prefect, the app and the runner share a
+  Compose project. With an external Prefect server the runner needs a route out to it and to the
+  app's public address; there, limiting where it goes is the runner host's firewall's job. Scripts
+  are meant to reach the outside only through `ctx.service` (CLAUDE.md), so the internal network
+  takes nothing a script should have.
+- **The timeout:** in the app, through the executor's `cancel`, because Prefect's serve runs each
+  flow run in a process of its own and kills it on cancel (SIGTERM, then SIGKILL; checked in
+  Prefect 3.8.8), which a timeout inside the flow cannot do to a thread stuck in a script. No
+  progress for 30 minutes is generous: the slowest normal record is a service's 180 s timeout
+  with its retries. The 24-hour ceiling suits this host, which runs samples (owner, 2026-11-13:
+  large runs go elsewhere later); a deployment for large runs raises it or turns it off. A
+  cancelled run keeps no results, as before.
+- **Not now:** a throwaway container per run (the Elexifier sandbox's way). It isolates runs
+  from each other best, but the app or a launcher then needs the Docker socket, which is root on
+  the host. M6.4 gets the part that matters here, secrets out of the script's reach, without it.
