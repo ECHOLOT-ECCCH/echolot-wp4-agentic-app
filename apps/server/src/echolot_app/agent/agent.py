@@ -20,6 +20,7 @@ from echolot_app.agent.tools.scripts import scripts_toolset
 from echolot_app.agent.tools.services import services_toolset
 from echolot_app.agent.tools.task import task_toolset
 from echolot_app.db import File, FileKind, Workspace
+from echolot_app.runs.poller import duration
 from echolot_app.scripts import latest_script
 
 PROMPTS_DIR = Path(__file__).with_name("prompts")
@@ -78,7 +79,20 @@ async def workspace_block(deps: AgentDeps) -> str:
         lines += ["- Task notes (the user may have edited them):", '"""', task, '"""']
     else:
         lines.append(f"- Task notes: {len(task):,} characters; read them with task_read")
+    limits = run_limits(deps.settings.run_stall_minutes * 60, deps.settings.run_max_hours * 3600)
+    if limits:
+        lines.append(f"- Runs on this server stop {limits}: a full run has to fit")
     return "\n".join(lines)
+
+
+def run_limits(stall_s: float, max_s: float) -> str:
+    """The poller's limits (docs/PLAN.md M6.3) in words, or '' when there are none."""
+    parts = []
+    if max_s > 0:
+        parts.append(f"after {duration(max_s)}")
+    if stall_s > 0:
+        parts.append(f"when no record has finished for {duration(stall_s)}")
+    return ", or ".join(parts)
 
 
 GATED_RUN_TOOLS = frozenset({"submit_run", "retry_failed", "service_call"})

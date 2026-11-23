@@ -53,7 +53,13 @@ def build_state(settings: Settings) -> AppState:
         storage=LocalStorage(settings.data_dir),
         runtime=PydanticAIRuntime(),
         executor=executor,
-        poller=Poller(db, executor, settings.run_poll_interval_s),
+        poller=Poller(
+            db,
+            executor,
+            settings.run_poll_interval_s,
+            stall_s=settings.run_stall_minutes * 60,
+            max_s=settings.run_max_hours * 3600,
+        ),
         secret_box=SecretBox.from_setting(
             settings.secret_key.get_secret_value() if settings.secret_key else None,
             settings.data_dir / "secret.key",

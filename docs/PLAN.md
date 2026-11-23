@@ -63,7 +63,7 @@ chat, persistence and approval code being lifted, and are worth reading before t
 - M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
   (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 (the runner's
   network) is built and passes the smoke check; its check on the server waits for deployment.
-  Next: M6.3, the run timeout (before M6.2, which needs the server's size).
+  M6.3 (the run timeout) is done. Next: M6.2, the limits on the runner's container.
 - Last update: 2026-11-23.
 
 Update this block at the end of every task.
@@ -749,12 +749,13 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   fails its own run or is killed with it; the app, Prefect and the host carry on. Acceptance:
   the smoke check passes with the limits; a run whose script allocates without end ends failed
   and the next run works.
-- [ ] M6.3 A run timeout in the app. The poller cancels, through the executor, a running run in
+- [x] M6.3 A run timeout in the app. The poller cancels, through the executor, a running run in
   which no record has finished for `ECHO_RUN_STALL_MINUTES` (default 30), or that has run for
   `ECHO_RUN_MAX_HOURS` (default 24; 0 for no limit). Prefect then kills the run's process, so
-  a script stuck in a loop stops too. The run ends failed with the reason. Acceptance: tests
+  a script stuck in a loop stops too. The run ends failed with the reason. The agent's
+  workspace block names both limits, so it plans full runs to fit. Acceptance: tests
   with the local executor for both limits, a run that keeps finishing records, and a cancel
-  that fails (tried again on the next pass).
+  that fails (tried again on the next pass). Done 2026-11-23 (`test_run_limits.py`).
 - [ ] M6.4 Scripts without the runner's secrets. The script runs in a child process with an
   empty environment; the runner's process keeps the Prefect credentials and the service keys,
   makes the service requests for it over a pipe (`ctx.service` unchanged for scripts) and

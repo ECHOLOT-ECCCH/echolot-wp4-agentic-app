@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     local_services_file: Path = Path("./services.toml")
     local_runner_env_file: Path = Path("./runner.env")
     run_poll_interval_s: float = 3.0
+    # The poller stops a running run in which no record has finished for this long, or that has
+    # run this long (docs/PLAN.md M6.3); 0 turns either off
+    run_stall_minutes: float = 30.0
+    run_max_hours: float = 24.0
 
     log_level: str = "INFO"
     log_json: bool = False
