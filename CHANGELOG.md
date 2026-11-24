@@ -18,14 +18,15 @@ its own changelog.
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
 
-## Branch `feat/runner-hardening` (not merged; builds on `feat/wikidata-statements`)
+## Branch `feat/runner-hardening` (merged into `main` on 2026-11-24; built on `feat/wikidata-statements`)
 
 Work by andrazrepar, 2026-11-23. Milestone 6 (running scripts safely on a shared host), after a
 review of what a script can reach on echolot.ijs.si (DECISIONS 2026-11-23).
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-24 | **The API's documentation pages can be turned off (M6.5):** `ECHO_API_DOCS` (on by default, off in the Compose deployment); `/api/docs` and `/api/openapi.json` answered without a session. ECHOLOT's side (its docs switch, its image as a user) is in its repository. | `settings.py`, `main.py`, `deploy/docker-compose.yml`, `deploy/.env.example`, `tests/test_auth.py`, docs |
+| (this commit) | 2026-11-24 | The three branches marked as merged into `main`, and the hashes filled in | `CHANGELOG.md`, `docs/PLAN.md` |
+| `9213da2` | 2026-11-24 | **The API's documentation pages can be turned off (M6.5):** `ECHO_API_DOCS` (on by default, off in the Compose deployment); `/api/docs` and `/api/openapi.json` answered without a session. ECHOLOT's side (its docs switch, its image as a user) is in its repository. | `settings.py`, `main.py`, `deploy/docker-compose.yml`, `deploy/.env.example`, `tests/test_auth.py`, docs |
 | `e6cf7b1` | 2026-11-24 | The deployment of `096af15` recorded, and the hashes above filled in | `CHANGELOG.md`, `docs/PLAN.md` |
 | `096af15` | 2026-11-24 | The sandbox's supervisor no longer counts a killed worker that waits to be collected as running, which made it retry and log a false alarm after every run (seen on the server) | `runner/src/echolot_runner/sandbox.py`, `runner/runner_tests/test_sandbox.py` |
 | `47ade40` | 2026-11-24 | **Scripts in a sandbox container (M6.4):** a `sandbox` container with no network and no secrets runs each run's script in a worker under a uid of its own; the runner keeps the token, the keys and Prefect's credentials and makes the service calls over a Unix socket only it may open. A worker that dies fails the run with its reason; `print()` goes to the run log; a service path may not lead out of the service. Without Docker the worker is a child process with an empty environment. The runner gets `no-new-privileges` and no capabilities; its memory default goes to 1g, the sandbox has 2g. | `runner/src/echolot_runner/` (`worker.py`, `sandbox.py`, `protocol.py`, `harness.py`, `context.py`, `services.py`), `deploy/` (Dockerfile, compose, smoke), tests, docs |
@@ -38,14 +39,14 @@ review of what a script can reach on echolot.ijs.si (DECISIONS 2026-11-23).
 | `714746e` | 2026-11-23 | **The runner's network (M6.1):** with the bundled Prefect server the runner is only on the internal network `runs`: the app, Prefect and the services that join it, not the internet or the host's network. The bridge is named (`echolot-runs`) for the host's firewall. The smoke check runs a script that tries to reach the internet. | `deploy/docker-compose.prefect.yml`, `deploy/smoke.sh`, `deploy/smoke_check.py`, `deploy/README.md`, `CLAUDE.md` |
 | `5004988` | 2026-11-23 | Milestone 6 planned: what a script can reach today, the order of the fixes, what is left to the owner | `docs/PLAN.md`, `docs/DECISIONS.md` |
 
-## Branch `feat/wikidata-statements` (not merged; builds on `feat/users-and-byok`)
+## Branch `feat/wikidata-statements` (merged into `main` on 2026-11-24; built on `feat/users-and-byok`)
 
 Work by andrazrepar, 2026-11-11 and 2026-11-12. Milestone 5 (enrichment from Wikidata) and the
 first deployment.
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-12 | The deployment of `67fed4e` recorded, and the hashes of the rows above filled in | `CHANGELOG.md` |
+| `a6a0a34` | 2026-11-12 | The deployment of `67fed4e` recorded, and the hashes of the rows above filled in | `CHANGELOG.md` |
 | `67fed4e` | 2026-11-12 | `llm_based` now runs through HiTZ's hosted Latxa service when ECHOLOT has HiTZ's key (that change is in ECHOLOT's repository): the agent's doc says so, with its speed and results; DECISIONS records the service and the choice | `services/echolot.md`, `docs/DECISIONS.md` |
 | `1cebcda` | 2026-11-12 | This changelog | `CHANGELOG.md`, `README.md`, `CLAUDE.md` |
 | `46eeae1` | 2026-11-11 | **`service_call` (M5.4):** the agent sends one request to a service and gets the reply, e.g. one QID's Wikidata statements or one record reconciled, without writing a script or starting a run. Every call needs the user's approval on a card showing the service, method, path, query and body. Calls go through the executor and the runner like a one-record run, so service keys stay on the runner, and leave no run, script version or file. | `runs/calls.py`, `agent/tools/services.py`, `routers/runner_io.py` (`/runner/calls/{id}`), `db.py` (`service_calls`), web `runCards.tsx`; PLAN 7.3 and 7.9, CLAUDE.md |
@@ -55,7 +56,7 @@ first deployment.
 | `62427aa` | 2026-11-11 | M5.1 recorded: the endpoint itself is in ECHOLOT's repository (`eecc6a9` there) | `docs/` |
 | `be54895` | 2026-11-11 | Milestone 5 planned: why the Wikidata access lives in ECHOLOT, why the final script is one end-to-end script, what is left to the user and the agent | `docs/PLAN.md`, `docs/DECISIONS.md` |
 
-## Branch `feat/users-and-byok` (not merged)
+## Branch `feat/users-and-byok` (merged into `main` on 2026-11-24, with pzajec's agreement)
 
 Work by pzajec, 2026-11-09 and 2026-11-10. Milestone 4 (accounts, own model keys, deployment).
 

@@ -66,6 +66,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
   (DECISIONS 2026-11-24). M6.4 (scripts in a sandbox container) is done and deployed
   (`096af15`). M6.5 (ECHOLOT's image as a user, the API docs pages off in production) is built.
   Next: deploying M6.5 (with the owner's go-ahead); then the owner's items of section 12g.
+- 2026-11-24: `feat/users-and-byok` (pzajec, who agreed), `feat/wikidata-statements` and
+  `feat/runner-hardening` merged into `main`; ECHOLOT's `llm-and-rule-based`,
+  `feat/wikidata-statements` and `feat/hardening` into its `main`. New work branches off `main`.
 - Last update: 2026-11-24.
 
 Update this block at the end of every task.
