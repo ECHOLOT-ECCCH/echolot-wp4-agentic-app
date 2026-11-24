@@ -17,6 +17,7 @@ make web          # Vite on :5173, proxies /api and /runner to :8000
 make check        # ruff, pyright, pytest (server + runner), web lint, tsc, vitest. Must pass before every commit.
 uv run echolot-admin create-user you@example.org --admin   # an account (prints a temporary password)
 make e2e          # playwright smoke (test model, LocalExecutor, fake service)
+./install.sh      # docker: the whole stack with ECHOLOT on this computer, for its user (README); settings in deploy/local/
 make deploy-smoke # docker: build the images, start deploy/docker-compose.yml, check it end to end
 
 ## Layout

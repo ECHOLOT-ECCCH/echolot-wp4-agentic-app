@@ -28,7 +28,28 @@ Still open: the checks with a real model and the owner's own data (M1.7, M3.1, M
 what was added when (by commit, and what is deployed), and
 [docs/runner-host.md](docs/runner-host.md) for setting up the runner next to the services.
 
-## Requirements
+## Install on your computer
+
+Needs [Docker](https://docs.docker.com/get-started/get-docker/) with Compose (Docker Desktop has
+both), git and curl.
+
+```bash
+git clone https://github.com/ECHOLOT-ECCCH/echolot-wp4-agentic-app.git
+cd echolot-wp4-agentic-app
+./install.sh
+```
+
+The first time takes several minutes. It starts the app, a Prefect server, the runner, the script
+sandbox and ECHOLOT's reconciliation API, checks that they work together, and prints the address
+(http://localhost:8080, reachable from this computer only) and the first account's password.
+
+- **The agent needs a model key:** after signing in, add one under Settings → Model keys.
+- **Reconciliation** works at once for people (`rule_based`, against Getty ULAN). `wikifier` and
+  `llm_based` need a key each: put them in `deploy/local/echolot.env`, run `./install.sh` again.
+- **Update:** `git pull && ./install.sh`. **Stop:** `./install.sh compose stop`. **Remove:**
+  `./install.sh compose down` (with `-v`, the data too). More: `./install.sh --help`.
+
+## Development: requirements
 
 - Python 3.12 (managed by [uv](https://docs.astral.sh/uv/))
 - Node.js 22+ and pnpm (via `corepack enable`)

@@ -19,6 +19,12 @@ its own changelog.
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
 
+## Branch `feat/local-install` (off `main`, not merged)
+
+| Commit | Date | What it adds | Where |
+|---|---|---|---|
+| (this commit) | 2026-11-24 | **Local install with one command (M4.4):** `./install.sh` builds and starts the whole stack on one computer, ECHOLOT's API included, on http://localhost:8080 for that computer only; it makes the settings and keys (`deploy/local/`, never overwritten), fetches the ULAN table so that `rule_based` needs no key, creates the first account and checks that runs and ECHOLOT work | `install.sh`, `deploy/docker-compose.echolot.yml`, `README.md`, `deploy/README.md`, `docs/PLAN.md`, `docs/DECISIONS.md` |
+
 ## `main` after the merge of 2026-11-24
 
 New work branches off `main` and is merged back into it.

@@ -1,5 +1,9 @@
 # Deploying the workbench with Docker Compose
 
+For a server that others sign in to. To run the workbench on your own computer, ECHOLOT included,
+`./install.sh` in the repository's root does it all ([README](../README.md)); the rest of this
+guide is not needed for that.
+
 One host runs the web front with https and the app. Runs go to a Prefect server that you give
 the app (`ECHO_PREFECT_API_URL`), where a runner serves the workbench's flow and executes the
 scripts next to the services they call (ECHOLOT). The runner can also run in this stack, and for

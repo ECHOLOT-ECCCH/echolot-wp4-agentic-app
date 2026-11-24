@@ -54,3 +54,5 @@ legacy/kks/*
 # deploy/: the operator's service list and keys (deploy/.env is covered by .env above)
 /deploy/config/services.toml
 /deploy/config/runner.env
+# ./install.sh: the local install's settings, keys and tables
+/deploy/local/

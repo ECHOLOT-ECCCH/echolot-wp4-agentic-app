@@ -1,0 +1,31 @@
+# ECHOLOT's reconciliation API in the same Compose project, for ./install.sh (the local install).
+# Goes on top of docker-compose.prefect.yml, whose network "runs" it joins: the runner reaches it
+# as http://echolot:5000 and nothing is published on the host. The image is built from ECHOLOT's
+# repository on GitHub, or from a checkout: ECHOLOT_SOURCE=/path/to/echolot-wp4-api-service.
+services:
+  echolot:
+    build: ${ECHOLOT_SOURCE:-https://github.com/ECHOLOT-ECCCH/echolot-wp4-api-service.git#main}
+    image: ${IMAGE_PREFIX:-echolot-workbench/}echolot-api:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    # API_KEY (what the runner sends) and the algorithms' own keys
+    env_file: ${ECHOLOT_ENV_FILE:-local/echolot.env}
+    # default: its own route out, to Wikidata and the like
+    networks: [default, runs]
+    volumes:
+      # the tables of rule_based; readable by uid 10001
+      - ${ECHOLOT_DATASHEETS:-./local/datasheets}:/data:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=2)
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  runner:
+    depends_on:
+      echolot:
+        condition: service_healthy

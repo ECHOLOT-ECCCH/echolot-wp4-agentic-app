@@ -70,6 +70,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 - 2026-11-24: `feat/users-and-byok` (pzajec, who agreed), `feat/wikidata-statements` and
   `feat/runner-hardening` merged into `main`; ECHOLOT's `llm-and-rule-based`,
   `feat/wikidata-statements` and `feat/hardening` into its `main`. New work branches off `main`.
+- M4.4 (a local install with one command, `./install.sh`) is built on the branch
+  `feat/local-install` (2026-11-24). A one-command server install was left out (owner).
 - Last update: 2026-11-24.
 
 Update this block at the end of every task.
@@ -689,6 +691,12 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
   - [ ] Acceptance: `deploy/smoke.sh` green in CI; on the owner's host, https in front, the
     first admin created, `check-runs` green against the external Prefect server, a tester signs
     in with a key of their own and completes the loop with ECHOLOT through the runner.
+- [ ] M4.4 A local install with one command (owner, 2026-11-24): `./install.sh` on a fresh clone
+  runs the whole stack on one computer, ECHOLOT's API included, for the people who use that
+  computer (DECISIONS 2026-11-24). Acceptance: on macOS and on Linux from zero, the command ends
+  with an address and an account; signing in works, a run reconciles names through the runner,
+  the sandbox and ECHOLOT without any key, and a second run of the command changes nothing.
+  Met on macOS (2026-11-24, Docker Desktop); Linux from zero is still to be checked.
 
 ## 12f. Milestone 5: Enrichment from Wikidata (checklist)
 

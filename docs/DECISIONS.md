@@ -864,3 +864,30 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
 - **ECHOLOT as a user:** its image ran as root. It now runs as uid 10001 (its Dockerfile, branch
   `feat/hardening` of its repository); it writes only to `/tmp`, and the mounted ULAN table is
   world-readable on the server.
+
+## 2026-11-24 A local install with one command (M4.4)
+
+The owner: a local install with a script. Until now a newcomer had to clone ECHOLOT's repository
+too, make a key, write a Compose file and edit `.env` and `services.toml`; and `init.sh
+--with-prefect` writes a `services.toml` (`host.docker.internal`) that its own runner, on the
+internal network `runs`, cannot reach.
+
+- **The same stack as on a server** (`docker-compose.yml` with `docker-compose.prefect.yml`), so
+  there is one thing to test, and scripts run in the sandbox on a laptop too. The alternative,
+  scripts inside the app container (`docker-compose.local-runs.yml`), is lighter by Prefect and
+  the runner, but a script then reads the app's data and keys. Idle, the stack takes about 700 MB.
+- **ECHOLOT in the stack** (`docker-compose.echolot.yml`): built from its GitHub repository's
+  `main`, so no second clone; on the networks `default` and `runs`, with nothing published.
+- **For this computer only:** the web port is bound to 127.0.0.1, with plain http and cookies
+  without `Secure`. The first free pair of ports from 8080 on is taken (workbench, Prefect's
+  UI), checked on 127.0.0.1 and ::1, since "localhost" may mean either in a browser.
+- **No questions asked.** Without any key, `rule_based` works: the script fetches the ULAN table
+  (24 MB, the project's public WP4 repository, at a fixed commit, with a checksum). The other
+  algorithms' keys go in `deploy/local/echolot.env`. The first account is `admin@localhost`,
+  with a generated password printed once.
+- **Its own names:** settings and keys in `deploy/local/` (ignored by git), Compose project
+  `echolot-local`, images `echolot-local/*`, so it does not touch a server set-up on the same
+  machine. The script makes these files once and never overwrites them.
+- **No other tools:** POSIX sh, Docker with Compose, curl; not python3.
+- **Left out** (owner: just the local install): a one-command server install, images from a
+  registry, the fix to `init.sh --with-prefect`, running the script in CI.
