@@ -851,3 +851,16 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
   a stopped run ends its worker), and `deploy/smoke.sh --sandbox` in Docker: a uid of its own, no
   key or credential in the environment or `/proc`, no address, a service call through the
   runner, a run beside it out of reach, a memory-hog run that fails without harm to the next.
+
+## 2026-11-24 M6.5: the documentation pages, and ECHOLOT as a user
+
+- **The docs pages:** the app's `/api/docs` and `/api/openapi.json` answered without a session
+  on echolot.ijs.si, listing every route. `ECHO_API_DOCS` turns them off; it defaults to on for
+  development and the Compose deployment sets it off. ECHOLOT's `/docs`, `/redoc` and
+  `/openapi.json` answer without a key too; its `API_DOCS` stays on by default, since partners
+  running their own ECHOLOT read them, and echolot.ijs.si sets it off in
+  `/etc/echolot/api-service.env`. If partners use the public API's docs page, turning it back
+  on there is one line.
+- **ECHOLOT as a user:** its image ran as root. It now runs as uid 10001 (its Dockerfile, branch
+  `feat/hardening` of its repository); it writes only to `/tmp`, and the mounted ULAN table is
+  world-readable on the server.

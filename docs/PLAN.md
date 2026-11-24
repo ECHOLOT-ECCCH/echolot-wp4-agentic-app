@@ -64,7 +64,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
   (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
   deployed to echolot.ijs.si (2026-11-24, `6a74095`) and done, with the host's firewall on
   (DECISIONS 2026-11-24). M6.4 (scripts in a sandbox container) is done and deployed
-  (`096af15`). Next: M6.5 (ECHOLOT's image as a user, the API docs pages off in production).
+  (`096af15`). M6.5 (ECHOLOT's image as a user, the API docs pages off in production) is built.
+  Next: deploying M6.5 (with the owner's go-ahead); then the owner's items of section 12g.
 - Last update: 2026-11-24.
 
 Update this block at the end of every task.
@@ -775,9 +776,12 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   outside the run's services or a service's base URL. Done 2026-11-24: the tests and the Docker
   smoke check pass; deployed to echolot.ijs.si the same day (`096af15`), where the same checks
   pass with real ECHOLOT calls.
-- [ ] M6.5 Small fixes: ECHOLOT's image runs as a user, not root (its repository); the API
+- [x] M6.5 Small fixes: ECHOLOT's image runs as a user, not root (its repository); the API
   documentation pages are off in production (the app's `/api/docs` and ECHOLOT's `/docs`). (The
-  runner's `no-new-privileges` and `cap_drop` came with M6.4.)
+  runner's `no-new-privileges` and `cap_drop` came with M6.4.) Done 2026-11-24 (DECISIONS
+  2026-11-24): `ECHO_API_DOCS`, off in the Compose deployment; ECHOLOT's `API_DOCS`, on by default
+  for other deployments and off on echolot.ijs.si, and its image as uid 10001 (branch
+  `feat/hardening` there).
 
 For the owner, outside the code: kernel updates and reboots on the backend; ssh without
 passwords; the hop from the frontend to the backend, which is plain HTTP across the IJS network

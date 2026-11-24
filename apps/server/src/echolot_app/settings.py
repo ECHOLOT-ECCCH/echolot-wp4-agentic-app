@@ -77,6 +77,9 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
     log_json: bool = False
+    # the API's documentation pages, /api/docs and /api/openapi.json, which answer without a
+    # session; on for development, off in the Compose deployment (docs/PLAN.md M6.5)
+    api_docs: bool = True
 
     @property
     def database_url(self) -> str:

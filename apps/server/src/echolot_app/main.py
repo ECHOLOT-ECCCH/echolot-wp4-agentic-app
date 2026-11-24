@@ -97,8 +97,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="ECHOLOT Workbench API",
         version=__version__,
         lifespan=lifespan,
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if settings.api_docs else None,
+        openapi_url="/api/openapi.json" if settings.api_docs else None,
+        redoc_url=None,
     )
 
     @app.exception_handler(NotFoundError)

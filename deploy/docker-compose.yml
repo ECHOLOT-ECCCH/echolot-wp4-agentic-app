@@ -57,6 +57,8 @@ services:
       ECHO_COOKIE_SECURE: ${ECHO_COOKIE_SECURE:-true}
       ECHO_EXECUTOR: ${ECHO_EXECUTOR:-prefect}
       ECHO_LOG_JSON: ${ECHO_LOG_JSON:-true}
+      # the API's documentation pages answer without a session: off unless asked for
+      ECHO_API_DOCS: ${ECHO_API_DOCS:-false}
       # only web reaches the app (no published port); it sends one X-Forwarded-For value
       FORWARDED_ALLOW_IPS: "*"
     volumes:

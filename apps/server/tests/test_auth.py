@@ -364,3 +364,19 @@ def test_the_command_line_manages_accounts(
         assert cli_main(["set-password", "nobody@example.org"]) == 1
     finally:
         get_settings.cache_clear()
+
+
+async def test_the_api_docs_pages_can_be_turned_off(tmp_path: Path) -> None:
+    """They answer without a session, so the Compose deployment turns them off (PLAN M6.5)."""
+    for docs, expected in ((True, 200), (False, 404)):
+        settings = Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            data_dir=tmp_path / f"data-{docs}",
+            api_docs=docs,
+        )
+        app = create_app(settings)
+        async with LifespanManager(app), api_client(app) as client:
+            for path in ("/api/docs", "/api/openapi.json", "/redoc"):
+                status = (await client.get(path)).status_code
+                assert status == (404 if path == "/redoc" else expected), (docs, path)
+        assert "/api/me" in app.openapi()["paths"]  # the ownership test reads the schema
