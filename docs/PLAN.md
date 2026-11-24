@@ -62,9 +62,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
   session with a real model in the app.
 - M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
   (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
-  deployed to echolot.ijs.si (2026-11-24, `6a74095`). M6.2 (limits on the runner's container)
-  and M6.3 (the run timeout) are done; M6.1 (the runner's network) is done but for the host's
-  ufw rule for the bridge, which the owner adds with sudo. Next: M6.4, design first.
+  deployed to echolot.ijs.si (2026-11-24, `6a74095`) and done, with the host's firewall on
+  (DECISIONS 2026-11-24). Next: M6.4, design first.
 - Last update: 2026-11-24.
 
 Update this block at the end of every task.
@@ -732,7 +731,7 @@ read the runner's secrets or other users' runs. Ordered by what each step stops 
 the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
 `feat/runner-hardening` (off `feat/wikidata-statements`).
 
-- [ ] M6.1 The runner's network. In the one-host set-up (`docker-compose.prefect.yml`) the runner
+- [x] M6.1 The runner's network. In the one-host set-up (`docker-compose.prefect.yml`) the runner
   is only on an internal network, `runs`, with no route out: the app and Prefect are on it and
   on the default network, and a service the runner calls joins it in its own Compose file (on
   echolot.ijs.si, ECHOLOT's in `/etc/echolot`). The network's bridge has a fixed name,
@@ -743,8 +742,9 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   `ctx.service` and neither the internet, the IJS network nor the host's ssh. (Built
   2026-11-23: the smoke check passes, the probe finds no route out. Deployed 2026-11-24 with
   ECHOLOT added to `runs` in `/etc/echolot`: a script reaches ECHOLOT, and neither the
-  internet, the IJS network nor the host's LAN address. The host's ssh and nginx still answer
-  on the bridge's address, 172.21.0.1, until the owner adds the ufw rule.)
+  internet, the IJS network nor the host's LAN address. Done 2026-11-24: ufw had been off on
+  the host; the owner turned it on with the bridge's deny first, so the host's ssh and nginx no
+  longer answer a script on 172.21.0.1.)
 - [x] M6.2 Limits on the runner's container: memory (`RUNNER_MEMORY`, default 2g, no swap
   beyond it), CPUs (`RUNNER_CPUS`, 2), processes and threads (`RUNNER_PIDS`, 512), and a
   read-only root filesystem with `/tmp` and the home directory on size-capped tmpfs
@@ -769,8 +769,8 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
 
 For the owner, outside the code: kernel updates and reboots on the backend; ssh without
 passwords; the hop from the frontend to the backend, which is plain HTTP across the IJS network
-(HTTPS, or a firewall that admits only the frontend); the frontend's CentOS 7, which has had no
-security updates since June 2024.
+(since 2026-11-24 the backend's firewall admits only the frontend on port 80; HTTPS is left);
+the frontend's CentOS 7, which has had no security updates since June 2024.
 
 ## 13. System prompt (outline for `agent/prompts/system.md`)
 

@@ -747,3 +747,18 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
 - **Not now:** a throwaway container per run (the Elexifier sandbox's way). It isolates runs
   from each other best, but the app or a launcher then needs the Docker socket, which is root on
   the host. M6.4 gets the part that matters here, secrets out of the script's reach, without it.
+
+## 2026-11-24 The backend's firewall on (M6.1 done)
+
+- **Found at deployment:** ufw was off on echolot.ijs.si's backend (`ufw status`: inactive,
+  although systemd showed its unit active), so the host had no firewall: ssh and nginx answered
+  anyone on the IJS network and, over the host's public IPv6 address, possibly beyond. A script
+  in the runner reached both on the bridge's address, 172.21.0.1.
+- **Now (owner, 2026-11-24):** ufw on, dropping what comes in by default, with in order: deny on
+  `echolot-runs` (the runner), ssh from anywhere, port 80 only from the frontend
+  (194.249.231.96), IPv6 likewise (no port 80). Checked: a script times out on the host's ssh and
+  nginx; ECHOLOT still reaches Wikidata; runs go through Prefect; the public site answers; port
+  80 refuses the VPN.
+- **Why ssh stays open to all:** narrowing it to the VPN's and the frontend's ranges risks a
+  lock-out for little gain inside the institute; the owner can narrow it later.
+- deploy/README.md now says to check `ufw status` and to allow ssh before turning ufw on.

@@ -133,11 +133,18 @@ reach in this set-up.
 Docker's internal networks stop traffic to other networks but not to the host's own addresses,
 so a script could still reach what this host serves on all its addresses (ssh, a web server).
 The network's bridge has a fixed name, `echolot-runs` (`RUNS_BRIDGE` in `.env`), for the host's
-firewall. If `ip -br addr show echolot-runs` shows an address, refuse what comes in from it:
+firewall. If `ip -br addr show echolot-runs` shows an address, refuse what comes in from it,
+before any rule that allows a port (the first rule that matches wins). With ufw, this is
+echolot.ijs.si's set (ssh from anywhere, the web server only from the proxy in front of it):
 
 ```bash
-sudo ufw insert 1 deny in on echolot-runs    # with ufw; it persists
-# or, until the next reboot: sudo iptables -I INPUT -i echolot-runs -j DROP
+sudo ufw status numbered      # "Status: active"? (systemctl's "active" for ufw does not say)
+sudo ufw insert 1 deny in on echolot-runs    # "Invalid position" with no rules yet: ufw deny ...
+# ufw off: it drops all that comes in once enabled, so allow ssh before turning it on
+sudo ufw allow 22/tcp
+sudo ufw allow proto tcp from <the proxy's address> to any port 80
+sudo ufw enable               # then check ssh from a second session before closing this one
+# without ufw, until the next reboot: sudo iptables -I INPUT -i echolot-runs -j DROP
 ```
 
 Traffic between the containers on `runs` does not pass this rule. To check it, run a script

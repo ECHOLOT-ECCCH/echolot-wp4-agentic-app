@@ -13,7 +13,7 @@ its own changelog.
 | 2026-11-11 | https://echolot.ijs.si | `8a9e25c` | `eecc6a9` | First deployment: web, app, Prefect server, runner and ECHOLOT's API in one Compose project; the API at `/service/` |
 | 2026-11-12 | https://echolot.ijs.si | `1cebcda` | `d0af95e` | `service_call` (single requests on a card); the changelogs |
 | 2026-11-12 | https://echolot.ijs.si | `67fed4e` | `ce6175f` | `llm_based` through HiTZ's hosted Latxa service, with the server's own HiTZ key |
-| 2026-11-24 | https://echolot.ijs.si | `6a74095` | `ce6175f` | The runner fenced in (M6.1 to M6.3): only on the internal network `runs`, which ECHOLOT joins; limits on its container; the run timeout. The host's firewall rule for the bridge waits for the owner |
+| 2026-11-24 | https://echolot.ijs.si | `6a74095` | `ce6175f` | The runner fenced in (M6.1 to M6.3): only on the internal network `runs`, which ECHOLOT joins; limits on its container; the run timeout. The owner turned on the host's firewall (ufw), with the bridge refused first and port 80 only for the frontend |
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
 
@@ -24,7 +24,8 @@ review of what a script can reach on echolot.ijs.si (DECISIONS 2026-11-23).
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-24 | The deployment of `6a74095` recorded, and its hash filled in below | `CHANGELOG.md`, `docs/PLAN.md` |
+| (this commit) | 2026-11-24 | M6.1 done: the host's firewall on, recorded; deploy/README.md says to check `ufw status` and to allow ssh before turning ufw on | `deploy/README.md`, `docs/PLAN.md`, `docs/DECISIONS.md` |
+| `2653b56` | 2026-11-24 | The deployment of `6a74095` recorded, and its hash filled in below | `CHANGELOG.md`, `docs/PLAN.md` |
 | `6a74095` | 2026-11-23 | This section | `CHANGELOG.md` |
 | `1bbd7d5` | 2026-11-23 | **Limits on the runner's container (M6.2):** memory with no swap beyond it (`RUNNER_MEMORY`, 2g), CPUs (`RUNNER_CPUS`, 2), processes and threads (`RUNNER_PIDS`, 512), a read-only filesystem with `/tmp` (`RUNNER_TMP_SIZE`, 1g) and the home directory in memory. A script that exhausts the memory fails its own run; the smoke check runs one and then a normal run. | `deploy/docker-compose.yml`, `deploy/smoke_check.py`, `deploy/README.md` |
 | `a9766d1` | 2026-11-23 | **Run timeout (M6.3):** the poller stops a running run in which no record has finished for `ECHO_RUN_STALL_MINUTES` (30) or that has run for `ECHO_RUN_MAX_HOURS` (24), through the executor's cancel, so Prefect kills a script stuck in a loop; the run ends failed with the reason. The agent's workspace block names both limits. | `runs/poller.py`, `runs/service.py`, `settings.py`, `agent/agent.py`, `tests/test_run_limits.py` |
