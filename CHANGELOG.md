@@ -15,8 +15,18 @@ its own changelog.
 | 2026-11-12 | https://echolot.ijs.si | `67fed4e` | `ce6175f` | `llm_based` through HiTZ's hosted Latxa service, with the server's own HiTZ key |
 | 2026-11-24 | https://echolot.ijs.si | `6a74095` | `ce6175f` | The runner fenced in (M6.1 to M6.3): only on the internal network `runs`, which ECHOLOT joins; limits on its container; the run timeout. The owner turned on the host's firewall (ufw), with the bridge refused first and port 80 only for the frontend |
 | 2026-11-24 | https://echolot.ijs.si | `096af15` | `ce6175f` | Scripts in a sandbox container (M6.4): no network, no secrets, a uid per run; the runner 1 GB, the sandbox 2 GB. Checked on the server with real ECHOLOT calls |
+| 2026-11-24 | https://echolot.ijs.si | `33c8cca` | `579e4f1` | Both from `main` after the merge. M6.5: the API docs pages off (the app's and ECHOLOT's), ECHOLOT's image as a user |
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
+
+## `main` after the merge of 2026-11-24
+
+New work branches off `main` and is merged back into it.
+
+| Commit | Date | What it adds | Where |
+|---|---|---|---|
+| (this commit) | 2026-11-24 | The deployment of `33c8cca` recorded | `CHANGELOG.md`, `docs/PLAN.md` |
+| `33c8cca` | 2026-11-24 | The merge of `feat/runner-hardening`, and with it `feat/wikidata-statements` and `feat/users-and-byok` (pzajec agreed) | |
 
 ## Branch `feat/runner-hardening` (merged into `main` on 2026-11-24; built on `feat/wikidata-statements`)
 
@@ -25,7 +35,7 @@ review of what a script can reach on echolot.ijs.si (DECISIONS 2026-11-23).
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-24 | The three branches marked as merged into `main`, and the hashes filled in | `CHANGELOG.md`, `docs/PLAN.md` |
+| `b6fa93f` | 2026-11-24 | The three branches marked as merged into `main`, and the hashes filled in | `CHANGELOG.md`, `docs/PLAN.md` |
 | `9213da2` | 2026-11-24 | **The API's documentation pages can be turned off (M6.5):** `ECHO_API_DOCS` (on by default, off in the Compose deployment); `/api/docs` and `/api/openapi.json` answered without a session. ECHOLOT's side (its docs switch, its image as a user) is in its repository. | `settings.py`, `main.py`, `deploy/docker-compose.yml`, `deploy/.env.example`, `tests/test_auth.py`, docs |
 | `e6cf7b1` | 2026-11-24 | The deployment of `096af15` recorded, and the hashes above filled in | `CHANGELOG.md`, `docs/PLAN.md` |
 | `096af15` | 2026-11-24 | The sandbox's supervisor no longer counts a killed worker that waits to be collected as running, which made it retry and log a false alarm after every run (seen on the server) | `runner/src/echolot_runner/sandbox.py`, `runner/runner_tests/test_sandbox.py` |

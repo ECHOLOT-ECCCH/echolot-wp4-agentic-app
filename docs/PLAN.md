@@ -64,8 +64,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
   (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
   deployed to echolot.ijs.si (2026-11-24, `6a74095`) and done, with the host's firewall on
   (DECISIONS 2026-11-24). M6.4 (scripts in a sandbox container) is done and deployed
-  (`096af15`). M6.5 (ECHOLOT's image as a user, the API docs pages off in production) is built.
-  Next: deploying M6.5 (with the owner's go-ahead); then the owner's items of section 12g.
+  (`096af15`). M6.5 (ECHOLOT's image as a user, the API docs pages off in production) is done and
+  deployed (`33c8cca`): milestone 6 is done. Left: the owner's items at the end of section 12g,
+  and M5.3's acceptance (a session with a real model).
 - 2026-11-24: `feat/users-and-byok` (pzajec, who agreed), `feat/wikidata-statements` and
   `feat/runner-hardening` merged into `main`; ECHOLOT's `llm-and-rule-based`,
   `feat/wikidata-statements` and `feat/hardening` into its `main`. New work branches off `main`.
@@ -784,7 +785,7 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   runner's `no-new-privileges` and `cap_drop` came with M6.4.) Done 2026-11-24 (DECISIONS
   2026-11-24): `ECHO_API_DOCS`, off in the Compose deployment; ECHOLOT's `API_DOCS`, on by default
   for other deployments and off on echolot.ijs.si, and its image as uid 10001 (branch
-  `feat/hardening` there).
+  `feat/hardening` there). Deployed the same day from `main` (`33c8cca`; ECHOLOT `579e4f1`).
 
 For the owner, outside the code: kernel updates and reboots on the backend; ssh without
 passwords; the hop from the frontend to the backend, which is plain HTTP across the IJS network
