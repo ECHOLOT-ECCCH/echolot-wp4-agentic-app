@@ -6,13 +6,13 @@ import uuid
 from typing import Any, Literal
 
 import anyio
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from echolot_app.db import Author, File, Run, RunDecision, RunStatus, Script, utcnow
-from echolot_app.deps import DbSession, State, get_workspace_or_404
+from echolot_app.deps import DbSession, State, require_workspace
 from echolot_app.runs.service import (
     RowFilter,
     RunError,
@@ -28,7 +28,12 @@ from echolot_app.runs.service import (
 )
 from echolot_app.schemas import DecisionIn, DecisionOut, RunCreate, RunOut, RunRow, RunRowsPage
 
-router = APIRouter(prefix="/api/workspaces/{workspace_id}/runs", tags=["runs"])
+# every route checks that the signed-in user owns the workspace (docs/PLAN.md 7.11)
+router = APIRouter(
+    prefix="/api/workspaces/{workspace_id}/runs",
+    tags=["runs"],
+    dependencies=[Depends(require_workspace)],
+)
 
 MAX_ROWS_PAGE = 200
 
@@ -72,7 +77,6 @@ async def get_run_or_404(db: AsyncSession, workspace_id: uuid.UUID, run_id: uuid
 
 @router.get("", response_model=list[RunOut])
 async def list_runs(workspace_id: uuid.UUID, db: DbSession) -> list[RunOut]:
-    await get_workspace_or_404(db, workspace_id)
     rows = (
         await db.execute(
             select(Run).where(Run.workspace_id == workspace_id).order_by(Run.created_at.desc())
@@ -84,7 +88,6 @@ async def list_runs(workspace_id: uuid.UUID, db: DbSession) -> list[RunOut]:
 @router.post("", response_model=RunOut, status_code=status.HTTP_201_CREATED)
 async def create(workspace_id: uuid.UUID, body: RunCreate, db: DbSession, state: State) -> RunOut:
     """A run started by the user in the UI: no approval card (docs/PLAN.md section 9)."""
-    await get_workspace_or_404(db, workspace_id)
     try:
         run = await start_run(
             db, state.storage, state.settings, state.executor, workspace_id, body, Author.USER

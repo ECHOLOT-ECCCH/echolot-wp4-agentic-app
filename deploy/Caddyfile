@@ -1,0 +1,53 @@
+# The front of the workbench: the single-page app from /srv, everything else proxied to the app.
+# SITE_ADDRESS (deploy/.env) is a domain such as "workbench.example.org" for automatic HTTPS, or
+# ":80" behind a reverse proxy that terminates TLS (and for a trial on localhost).
+{
+	servers {
+		# Behind a reverse proxy, trust it for X-Forwarded-For, so {client_ip} below is the
+		# tester's address. Private ranges always; TRUSTED_PROXY_CIDR adds e.g. 192.0.2.10/32.
+		trusted_proxies static private_ranges {$TRUSTED_PROXY_CIDR:127.0.0.1/32}
+	}
+}
+
+{$SITE_ADDRESS::80} {
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy same-origin
+		Strict-Transport-Security "max-age=15552000"
+		-Server
+	}
+
+	request_body {
+		max_size {$MAX_UPLOAD_SIZE:1GB}
+	}
+
+	@backend path /api/* /runner/* /healthz
+	handle @backend {
+		reverse_proxy app:8000 {
+			# exactly one address: the app (uvicorn, FORWARDED_ALLOW_IPS=*) takes the first,
+			# and sign-in throttling counts per address
+			header_up X-Forwarded-For {client_ip}
+			# the chat answer streams; pass every chunk on at once
+			flush_interval -1
+		}
+	}
+
+	handle {
+		root * /srv
+		encode zstd gzip
+		# hashed file names: cache for good; everything else (index.html) is checked each time
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@pages not path /assets/*
+		header @pages Cache-Control "no-cache"
+		# client-side routes (/login, /settings, /w/…) all load the app
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

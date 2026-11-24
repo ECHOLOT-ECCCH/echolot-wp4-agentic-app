@@ -1,3 +1,35 @@
+/** Sent with every API request: the server refuses unsafe requests without it, which a page on
+ *  another site cannot add (CSRF protection, docs/PLAN.md 7.11). */
+export const REQUEST_HEADERS = { 'X-Echolot-Request': '1' } as const
+
+/** Paths whose 401 is an answer, not a lost session. */
+const NO_REDIRECT = ['/api/me', '/api/auth/login']
+
+/** Send the browser to the sign-in page, coming back here afterwards. */
+export function redirectToLogin() {
+  if (window.location.pathname === '/login') return
+  const next = window.location.pathname + window.location.search
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`)
+}
+
+/** Where to go after signing in: only a path on this site (no open redirect). */
+export function safeNext(raw: string | null | undefined): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/'
+  if (raw.startsWith('/login')) return '/'
+  return raw
+}
+
+/** The chat transport reports a refused turn with the response body: show its detail. */
+export function chatErrorMessage(error: Error): string {
+  try {
+    const parsed = JSON.parse(error.message) as { detail?: unknown }
+    if (typeof parsed.detail === 'string') return parsed.detail
+  } catch {
+    /* not JSON */
+  }
+  return error.message
+}
+
 export class ApiError extends Error {
   status: number
   detail: string
@@ -37,12 +69,14 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     method,
     headers: {
       Accept: asText ? '*/*' : 'application/json',
+      ...REQUEST_HEADERS,
       ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(headers as Record<string, string> | undefined),
     },
     body: json !== undefined ? JSON.stringify(json) : rest.body,
   }
   const response = await fetch(path, init)
+  if (response.status === 401 && !NO_REDIRECT.includes(path)) redirectToLogin()
   if (!response.ok) {
     throw new ApiError(response.status, await detailOf(response))
   }
@@ -69,6 +103,7 @@ export function uploadFile(
   const promise = new Promise<unknown>((resolve, reject) => {
     xhr.open('POST', url)
     xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name))
+    for (const [name, value] of Object.entries(REQUEST_HEADERS)) xhr.setRequestHeader(name, value)
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress(event.loaded / event.total)
@@ -78,6 +113,7 @@ export function uploadFile(
         onProgress(1)
         resolve(JSON.parse(xhr.responseText))
       } else {
+        if (xhr.status === 401) redirectToLogin()
         let detail = xhr.statusText
         try {
           detail = (JSON.parse(xhr.responseText) as { detail?: string }).detail ?? detail

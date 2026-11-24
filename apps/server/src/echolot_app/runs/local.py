@@ -1,8 +1,11 @@
 """``LocalExecutor``: the runner CLI as a subprocess on the app host (dev, tests, demos).
 
-The subprocess gets the app's environment plus the variables of ``ECHO_LOCAL_RUNNER_ENV_FILE``
-(default ``./runner.env``, read at every submit), which is where the service keys go: the app's
-``.env`` is read into its settings, not into its environment. It reads the services from
+The subprocess gets the app's environment without the app's own ``ECHO_*`` settings (the secret
+key, the server's model key), plus the variables of ``ECHO_LOCAL_RUNNER_ENV_FILE`` (default
+``./runner.env``, read at every submit), which is where the service keys go: the app's ``.env`` is
+read into its settings, not into its environment. That keeps the app's secrets out of a script's
+``os.environ``; it is no isolation, the script runs as the app's user (docs/PLAN.md 7.11, and
+deploy/README.md for the runner container that is). It reads the services from
 ``ECHO_LOCAL_SERVICES_FILE``; on this machine the app host is also the runner host. A run whose
 process is not known any more (the app restarted) reports CRASHED.
 """
@@ -48,7 +51,7 @@ class LocalExecutor:
         params_path = workdir / "params.json"
         params_path.write_text(json.dumps(params), encoding="utf-8")
         params_path.chmod(0o600)  # holds the run token
-        env = {**os.environ, **read_env_file(self._env_file)}
+        env = runner_environment(self._env_file)
         if self._services_file is not None:
             env["RUNNER_SERVICES_FILE"] = str(self._services_file.resolve())
         with (workdir / "stdout.log").open("wb") as out, (workdir / "stderr.log").open("wb") as err:
@@ -95,6 +98,12 @@ class LocalExecutor:
         for job in self._jobs.values():
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(job.process.wait(), timeout=5)
+
+
+def runner_environment(env_file: Path | None) -> dict[str, str]:
+    """This process's environment minus the app's ``ECHO_*`` settings, plus the env file."""
+    inherited = {k: v for k, v in os.environ.items() if not k.startswith("ECHO_")}
+    return inherited | read_env_file(env_file)
 
 
 def read_env_file(path: Path | None) -> dict[str, str]:

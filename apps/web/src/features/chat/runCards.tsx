@@ -60,6 +60,34 @@ export function SubmitRunArgs({
   )
 }
 
+/** What the user approves for service_call: the purpose and the exact request that goes out. */
+export function ServiceCallArgs({ argsText }: { argsText?: string }) {
+  const args = parseArgs(argsText)
+  const method = args.method === 'GET' ? 'GET' : 'POST'
+  const service = typeof args.service === 'string' ? args.service : 'a service'
+  const path = typeof args.path === 'string' ? args.path : ''
+  const params =
+    args.params && typeof args.params === 'object' ? (args.params as Record<string, unknown>) : {}
+  const query = new URLSearchParams(
+    Object.entries(params).map(([key, value]) => [key, String(value)]),
+  ).toString()
+  const body =
+    args.body === undefined || args.body === null ? null : JSON.stringify(args.body, null, 2)
+  return (
+    <div className="flex flex-col gap-1 px-3 py-2 text-sm" data-testid="service-call-args">
+      {typeof args.purpose === 'string' && <p className="font-medium">{args.purpose}</p>}
+      <p className="text-muted-foreground flex flex-wrap items-center gap-1 text-xs">
+        Sends one request to <Badge variant="outline">{service}</Badge>
+        <code>
+          {method} {path}
+          {query ? `?${query}` : ''}
+        </code>
+      </p>
+      {body && <pre className="bg-muted max-h-48 overflow-auto rounded p-2 text-xs">{body}</pre>}
+    </div>
+  )
+}
+
 /** The result of the run tools: status line plus a button to open the run. */
 export function RunBody({ data }: { data: Record<string, unknown> }) {
   const open = usePreview((s) => s.open)

@@ -11,18 +11,23 @@ from urllib.parse import quote, unquote
 
 import anyio
 import structlog
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from echolot_app.db import File, FileKind
-from echolot_app.deps import CurrentStorage, DbSession, get_workspace_or_404
+from echolot_app.deps import CurrentStorage, DbSession, require_workspace
 from echolot_app.records import RecordsError, RecordsReader, detect_format, normalize
 from echolot_app.schemas import FileOut, RecordOut, RecordsPage
 from echolot_app.storage import LocalStorage, file_key, safe_filename
 
-router = APIRouter(prefix="/api/workspaces/{workspace_id}/files", tags=["files"])
+# every route checks that the signed-in user owns the workspace (docs/PLAN.md 7.11)
+router = APIRouter(
+    prefix="/api/workspaces/{workspace_id}/files",
+    tags=["files"],
+    dependencies=[Depends(require_workspace)],
+)
 log = structlog.get_logger(__name__)
 
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024
@@ -142,7 +147,6 @@ async def store_upload(
 async def list_files(
     workspace_id: uuid.UUID, db: DbSession, kind: FileKind | None = None
 ) -> list[FileOut]:
-    await get_workspace_or_404(db, workspace_id)
     query = select(File).where(File.workspace_id == workspace_id).order_by(File.created_at.desc())
     if kind:
         query = query.where(File.kind == kind.value)
@@ -159,7 +163,6 @@ async def upload_file(
 ) -> FileOut:
     """Upload a file as the raw request body (``curl --data-binary``, the web app's XHR), with
     the file name in ``?name=`` or the ``X-File-Name`` header (percent-encoded)."""
-    await get_workspace_or_404(db, workspace_id)
     header_name = request.headers.get("x-file-name")
     raw_name = name or (unquote(header_name) if header_name else None)
     if not raw_name:

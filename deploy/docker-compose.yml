@@ -1,0 +1,151 @@
+# The workbench on one host: deploy/README.md. From this directory:
+#   ./init.sh                       # .env with a fresh secret key, config/ from the examples
+#   $EDITOR .env                    # the site, the Prefect server, ECHO_PUBLIC_URL
+#   docker compose up -d --build
+#   docker compose exec app echolot-admin create-user you@example.org --admin
+#   docker compose exec app echolot-admin check-runs
+#
+#   web     Caddy: https (or :80 behind your proxy), the single-page app, proxy to app
+#   app     FastAPI, SQLite and files in the app-data volume; reachable only through web. It
+#           sends runs to the Prefect server at ECHO_PREFECT_API_URL
+#   runner  runs the scripts' runs and holds the service keys (profile "runner"); usually it
+#           runs next to ECHOLOT on a host of its own instead (docs/runner-host.md)
+#   sandbox where the scripts themselves run (profile "runner"): no network, no secrets, a uid
+#           per run; the runner makes their service calls (docs/PLAN.md M6.4)
+# The runner has no access to the app's data or secrets: it reaches the app only with each run's
+# token, and the service keys never enter the app. A script holds neither. Other set-ups, by COMPOSE_FILE in .env:
+# docker-compose.prefect.yml adds a Prefect server of this stack's own (one host, a trial), and
+# docker-compose.local-runs.yml runs scripts inside the app container (trusted users only).
+name: echolot-workbench
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+    image: ${IMAGE_PREFIX:-echolot-workbench/}web:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      TRUSTED_PROXY_CIDR: ${TRUSTED_PROXY_CIDR:-127.0.0.1/32}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-1GB}
+    volumes:
+      - caddy-data:/data # certificates
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: app
+    image: ${IMAGE_PREFIX:-echolot-workbench/}app:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    # every ECHO_* setting of .env: models, sessions, the Prefect server (ECHO_PREFECT_API_URL,
+    # ECHO_PREFECT_AUTH_STRING or ECHO_PREFECT_API_KEY), ECHO_PUBLIC_URL; the fixed ones below win
+    env_file: ${APP_ENV_FILE:-.env}
+    environment:
+      ECHO_DATA_DIR: /data
+      ECHO_SERVICES_DIR: /app/services
+      ECHO_SECRET_KEY: ${ECHO_SECRET_KEY:?run ./init.sh or set ECHO_SECRET_KEY in deploy/.env}
+      ECHO_COOKIE_SECURE: ${ECHO_COOKIE_SECURE:-true}
+      ECHO_EXECUTOR: ${ECHO_EXECUTOR:-prefect}
+      ECHO_LOG_JSON: ${ECHO_LOG_JSON:-true}
+      # the API's documentation pages answer without a session: off unless asked for
+      ECHO_API_DOCS: ${ECHO_API_DOCS:-false}
+      # only web reaches the app (no published port); it sends one X-Forwarded-For value
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - app-data:/data
+
+  runner:
+    profiles: ["runner"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: runner
+      args:
+        PREFECT_VERSION: ${PREFECT_VERSION:-}
+    image: ${IMAGE_PREFIX:-echolot-workbench/}runner:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    # the service keys named by key_env in config/services.toml, e.g. ECHOLOT_API_KEY=...
+    env_file: ${RUNNER_ENV_FILE:-config/runner.env}
+    environment:
+      # the app's Prefect server and credentials; the runner serves the flow there
+      PREFECT_API_URL: ${ECHO_PREFECT_API_URL:-}
+      PREFECT_API_AUTH_STRING: ${ECHO_PREFECT_AUTH_STRING:-}
+      PREFECT_API_KEY: ${ECHO_PREFECT_API_KEY:-}
+      PREFECT_RUNNER_POLL_FREQUENCY: ${PREFECT_RUNNER_POLL_FREQUENCY:-2}
+      RUNNER_SERVICES_FILE: /config/services.toml
+      RUNNER_MAX_RUNS: ${RUNNER_MAX_RUNS:-4}
+      # scripts run in the sandbox below; the runner keeps the token, the keys and Prefect's
+      # credentials and makes the service calls for them (docs/PLAN.md M6.4)
+      RUNNER_SANDBOX_SOCKET: /run/sandbox/sandbox.sock
+    depends_on:
+      sandbox:
+        condition: service_started
+    # Limits (docs/PLAN.md M6.2). tmpfs counts towards the memory limit; /tmp holds each run's
+    # input and results while it runs, so a run of millions of records needs more of both.
+    mem_limit: ${RUNNER_MEMORY:-1g}
+    memswap_limit: ${RUNNER_MEMORY:-1g}
+    cpus: ${RUNNER_CPUS:-2}
+    pids_limit: ${RUNNER_PIDS:-512}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=${RUNNER_TMP_SIZE:-512m},mode=1777
+      - /home/echolot:size=128m,uid=10001,gid=10001,mode=0700
+    volumes:
+      - ${SERVICES_FILE:-./config/services.toml}:/config/services.toml:ro
+      - sandbox-socket:/run/sandbox:ro
+    extra_hosts:
+      # services on this host (ECHOLOT): http://host.docker.internal:5000 in services.toml
+      - "host.docker.internal:host-gateway"
+
+  sandbox:
+    # where the scripts run (docs/PLAN.md M6.4, DECISIONS 2026-11-24): no network, no secrets,
+    # each run's worker under a uid of its own; the runner connects through the socket volume
+    profiles: ["runner"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: sandbox
+    image: ${IMAGE_PREFIX:-echolot-workbench/}sandbox:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    network_mode: none
+    environment:
+      SANDBOX_SOCKET: /run/sandbox/sandbox.sock
+      SANDBOX_CLIENT_GID: "10001" # the runner's group
+      SANDBOX_MAX_WORKERS: ${SANDBOX_MAX_WORKERS:-16}
+    # its supervisor starts as root for the workers' uids and keeps only what that needs
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
+    security_opt: ["no-new-privileges:true"]
+    # one script that runs away fails its own run; the scripts of runs beside it share these
+    mem_limit: ${SANDBOX_MEMORY:-2g}
+    memswap_limit: ${SANDBOX_MEMORY:-2g}
+    cpus: ${SANDBOX_CPUS:-2}
+    pids_limit: ${SANDBOX_PIDS:-1024}
+    read_only: true
+    tmpfs:
+      - /tmp:size=${SANDBOX_TMP_SIZE:-512m},mode=1777
+    volumes:
+      - sandbox-socket:/run/sandbox
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:
+  # the sandbox's socket: root-owned, so no script can replace it
+  sandbox-socket:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1m,mode=0755

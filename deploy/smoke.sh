@@ -1,0 +1,62 @@
+#!/bin/sh
+# Builds the images, starts the whole stack with a Prefect server of its own (web, app, Prefect,
+# runner: docker-compose.prefect.yml) and the test model on http://127.0.0.1:${SMOKE_PORT:-8080},
+# creates an account, waits for "echolot-admin check-runs" to pass and runs smoke_check.py
+# through the front: pages, sign-in, a streamed chat turn, a run through Prefect and the runner,
+# a run whose script finds no route out of the runner's network, one that exhausts the
+# memory without harm to the next run, and the script sandbox (no secrets, no address, a uid per
+# run, service calls through the runner).
+# The stack and its volumes are removed afterwards; deploy/.env and deploy/config are not used.
+#   deploy/smoke.sh            (make deploy-smoke; CI runs it too)
+set -eu
+cd "$(dirname "$0")"
+
+port=${SMOKE_PORT:-8080}
+tmp=$(mktemp -d)
+compose() {
+  docker compose -p echolot-smoke --env-file "$tmp/smoke.env" \
+    -f docker-compose.yml -f docker-compose.prefect.yml --profile runner "$@"
+}
+cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ]; then compose logs --no-color --tail 80 || true; fi
+  compose down -v --remove-orphans >/dev/null 2>&1 || true
+  rm -rf "$tmp"
+  exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+password=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')
+cat > "$tmp/smoke.env" <<EOF
+APP_ENV_FILE=$tmp/smoke.env
+RUNNER_ENV_FILE=$tmp/runner.env
+SERVICES_FILE=$tmp/services.toml
+SITE_ADDRESS=:80
+HTTP_PORT=127.0.0.1:$port
+HTTPS_PORT=127.0.0.1:$((port + 363))
+PREFECT_PORT=$((port + 1))
+RUNS_BRIDGE=echosmoke-runs
+ECHO_SECRET_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+ECHO_PREFECT_AUTH_STRING=smoke:$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+ECHO_COOKIE_SECURE=false
+ECHO_MODEL_PROVIDER=test
+ECHO_MODEL_ID=test
+ECHO_ENABLE_TEST_MODEL=true
+EOF
+: > "$tmp/runner.env"
+# the app's /healthz as a service, for the sandbox check's call through the runner
+printf '[app]\nurl = "http://app:8000"\n' > "$tmp/services.toml"
+chmod 644 "$tmp/services.toml"
+
+compose up -d --build --wait
+printf '%s\n' "$password" |
+  compose exec -T app echolot-admin create-user smoke@example.org --admin --password-stdin
+# the runner registers its deployment and polls for runs within seconds of starting
+tries=0
+until compose exec -T app echolot-admin check-runs > "$tmp/check-runs.txt" 2>&1; do
+  tries=$((tries + 1))
+  if [ "$tries" -ge 30 ]; then cat "$tmp/check-runs.txt"; exit 1; fi
+  sleep 2
+done
+cat "$tmp/check-runs.txt"
+python3 smoke_check.py "http://127.0.0.1:$port" smoke@example.org "$password" --runner-offline --runner-limits --sandbox

@@ -1,21 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { api } from '@/lib/api'
+import { api, chatErrorMessage, safeNext } from '@/lib/api'
 import { mockApi } from '@/test/utils'
 
 afterEach(() => vi.unstubAllGlobals())
 
 describe('api', () => {
-  it('parses JSON bodies by default', async () => {
-    mockApi([{ path: '/api/thing', body: { a: 1 } }])
-    await expect(api('/api/thing')).resolves.toEqual({ a: 1 })
+  it('sends the request header the server requires', async () => {
+    const { calls } = mockApi([{ method: 'POST', path: '/api/workspaces', body: { id: 'w1' } }])
+    await api('/api/workspaces', { method: 'POST', json: { name: 'x' } })
+    expect(calls[0]?.headers?.['X-Echolot-Request']).toBe('1')
+    expect(calls[0]?.body).toEqual({ name: 'x' })
   })
 
-  it('returns the raw text when asked, even for a JSON content type', async () => {
-    const { fetchMock } = mockApi([{ path: '/api/files/f1/content', body: { step: 1 } }])
-    const text = await api<string>('/api/files/f1/content', { asText: true })
-    expect(text).toBe('{"step":1}')
-    const init = fetchMock.mock.calls[0]?.[1] as RequestInit
-    expect((init.headers as Record<string, string>).Accept).toBe('*/*')
+  it('only follows a sign-in to a path on this site', () => {
+    expect(safeNext('/w/abc?x=1')).toBe('/w/abc?x=1')
+    expect(safeNext(null)).toBe('/')
+    expect(safeNext('https://evil.example')).toBe('/')
+    expect(safeNext('//evil.example')).toBe('/')
+    expect(safeNext('/\\evil.example')).toBe('/')
+    expect(safeNext('/login?next=/x')).toBe('/')
+  })
+
+  it('shows the detail of a refused chat turn', () => {
+    const refused = new Error(JSON.stringify({ detail: 'Add your OpenAI key in Settings' }))
+    expect(chatErrorMessage(refused)).toBe('Add your OpenAI key in Settings')
+    expect(chatErrorMessage(new Error('Failed to fetch'))).toBe('Failed to fetch')
   })
 })

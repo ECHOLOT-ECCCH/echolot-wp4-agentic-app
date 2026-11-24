@@ -3,7 +3,7 @@
 Scripts may catch ``ServiceError`` (``from echolot_runner import ServiceError``).
 """
 
-from echolot_runner.services import ServiceError
+from echolot_runner.context import ServiceError
 
 __all__ = ["ServiceError"]
 __version__ = "0.1.0"

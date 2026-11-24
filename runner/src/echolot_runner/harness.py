@@ -1,46 +1,66 @@
 """Run a workspace script over records (docs/PLAN.md 7.2-7.4).
 
-Download the run's input (JSONL, ``{"_row": n, "record": {...}}`` per line), load the script
-into a fresh module, call ``setup(ctx)`` once, then ``process(record, ctx)`` per record on a
-thread pool. A record that raises gets ``_status: "error"`` and the run goes on; only run-level
-problems (the script does not load, ``setup`` fails, input or result transfer fails) fail the
-run. Results are written in ``_row`` order with a bounded window of records in flight, progress
-is posted at most every two seconds, and the results JSONL is uploaded at the end.
+Download the run's input (JSONL, ``{"_row": n, "record": {...}}`` per line) and hand the records
+to a worker that runs the script (worker.py; docs/DECISIONS.md 2026-11-24): in the sandbox
+container when ``RUNNER_SANDBOX_SOCKET`` names its socket, otherwise a child process with an
+empty environment. The worker calls ``setup(ctx)`` once, then ``process(record, ctx)`` per
+record on a thread pool, and asks the harness to make its service calls, so the run's token, its
+URLs and the service keys never leave this process. A record that raises gets
+``_status: "error"`` and the run goes on; only run-level problems (the script does not load,
+``setup`` fails, the worker dies, input or result transfer fails) fail the run. Results are
+written in ``_row`` order with a bounded window of records in flight, progress is posted at most
+every two seconds, and the results JSONL is uploaded at the end.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import os
+import queue
+import signal
+import socket
+import subprocess
+import sys
 import tempfile
+import threading
 import time
-import traceback
-import types
 from collections import deque
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
 
 import httpx
 
-from echolot_runner.context import Context
 from echolot_runner.params import RunnerParams
+from echolot_runner.protocol import Channel, ProtocolError
 from echolot_runner.services import (
     ServiceClient,
     ServiceConfig,
+    ServiceError,
     ServicesConfigError,
     load_services,
 )
 
 log = logging.getLogger("echolot_runner")
+script_log = logging.getLogger("echolot_runner.script")
 
 PROGRESS_EVERY_S = 2.0
 MAX_ERROR_CHARS = 2000
+MAX_LOG_CHARS = 10_000
 MAX_TRACEBACKS_LOGGED = 20
 WINDOW_PER_WORKER = 4  # records in flight per worker thread
 TRANSFER_TIMEOUT_S = 300.0
+# a worker started here gets nothing of this process's environment (keys, Prefect credentials)
+WORKER_ENV = {"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"}
+WORKER_COMMAND = [sys.executable, "-I", "-B", "-m", "echolot_runner.worker"]
+OUT_OF_TURN = "the script's process sent a message out of turn"
+LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
+
+ExitCode = Callable[[], int | None]
 
 
 class RunFailed(Exception):
@@ -63,24 +83,34 @@ def run(
     *,
     http: httpx.Client | None = None,
     services: dict[str, ServiceConfig] | None = None,
+    sandbox: str | None = None,
 ) -> dict[str, Any]:
-    """Run once; return ``{"total", "ok", "error", "duration_s"}`` or raise RunFailed."""
+    """Run once; return ``{"total", "ok", "error", "duration_s"}`` or raise RunFailed.
+    ``sandbox``: the sandbox's socket (default ``RUNNER_SANDBOX_SOCKET``); without one, the
+    worker is a child process."""
     if isinstance(params, dict):
         params = RunnerParams.from_dict(params)
     started = time.monotonic()
     owned = http is None
     client = http or httpx.Client(follow_redirects=True)
+    socket_path = sandbox or os.environ.get("RUNNER_SANDBOX_SOCKET") or None
+    counts = Counts()
+    reporter = _Reporter(client, params)
     try:
         clients = _service_clients(params, client, services)
         with tempfile.TemporaryDirectory(prefix=f"run-{params.run_id}-") as tmp:
             workdir = Path(tmp)
             input_path = _download(client, params, workdir / "input.jsonl")
-            process, ctx = _load(params, clients)
             result_path = workdir / "result.jsonl"
-            counts = Counts(total=_count_lines(input_path, params.limit))
-            reporter = _Reporter(client, params)
-            with input_path.open("rb") as source, result_path.open("wb") as sink:
-                _process_all(params, process, ctx, source, sink, counts, reporter)
+            with _worker(socket_path) as (channel, exit_code):
+                session = _Session(channel, clients, params, exit_code)
+                try:
+                    session.start()
+                    counts.total = _count_lines(input_path, params.limit)
+                    with input_path.open("rb") as source, result_path.open("wb") as sink:
+                        session.process_all(source, sink, counts, reporter)
+                finally:
+                    session.close()
             reporter.post(counts, force=True)
             _upload(client, params, result_path)
     finally:
@@ -152,28 +182,55 @@ def _upload(http: httpx.Client, params: RunnerParams, source: Path) -> None:
         raise RunFailed(f"the results could not be uploaded (HTTP {response.status_code})")
 
 
-def _load(
-    params: RunnerParams, clients: dict[str, ServiceClient]
-) -> tuple[Callable[[dict[str, Any], Context], Any], Context]:
-    module = types.ModuleType("workspace_script")
-    module.__file__ = "script.py"
-    try:
-        code = compile(params.script, "script.py", "exec")
-        exec(code, module.__dict__)
-    except Exception as exc:
-        raise RunFailed(f"the script does not load: {type(exc).__name__}: {exc}") from exc
-    process = module.__dict__.get("process")
-    if not callable(process):
-        raise RunFailed("the script defines no process(record, ctx)")
-    ctx = Context(clients, params.script_params)
-    setup = module.__dict__.get("setup")
-    if callable(setup):
+@contextlib.contextmanager
+def _worker(socket_path: str | None) -> Iterator[tuple[Channel, ExitCode]]:
+    """A connection to a new worker, and how to learn its exit code once it has gone."""
+    if socket_path:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            setup(ctx)
-        except Exception as exc:
-            log.error("setup failed:\n%s", traceback.format_exc())
-            raise RunFailed(f"setup failed: {type(exc).__name__}: {exc}") from exc
-    return process, ctx
+            sock.connect(socket_path)
+        except OSError as exc:
+            sock.close()
+            raise RunFailed(f"the script sandbox does not answer ({type(exc).__name__})") from exc
+        channel = Channel(sock)
+        try:
+            yield channel, lambda: None  # the sandbox sends the exit code before it closes
+        finally:
+            channel.close()
+        return
+
+    ours, theirs = socket.socketpair()
+    try:
+        process = subprocess.Popen(
+            [*WORKER_COMMAND, "--fd", str(theirs.fileno())],
+            pass_fds=(theirs.fileno(),),
+            env=WORKER_ENV,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        ours.close()
+        raise RunFailed(f"the script's process could not start ({exc})") from exc
+    finally:
+        theirs.close()
+    channel = Channel(ours)
+
+    def exit_code() -> int | None:
+        try:
+            return process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            return None
+
+    try:
+        yield channel, exit_code
+    finally:
+        channel.close()  # the worker ends when it reads the end of the connection
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=5)
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)  # with whatever the script started
+        process.wait()
 
 
 def _count_lines(path: Path, limit: int | None) -> int:
@@ -198,66 +255,189 @@ def _records(source: BinaryIO, limit: int | None) -> Iterator[tuple[int, dict[st
         yield row, record
 
 
-def _call(
-    process: Callable[[dict[str, Any], Context], Any],
-    ctx: Context,
-    row: int,
-    record: dict[str, Any],
-) -> dict[str, Any]:
-    """One record: its result line (without serializing)."""
-    started = time.monotonic()
-    try:
-        output = process(record, ctx)
-        if not isinstance(output, dict):
-            raise TypeError(f"process returned {type(output).__name__}, not a dict")
-        reserved = sorted(k for k in output if str(k).startswith("_"))
-        if reserved:
-            raise ValueError(f"process returned reserved keys: {', '.join(reserved)}")
-        line: dict[str, Any] = {"_row": row, "_status": "ok", "_error": None}
-        line.update(output)
-    except Exception as exc:
-        message = f"{type(exc).__name__}: {exc}"
-        line = {"_row": row, "_status": "error", "_error": message[:MAX_ERROR_CHARS]}
-        line["_traceback"] = traceback.format_exc()
-    line["_ms"] = round((time.monotonic() - started) * 1000)
-    return line
+def _ended(code: int | None) -> str:
+    if code is None:
+        return "the script's process ended unexpectedly"
+    if code == -signal.SIGKILL:
+        return (
+            "the script's process was killed (signal 9), most likely for using more memory "
+            "than the runner allows"
+        )
+    if code < 0:
+        return f"the script's process was ended by signal {-code}"
+    return f"the script's process ended unexpectedly (exit code {code})"
 
 
-def _process_all(
-    params: RunnerParams,
-    process: Callable[[dict[str, Any], Context], Any],
-    ctx: Context,
-    source: BinaryIO,
-    sink: BinaryIO,
-    counts: Counts,
-    reporter: _Reporter,
-) -> None:
-    window = params.concurrency * WINDOW_PER_WORKER
-    pending: deque[Future[dict[str, Any]]] = deque()
-    tracebacks = 0
+class _Session:
+    """The harness's side of one worker. A reader thread makes the service calls the worker
+    asks for and passes everything else to the main thread, which sends the records and writes
+    the results. Nothing from the worker is trusted: a call names one of the run's services and
+    stays under its URL (ServiceClient), and a result answers a record that was sent."""
 
-    def finish(future: Future[dict[str, Any]]) -> None:
-        nonlocal tracebacks
-        line = future.result()
+    def __init__(
+        self,
+        channel: Channel,
+        clients: dict[str, ServiceClient],
+        params: RunnerParams,
+        exit_code: ExitCode,
+    ) -> None:
+        self._channel = channel
+        self._clients = clients
+        self._params = params
+        self._exit_code = exit_code
+        self._inbox: queue.Queue[dict[str, Any] | None] = queue.Queue()
+        self._calls = ThreadPoolExecutor(
+            max_workers=params.concurrency + 1, thread_name_prefix="call"
+        )
+        self._reader = threading.Thread(target=self._read, name="worker-link", daemon=True)
+        self._tracebacks = 0
+
+    def start(self) -> None:
+        self._reader.start()
+        self._send(
+            {
+                "t": "start",
+                "script": self._params.script,
+                "params": self._params.script_params,
+                "services": sorted(self._clients),
+                "concurrency": self._params.concurrency,
+            }
+        )
+        message = self._next()
+        if message["t"] == "failed":
+            raise RunFailed(str(message.get("message") or "the script failed")[:MAX_ERROR_CHARS])
+        if message["t"] != "ready":
+            raise RunFailed(OUT_OF_TURN)
+
+    def process_all(
+        self, source: BinaryIO, sink: BinaryIO, counts: Counts, reporter: _Reporter
+    ) -> None:
+        window = self._params.concurrency * WINDOW_PER_WORKER
+        order: deque[int] = deque()  # rows sent, in input order, until written
+        waiting: set[int] = set()  # rows sent whose result has not come
+        received: dict[int, dict[str, Any]] = {}
+        records = _records(source, self._params.limit)
+        more = True
+        while True:
+            while more and len(order) < window:
+                item = next(records, None)
+                if item is None:
+                    more = False
+                    self._send({"t": "end"})
+                    break
+                row, record = item
+                if row in waiting or row in received:
+                    raise RunFailed(f"the input has row {row} twice")
+                order.append(row)
+                waiting.add(row)
+                self._send({"t": "record", "row": row, "record": record})
+            if not order:
+                break
+            message = self._next()
+            line = message.get("line") if message["t"] == "result" else None
+            if not isinstance(line, dict) or line.get("_status") not in ("ok", "error"):
+                raise RunFailed(OUT_OF_TURN)
+            row = line.get("_row")
+            if not isinstance(row, int) or row not in waiting:
+                raise RunFailed(OUT_OF_TURN)
+            waiting.discard(row)
+            received[row] = line
+            while order and order[0] in received:
+                self._write(received.pop(order.popleft()), sink, counts, reporter)
+        if self._next()["t"] != "done":
+            raise RunFailed(OUT_OF_TURN)
+
+    def close(self) -> None:
+        self._calls.shutdown(wait=False, cancel_futures=True)
+
+    def _write(
+        self, line: dict[str, Any], sink: BinaryIO, counts: Counts, reporter: _Reporter
+    ) -> None:
         trace = line.pop("_traceback", None)
         if line["_status"] == "ok":
             counts.ok += 1
         else:
             counts.error += 1
-            if trace and tracebacks < MAX_TRACEBACKS_LOGGED:
-                tracebacks += 1
-                log.warning("row %s failed:\n%s", line["_row"], trace)
+            if trace and self._tracebacks < MAX_TRACEBACKS_LOGGED:
+                self._tracebacks += 1
+                log.warning("row %s failed:\n%s", line["_row"], str(trace)[:MAX_LOG_CHARS])
         counts.done += 1
         sink.write(json.dumps(line, ensure_ascii=False, default=str).encode("utf-8") + b"\n")
         reporter.post(counts)
 
-    with ThreadPoolExecutor(max_workers=params.concurrency, thread_name_prefix="record") as pool:
-        for row, record in _records(source, params.limit):
-            pending.append(pool.submit(_call, process, ctx, row, record))
-            while len(pending) >= window:
-                finish(pending.popleft())
-        while pending:
-            finish(pending.popleft())
+    def _send(self, message: dict[str, Any]) -> None:
+        try:
+            self._channel.send(message)
+        except OSError:
+            # the worker is gone; the reader thread says how, or the connection's end does
+            raise RunFailed(self._why_gone()) from None
+
+    def _why_gone(self) -> str:
+        with contextlib.suppress(queue.Empty):
+            while (message := self._inbox.get(timeout=2)) is not None:
+                if message["t"] == "exit":
+                    return _ended(_code(message))
+        return _ended(self._exit_code())
+
+    def _next(self) -> dict[str, Any]:
+        message = self._inbox.get()
+        if message is None:
+            raise RunFailed(_ended(self._exit_code()))
+        if message["t"] == "exit":
+            raise RunFailed(_ended(_code(message)))
+        if message["t"] == "broken":
+            raise RunFailed(f"the script's process sent something unreadable ({message['why']})")
+        return message
+
+    def _read(self) -> None:
+        try:
+            while (message := self._channel.receive()) is not None:
+                kind = message["t"]
+                if kind == "call":
+                    with contextlib.suppress(RuntimeError):  # shut down: the run is over
+                        self._calls.submit(self._call, message)
+                elif kind == "log":
+                    level = LEVELS.get(str(message.get("level")), logging.INFO)
+                    script_log.log(level, "%s", str(message.get("message", ""))[:MAX_LOG_CHARS])
+                else:
+                    self._inbox.put(message)
+        except (ProtocolError, OSError, ValueError) as exc:
+            self._inbox.put({"t": "broken", "why": str(exc)})
+            return
+        self._inbox.put(None)
+
+    def _call(self, message: dict[str, Any]) -> None:
+        ident = message.get("id")
+        try:
+            reply = {"t": "reply", "id": ident, "ok": True, "body": self._request(message)}
+        except ServiceError as exc:
+            reply = {"t": "reply", "id": ident, "ok": False, "status": exc.status}
+            reply["message"] = exc.message
+        except Exception as exc:
+            reply = {"t": "reply", "id": ident, "ok": False, "status": None}
+            reply["message"] = f"a request this runner cannot make ({type(exc).__name__})"
+        with contextlib.suppress(OSError, TypeError, ValueError):
+            self._channel.send(reply)
+
+    def _request(self, message: dict[str, Any]) -> Any:
+        name = str(message.get("service"))
+        client = self._clients.get(name)
+        if client is None:
+            allowed = ", ".join(sorted(self._clients)) or "none"
+            raise ServiceError(name, None, f"not one of this run's services ({allowed})")
+        method, path, params = message.get("method"), message.get("path"), message.get("params")
+        if method not in ("GET", "POST") or not isinstance(path, str):
+            raise ServiceError(name, None, "only GET and POST with a path")
+        if params is not None and not isinstance(params, dict):
+            raise ServiceError(name, None, "params must be a dict")
+        if method == "GET":
+            return client.get(path, params=params)
+        return client.post(path, json=message.get("json"), params=params)
+
+
+def _code(message: dict[str, Any]) -> int | None:
+    code = message.get("code")
+    return code if isinstance(code, int) else None
 
 
 class _Reporter:

@@ -145,6 +145,24 @@ async def refresh_run(db: AsyncSession, executor: Executor, run: Run) -> bool:
     return apply_state(run, state)
 
 
+async def stop_run(executor: Executor, run: Run, reason: str) -> bool:
+    """Cancel a running run through the executor and end it as failed with ``reason``.
+
+    Prefect then kills the run's process, so a script stuck in a loop stops too. False when the
+    executor could not be asked; the caller tries again later."""
+    if run.external_id is None:
+        return False
+    try:
+        await executor.cancel(run.external_id)
+    except Exception as exc:
+        log.warning("run.stop_failed", run=str(run.id), error=str(exc))
+        return False
+    run.status = RunStatus.FAILED.value
+    run.error = reason
+    run.finished_at = utcnow()
+    return True
+
+
 def apply_state(run: Run, state: ExecState) -> bool:
     status = app_status(state, result_received=run.result_file_id is not None)
     if status is RunStatus.QUEUED and run.status == RunStatus.RUNNING.value:

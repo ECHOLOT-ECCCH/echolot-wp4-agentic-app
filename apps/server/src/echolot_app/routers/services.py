@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from echolot_app.deps import CurrentSettings
+from echolot_app.deps import CurrentSettings, get_current_user
 from echolot_app.service_docs import load_service_docs
 
-router = APIRouter(prefix="/api/services", tags=["services"])
+router = APIRouter(
+    prefix="/api/services", tags=["services"], dependencies=[Depends(get_current_user)]
+)
 
 
 class ServiceOut(BaseModel):

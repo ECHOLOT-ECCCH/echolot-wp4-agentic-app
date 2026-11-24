@@ -4,6 +4,7 @@ POC web app: upload a dataset, agree with an LLM agent what to do with each reco
 function as a Python script, and the script runs per record on a Prefect deployment that calls services
 (ECHOLOT reconciliation first; enrichment and others later).
 Plan and status: docs/PLAN.md. Decisions log: docs/DECISIONS.md. Ideas: docs/BACKLOG.md.
+What was added when, by commit, and what is deployed: CHANGELOG.md.
 The Elexifier app this repo was cut from: commit 98999b1, docs in docs/archive/elexifier/.
 
 ## Session start
@@ -14,11 +15,14 @@ The Elexifier app this repo was cut from: commit 98999b1, docs in docs/archive/e
 make api          # FastAPI with reload on :8000 (SQLite and files under ECHO_DATA_DIR, default ./data)
 make web          # Vite on :5173, proxies /api and /runner to :8000
 make check        # ruff, pyright, pytest (server + runner), web lint, tsc, vitest. Must pass before every commit.
+uv run echolot-admin create-user you@example.org --admin   # an account (prints a temporary password)
 make e2e          # playwright smoke (test model, LocalExecutor, fake service)
+make deploy-smoke # docker: build the images, start deploy/docker-compose.yml, check it end to end
 
 ## Layout
 apps/server (FastAPI, agent, runs, SQLite) · apps/web (React) · runner (harness + Prefect flow, deployed to the
-runner host, no dependency on the app) · services/*.md (agent-facing service docs)
+runner host, no dependency on the app) · services/*.md (agent-facing service docs) · deploy/ (Docker Compose:
+images, Caddy, an optional runner and Prefect server; deploy/README.md)
 
 ## Conventions
 - Python 3.12, uv workspace, src layout, ruff + pyright, async SQLAlchemy 2 (aiosqlite), pydantic v2, pytest-asyncio. Public functions typed.
@@ -30,13 +34,21 @@ runner host, no dependency on the app) · services/*.md (agent-facing service do
 
 ## Invariants
 - Whole files never go to a model; the model sees at most 20 records per call (PLAN 7.10). The browser gets paged records.
-- The model key is a SecretStr in app settings, never logged. Service keys exist only on the runner host, never in the
-  app, the browser or the model's context.
-- Approval-gated: submit_run, retry_failed, and any delete tool. Runs started by the user in the UI need no card.
+- Model keys (the server's as a SecretStr in settings, users' Fernet-encrypted in the database) are never logged,
+  never returned to the browser beyond a 4-character hint, never in the model's context. Service keys exist only on
+  the runner host, never in the app, the browser or the model's context.
+- Approval-gated: submit_run, retry_failed, service_call, and any delete tool. Runs started by the user in the UI need no card.
 - Scripts reach services only through ctx.service(name). The app never executes scripts in its own process.
+  On the runner they run in the sandbox container (no network, no secrets, a uid per run) and the harness
+  makes their service calls; never give the sandbox a network, an env file or a secret (PLAN M6.4).
+- With the bundled Prefect (deploy/docker-compose.prefect.yml) the runner is only on the internal network `runs`:
+  a service it calls joins `runs`; never give the runner a network with a route out (PLAN M6.1).
 - The app has no Prefect dependency; it talks to Prefect over REST. Prefect lives in runner/ only.
-- Do not add Postgres, Redis, Celery, brokers, Procrastinate, Next.js or another agent framework. No auth in the POC:
-  the app binds to 127.0.0.1.
+- Every /api route except sign-in needs a session; every route under /api/workspaces/{id} checks ownership (PLAN 7.11).
+  Unsafe /api requests need the X-Echolot-Request header. Accounts are local, made by an admin; no sign-up.
+- Do not add Postgres, Redis, Celery, brokers, Procrastinate, Next.js or another agent framework.
 
 ## Git
 Conventional commits, one task per commit, `make check` green first. Follow the session's attribution instructions.
+Every commit that changes what the app does gets a row in CHANGELOG.md (in a follow-up commit if need be, since a
+commit cannot name its own hash), and so does every deployment.

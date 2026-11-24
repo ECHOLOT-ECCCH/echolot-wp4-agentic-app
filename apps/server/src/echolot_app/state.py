@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from echolot_app.agent.catalog import ModelCatalog
 from echolot_app.agent.runtime import AgentRuntime, PydanticAIRuntime
+from echolot_app.auth import LoginLimiter
+from echolot_app.crypto import SecretBox
 from echolot_app.db import Database
 from echolot_app.runs.executor import Executor
 from echolot_app.runs.local import LocalExecutor
@@ -22,15 +25,19 @@ class AppState:
     runtime: AgentRuntime
     executor: Executor
     poller: Poller
+    secret_box: SecretBox
+    catalog: ModelCatalog
+    login_limiter: LoginLimiter
 
 
 def build_executor(settings: Settings) -> Executor:
     if settings.executor == "prefect":
-        auth = settings.prefect_auth_string
+        auth, key = settings.prefect_auth_string, settings.prefect_api_key
         return PrefectExecutor(
             settings.prefect_api_url,
             settings.prefect_deployment,
             auth.get_secret_value() if auth else None,
+            key.get_secret_value() if key else None,
         )
     return LocalExecutor(
         settings.data_dir / "runner", settings.local_services_file, settings.local_runner_env_file
@@ -46,5 +53,17 @@ def build_state(settings: Settings) -> AppState:
         storage=LocalStorage(settings.data_dir),
         runtime=PydanticAIRuntime(),
         executor=executor,
-        poller=Poller(db, executor, settings.run_poll_interval_s),
+        poller=Poller(
+            db,
+            executor,
+            settings.run_poll_interval_s,
+            stall_s=settings.run_stall_minutes * 60,
+            max_s=settings.run_max_hours * 3600,
+        ),
+        secret_box=SecretBox.from_setting(
+            settings.secret_key.get_secret_value() if settings.secret_key else None,
+            settings.data_dir / "secret.key",
+        ),
+        catalog=ModelCatalog(),
+        login_limiter=LoginLimiter(settings.login_max_failures, settings.login_window_s),
     )

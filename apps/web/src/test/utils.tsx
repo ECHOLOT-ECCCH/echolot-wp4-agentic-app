@@ -22,12 +22,18 @@ type Route = { method?: string; path: string | RegExp; status?: number; body: un
 
 /** Stub fetch with a small route table; unmatched requests return 404. */
 export function mockApi(routes: Route[]) {
-  const calls: { method: string; url: string }[] = []
+  const calls: {
+    method: string
+    url: string
+    body?: unknown
+    headers?: Record<string, string>
+  }[] = []
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
-    calls.push({ method, url })
+    const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined
+    calls.push({ method, url, body, headers: init?.headers as Record<string, string> | undefined })
     const route = routes.find(
       (r) =>
         (r.method ?? 'GET') === method &&

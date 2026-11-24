@@ -148,4 +148,56 @@ describe('RunView', () => {
     expect(JSON.parse(String(init.body))).toEqual({ qid: 'Q2' })
     expect(screen.getByRole('option', { name: 'verdict: conflict' })).toBeInTheDocument()
   })
+
+  it('offers the candidates of every algorithm column in one decision', async () => {
+    const m = (algorithm: string, qid: string, score: number) => ({
+      url: `http://www.wikidata.org/entity/${qid}`,
+      wikidata_item_id: qid,
+      title: qid === 'Q937' ? 'Albert Einstein' : 'Someone',
+      score,
+      algorithm,
+    })
+    mockApi([
+      {
+        path: '/api/workspaces/w1/runs/r1/rows',
+        body: {
+          total: 1,
+          offset: 0,
+          run_status: 'done',
+          input_columns: ['name'],
+          output_columns: ['agreement', 'wikifier', 'llm_based', 'rule_based'],
+          rows: [
+            {
+              row: 0,
+              status: 'ok',
+              error: null,
+              ms: 5,
+              input: { name: 'Albert Einstein' },
+              output: {
+                agreement: 'conflict',
+                wikifier: [m('wikifier', 'Q937', 0.98)],
+                llm_based: [m('llm_based', 'Q937', 1)],
+                rule_based: [m('rule_based', 'Q5', 0.91)],
+              },
+              decision: null,
+            },
+          ],
+        },
+      },
+      { path: '/api/workspaces/w1/runs/r1', body: run({}) },
+    ])
+    renderWithProviders(<RunView workspaceId="w1" runId="r1" />)
+    const select = await screen.findByLabelText('Decision for row 0')
+    expect(
+      within(select)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual([
+      '—',
+      '1. Q937 Albert Einstein (wikifier 0.98, llm_based selected)',
+      '2. Q5 Someone (rule_based 0.91)',
+      'none of these',
+    ])
+    expect(screen.getAllByText('selected')).toHaveLength(1) // the llm_based cell, not 1.00
+  })
 })

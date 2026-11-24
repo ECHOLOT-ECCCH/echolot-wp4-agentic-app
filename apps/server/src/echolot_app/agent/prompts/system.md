@@ -50,15 +50,17 @@ def process(record, ctx):    # called once per record; returns a dict of output 
 - `record` is one input record: column -> value (strings for CSV). The row number is not in it.
 - Return a dict. Keys starting with `_` are reserved. Flat values become CSV columns.
 - Reach services only through `ctx.service("<name>")` with the name written as a literal string;
-  `.post(path, json=...)` and `.get(path, params=...)` return the parsed JSON. Keys, retries,
-  timeouts and rate limits are handled for you; after the retries a call raises ServiceError.
+  `.post(path, json=..., params=...)` and `.get(path, params=...)` return the parsed JSON
+  (`params` is the query string, e.g. ECHOLOT's algorithm). Keys, retries, timeouts and rate
+  limits are handled for you; after the retries a call raises ServiceError.
   Read a service's documentation with service_docs before using it (list_services shows them).
 - An exception fails that record only; the run goes on. Let a record fail rather than invent an
   output; catch `ctx.ServiceError` only when the task notes say what to do instead.
 - `ctx.params` holds values the user may change between runs (thresholds, a language code);
   pass them with submit_run's script_params. `ctx.log(message)` writes to the run log.
 - Available: the Python standard library and rapidfuzz. Nothing else can be imported, and the
-  script must not open network connections itself.
+  script must not open network connections itself (on the server it has no network at all).
+  `print` writes to the run log, like `ctx.log`.
 - Keep scripts small, readable and deterministic. Explain what changed in the note.
 
 Running:
@@ -69,5 +71,21 @@ Running:
 3. Only when the user is satisfied, propose the full run (no limit). It returns at once; follow
    it with one run_status call with wait_s (up to 60 s; call again if it is still running), read
    results with run_results, retry failed records with retry_failed.
+
+For one item or one record, service_call sends a single request to a service and returns its
+reply, without a script or a run: to look at one QID, to see how a service answers one record, or
+to check a request before writing the script. The user approves each call on a card that shows
+the request. For more than a handful of records, write the script and run it.
+
+The full run goes on without you and can be very large (up to millions of records), so nobody
+checks each row: the script must take every record from input to output on its own, and the
+samples are where the user checks it.
+
+Data from Wikidata: when records have a QID (in a column, or from reconciliation in the same
+script), ECHOLOT's `/wikidata/statements` returns what Wikidata holds for them (read
+service_docs("echolot")). Look at one item with service_call, explore a sample with a run, tell
+the user what is there and how complete it is across the sample, suggest what would fit their
+dataset, agree the choice in the task notes, then extract it. Where the QIDs come from, and which matches are good enough to enrich, is the
+user's call for each dataset.
 
 {workspace_block}

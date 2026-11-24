@@ -30,7 +30,14 @@ chat, persistence and approval code being lifted, and are worth reading before t
 
 ## 1. Status
 
-- Current milestone: M3. M2 is complete (2026-10-27).
+- Current milestone: M3. M2 is complete (2026-10-27). M4 (accounts, own model keys, the Docker
+  Compose deployment) is built on the branch `feat/users-and-byok` (2026-11-09), ahead of M3.4:
+  see section 12e. The Prefect server will be an external one (owner, 2026-11-09): the
+  Compose stack sends runs to `ECHO_PREFECT_API_URL` and brings its own Prefect only as an
+  option. Deployed on 2026-11-11 to https://echolot.ijs.si with a Prefect server of its own
+  (the owner's choice for this host) and ECHOLOT's API at /service/ (DECISIONS 2026-11-11);
+  what M4.3 still lacks is a tester completing the loop with their own key, and the Wikifier
+  and OpenRouter keys on the host.
 - Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
   M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
@@ -38,11 +45,31 @@ chat, persistence and approval code being lifted, and are worth reading before t
   90 of 199 well-known (mostly Basque) people, e.g. Eduardo Chillida (DECISIONS 2026-10-27, M2.3).
   CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
-  - Where the Prefect server and the runner host live, and which Prefect version the server runs
-    (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build). Needed for M2.
+  - The external Prefect server's address, its auth (basic or an API key) and its Prefect
+    version (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build); where the runner runs (next to
+    ECHOLOT, or in the app's stack). Needed for M4.3.
   - Whether the runner host can reach the app over HTTP (section 7.3). Needed for M2.
   - A real export of entities from ehkultura.wikibase.cloud for M3 (CSV or JSONL).
-- Last update: 2026-10-27.
+- ECHOLOT has three reconciliation algorithms (`?algorithm=wikifier|llm_based|rule_based`,
+  2026-11-10): `services/echolot.md`, the runner and the run review follow them (DECISIONS
+  2026-11-10). Tried live on 2026-11-11 with the ECHOLOT checkout next to this repository:
+  `rule_based` with the ULAN table, `llm_based` with Llama 3.3 70B on OpenRouter in place of
+  Latxa.
+- M5 (enrichment from Wikidata) is planned on the branch `feat/wikidata-statements` (off
+  `feat/users-and-byok`): section 12f. M5.1 (the endpoint, in the ECHOLOT checkout's branch
+  `feat/wikidata-statements`) and M5.2 (the agent's doc) are done, and M5.3's prompt lines are
+  in, and M5.4 (`service_call`, single requests on a card) is built; next: M5.3's acceptance, a
+  session with a real model in the app.
+- M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
+  (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
+  deployed to echolot.ijs.si (2026-11-24, `6a74095`) and done, with the host's firewall on
+  (DECISIONS 2026-11-24). M6.4 (scripts in a sandbox container) is done and deployed
+  (`096af15`). M6.5 (ECHOLOT's image as a user, the API docs pages off in production) is built.
+  Next: deploying M6.5 (with the owner's go-ahead); then the owner's items of section 12g.
+- 2026-11-24: `feat/users-and-byok` (pzajec, who agreed), `feat/wikidata-statements` and
+  `feat/runner-hardening` merged into `main`; ECHOLOT's `llm-and-rule-based`,
+  `feat/wikidata-statements` and `feat/hardening` into its `main`. New work branches off `main`.
+- Last update: 2026-11-24.
 
 Update this block at the end of every task.
 
@@ -64,8 +91,9 @@ This app lets the user do it with an agent:
 The task-specific knowledge lives in the service documentation the agent reads and in the script
 it writes, not in the platform. A new kind of task needs a service description, not new code.
 
-This is a proof of concept: one trusted user or a small trusted group, no login, a single process
-with SQLite. It is deliberately much smaller than the Elexifier app it was cut from.
+This is a proof of concept for a small group of testers, each with an account made by an admin,
+in a single process with SQLite. It is deliberately much smaller than the Elexifier app it was
+cut from.
 
 ## 3. Decisions (fixed)
 
@@ -81,8 +109,8 @@ with SQLite. It is deliberately much smaller than the Elexifier app it was cut f
 | Chat UI | assistant-ui on AI SDK 7, lifted | Tool cards, approval cards and streaming already work. |
 | Database | SQLite through SQLAlchemy 2 async (aiosqlite), WAL mode, `create_all` at startup, no Alembic yet | No database server. Add Alembic when the schema stabilises. |
 | Storage | Local disk under `ECHO_DATA_DIR` | No object store. |
-| Auth | None. The app binds to 127.0.0.1; expose it only behind a proxy that authenticates | Lightweight POC. The OIDC code is in the archive commit. |
-| Model | One model configured from the environment (provider, model id, key, base URL) | No bring-your-own-key UI. `openai_compatible` covers local models. |
+| Auth | Local accounts (e-mail and password) made by an admin; server-side sessions in SQLite behind an HttpOnly cookie; workspaces private to their owner (7.11). Changed 2026-11-09 | Real testers need their own space; no identity provider to run. The OIDC code is in the archive commit if one is wanted later. |
+| Model | Each user picks a vendor and a model and brings their own key (stored encrypted), or uses the server's model from the environment when the operator provides one (7.11). Changed 2026-11-09 | Testers pay for and choose their own models; `openai_compatible` covers local models. |
 | Background work | One asyncio poller in the app lifespan; no queue, no worker process | Execution is remote. |
 | Live updates | The browser polls (TanStack Query `refetchInterval`) | No SSE, no NOTIFY. |
 | Package managers | `uv` workspace (Python), `pnpm` (web) | |
@@ -134,11 +162,13 @@ plan.
 ```
 CLAUDE.md  README.md  Makefile  pyproject.toml (uv workspace: apps/server, runner)  pnpm-workspace.yaml
 docs/PLAN.md  docs/DECISIONS.md  docs/BACKLOG.md  docs/runner-host.md  docs/archive/elexifier/
+deploy/                        # Docker Compose: Dockerfile (web, app, runner), Caddyfile, README
 apps/server/src/echolot_app/
   main.py  settings.py  db.py  storage.py  records.py  viewing.py
-  routers/{workspaces,files,task,scripts,runs,chat,services,runner_io}.py
+  auth.py  crypto.py  user_models.py  cli.py          # accounts, key encryption, echolot-admin (7.11)
+  routers/{workspaces,files,task,scripts,runs,chat,services,runner_io,auth,admin,models}.py
   runs/{executor,local,prefect,poller,tokens}.py
-  agent/{agent,deps,runtime,contracts,ui_messages,models}.py
+  agent/{agent,deps,runtime,contracts,ui_messages,models,catalog,probe}.py
   agent/tools/{files,task,services,scripts,runs,dev}.py
   agent/prompts/system.md
 runner/src/echolot_runner/
@@ -176,14 +206,18 @@ def process(record: dict[str, Any], ctx) -> dict[str, Any]:
 - The return value is a dict. Keys starting with `_` are reserved. Flat values become CSV columns;
   nested values are exported as JSON strings.
 - An exception fails that record only (`_status: "error"`), never the run.
-- `ctx.service(name)` returns a client with `get(path, params=None)` and `post(path, json=None)`.
-  Each returns the parsed JSON body. The client adds the service's auth header, applies its
-  timeout, retries its retryable statuses and timeouts with backoff, and limits concurrency per
-  service. After the retries it raises `ServiceError(status, body_excerpt)`.
+- `ctx.service(name)` returns a client with `get(path, params=None)` and
+  `post(path, json=None, params=None)` (`params`: the query string, e.g. ECHOLOT's
+  `{"algorithm": "rule_based"}`). Each returns the parsed JSON body. The client adds the
+  service's auth header, applies its timeout, retries its retryable statuses and timeouts with
+  backoff, and limits concurrency per service, and lower for requests carrying a configured
+  query value (`concurrency_for`). After the retries it raises `ServiceError(status,
+  body_excerpt)`.
 - `ctx.log(message)` writes to the run log. `ctx.params` holds the run's `script_params` (a dict,
   empty by default) for values the user may want to change between runs, such as thresholds.
-- Scripts must not open network connections themselves. This is stated in the agent's prompt and
-  not enforced in the POC (section 15).
+- Scripts must not open network connections themselves. The agent's prompt says so; in the
+  runner's sandbox (M6.4, the Docker set-ups) a script has no network at all; elsewhere it is not
+  enforced (section 15). `print()` goes to the run log, like `ctx.log` (2026-11-24).
 - `script_write` rejects code that does not parse, that has no top-level
   `def process(record, ctx)`, or that calls `ctx.service` with a non-literal name. The service
   names found by an AST scan are stored with the version and shown on the approval card.
@@ -222,6 +256,9 @@ def process(record: dict[str, Any], ctx) -> dict[str, Any]:
 - `POST /runner/runs/{run_id}/progress`: `{"done", "total", "ok", "error"}`, at most every 2 s and
   once at the end.
 - `PUT /runner/runs/{run_id}/result`: the results JSONL (7.4), streamed.
+- The same three under `/runner/calls/{call_id}/` for the agent's single requests
+  (`service_call`, 7.9; 2026-11-11): the input is one line whose record is the request, the
+  script is the platform's own, and the result line's `reply` goes back to the agent.
 - Tokens: 32 random bytes, stored as a SHA-256 hash, valid only for that run and only until it
   reaches a terminal status. Any other run id answers 404.
 - The runner reaches the app at `ECHO_PUBLIC_URL`. When the runner host cannot reach the app, the
@@ -268,7 +305,10 @@ class Executor(Protocol):
 - `GET /api/flow_runs/{id}`, reading `state.type` and `state.message`.
 - `POST /api/flow_runs/{id}/set_state` with body `{"state": {"type": "CANCELLING"}}`.
 - Basic auth when `ECHO_PREFECT_AUTH_STRING` is set; it is the value of the server's
-  `PREFECT_SERVER_API_AUTH_STRING`.
+  `PREFECT_SERVER_API_AUTH_STRING`. Otherwise a bearer key when `ECHO_PREFECT_API_KEY` is set
+  (Prefect Cloud, a proxy that wants a token), as Prefect's own client does.
+- `echolot-admin check-runs` also reads `GET /api/admin/version` (or, without it,
+  `POST /api/deployments/filter`) and the deployment's `status` (`READY` while a runner polls).
 
 ### 7.7 Services
 
@@ -285,7 +325,8 @@ url = "http://127.0.0.1:5000"
 auth_header = "X-API-Key"
 key_env = "ECHOLOT_API_KEY"
 concurrency = 4
-timeout_s = 70
+concurrency_for = { "algorithm=llm_based" = 2 }   # fewer calls at a time for these requests
+timeout_s = 180
 retry_statuses = [502]
 retries = 3
 ```
@@ -311,6 +352,7 @@ model.
 | `distinct_values(file_id, column, limit≤50)` | value and count |
 | `task_read`, `task_update(markdown)` | the agreed description of the function |
 | `list_services`, `service_docs(name)` | from `services/*.md` |
+| `service_call(service, path, purpose, body=None, params=None, method=POST)` | **approval**; one request through the runner, the reply returned; card shows the service, method, path, query and body (2026-11-11) |
 | `script_read(version=None)`, `script_write(code, note)` | validation per 7.1; opens the script |
 | `submit_run(file_id, purpose, limit=None, script_version=None, concurrency=None, script_params=None)` | **approval**; card shows script version, file, record count, services, purpose |
 | `run_status(run_id)` | status, progress, counts, the first errors |
@@ -326,13 +368,53 @@ model.
 - The browser gets records paged (at most 200 per request); raw text previews only for files up
   to 5 MB.
 - Tool `data` is capped at about 6,000 tokens; the lifted `to_tool_return` truncates above that.
-- The model provider key is a `SecretStr` in the app settings, never logged. Service keys exist
-  only on the runner host.
+- The server's model key is a `SecretStr` in the app settings; users' keys are encrypted at rest
+  (7.11). No model key is logged, returned to the browser, or put in the model's context. Service
+  keys exist only on the runner host.
 - Data does leave for the services named on the approval card; that is the point of a run.
+
+### 7.11 Accounts and model keys (2026-11-09)
+
+- **Accounts.** `users` (e-mail, stored lower-case and unique; name; scrypt password hash;
+  `is_admin`; `is_active`). No sign-up: an admin creates accounts in Settings → Users or with
+  `echolot-admin create-user` (which also makes the first admin). A new account gets a
+  generated temporary password, shown once. Passwords have at least 12 characters.
+- **Sessions.** `POST /api/auth/login` sets the cookie `echolot_session` (HttpOnly,
+  SameSite=Lax, Secure when `ECHO_PUBLIC_URL` is https or `ECHO_COOKIE_SECURE`); the database
+  keeps only the token's SHA-256. A session ends after `ECHO_SESSION_DAYS` (14) without use, at
+  sign-out, when the password changes (that browser gets a new one), and when the account is
+  disabled. Failed sign-ins are limited per e-mail and per client address
+  (`ECHO_LOGIN_MAX_FAILURES` in `ECHO_LOGIN_WINDOW_S`, then 429).
+- **CSRF.** Every POST, PUT, PATCH and DELETE under `/api/` must carry `X-Echolot-Request`
+  (any value), or it is refused with 403. `/runner/` keeps its bearer tokens (7.3).
+- **Ownership.** A workspace belongs to the user who made it. Every route under
+  `/api/workspaces/{workspace_id}` checks it in a router dependency and answers 404 to anyone
+  else; admins see only their own. Workspaces from before accounts are adopted by the first
+  admin. `/api/services` needs a session; `/healthz` does not.
+- **Vendors.** `anthropic`, `openai`, `google`, `mistral` (its OpenAI-compatible API),
+  `openrouter`, `deepseek`; `openai_compatible` only with `ECHO_ALLOW_CUSTOM_ENDPOINTS` (the server
+  would call any URL a user enters); `test` only with `ECHO_ENABLE_TEST_MODEL`.
+- **Keys.** `provider_keys`: one per user and vendor, Fernet-encrypted with `ECHO_SECRET_KEY`
+  (comma-separated keys, the first encrypts; unset, a key is generated into
+  `<data_dir>/secret.key` with mode 0600). Responses carry `key_hint` (the last four
+  characters), never the key. A vendor that needs a key never falls back to one in the
+  environment.
+- **The model choice.** `users.model` is `{"provider", "model_id"}`, or empty for the server's
+  model (`ECHO_MODEL_*`), which is offered only when it is usable (its key is set, or it needs
+  none). A chat turn without a usable model answers 409 with what to do. `agent_runs.model`
+  records `{"provider", "model_id", "key": "own"|"server"}`.
+- **Model lists.** `GET /api/vendors/{provider}/models` asks the vendor with the user's key,
+  drops models that cannot chat, puts the suggested ones first and caches the list for an hour;
+  when the vendor cannot be asked, the suggested models come back with the reason. Any model id
+  can be typed in.
 
 ## 8. Data model (SQLite, UUID primary keys as text, timestamps everywhere)
 
-- `workspaces` (name, description, task_md)
+- `users` (email, name, password_hash, is_admin, is_active, model json, last_login_at),
+  `user_sessions` (token_hash primary key, user_id, expires_at, last_seen_at),
+  `provider_keys` (user_id, provider, encrypted_key, key_hint, base_url, last_used_at); unique
+  (user_id, provider)
+- `workspaces` (owner_id, name, description, task_md)
 - `files` (workspace_id, kind input|result|export, name, rel_path, size, sha256, mime, meta json:
   format, columns, record_count, dialect, encoding, records_rel_path)
 - `scripts` (workspace_id, version, code, sha256, note, author agent|user, services json);
@@ -356,6 +438,12 @@ On disk under `ECHO_DATA_DIR`:
 ## 9. API routes
 
 - `GET /healthz`
+- Accounts (7.11): `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/me`,
+  `POST /api/me/password`; admins: `GET/POST /api/admin/users`, `PATCH /api/admin/users/{uid}`,
+  `POST /api/admin/users/{uid}/reset-password`
+- Models (7.11): `GET /api/vendors`, `GET /api/vendors/{provider}/models`,
+  `PUT/DELETE /api/me/keys/{provider}`, `POST /api/me/keys/{provider}/test`,
+  `GET/PUT /api/me/model`
 - Workspaces: `GET/POST /api/workspaces`, `GET/PATCH/DELETE /api/workspaces/{wid}`,
   `GET/PUT /api/workspaces/{wid}/task`
 - Files: `GET/POST .../files` (streaming upload, sha256 while streaming, normalization to
@@ -376,7 +464,8 @@ A run started from the UI (`POST .../runs`) is a human action and needs no appro
 
 ## 10. Frontend structure
 
-- Routes: `/` (workspaces), `/w/$workspaceId`.
+- Routes: `/login`, `/` (workspaces), `/w/$workspaceId`, `/settings` (model keys, account,
+  users for admins). Everything but `/login` sits behind `AuthGuard`.
 - `ThreePane` as is.
 - **Left pane:** files with upload, the task notes, script versions, runs with status badges.
 - **Middle pane (`PreviewHost`):**
@@ -570,6 +659,138 @@ Goal: the first real use case, end to end, with a person confirming matches.
 - [ ] M3.4 Owner acceptance with a real ehkultura export: discuss in chat, task notes, script,
   sample of 20, full run, review, export. Tag `m3`.
 
+## 12e. Milestone 4: Accounts and own model keys (checklist)
+
+Goal: the app can be put in front of real testers: each signs in, works in private workspaces
+and uses a model of their choice with their own key. Built on the branch `feat/users-and-byok`.
+
+- [x] M4.1 Server: accounts, sessions, the CSRF header, workspace ownership, vendors, encrypted
+  keys, the model choice, model lists, the key test, `echolot-admin` (7.11).
+  Acceptance: tests for sign-in and out, throttling, expiry, disabling, password change, the
+  CSRF refusal, every workspace route closed to other users and to strangers, an old database
+  upgraded, keys never returned and encrypted at rest, the user's key driving the model.
+- [x] M4.2 Web: sign-in page and guard, user menu, Settings (model keys, account, users), the
+  model picker in the chat. Acceptance: the Playwright smoke signs in; a new test signs out,
+  comes back to the same workspace after signing in, and picks a model.
+- [ ] M4.3 Docker Compose deployment and a pilot with the owner.
+  - [x] `deploy/`: one Dockerfile with three targets (web: Caddy and the built app; app; runner
+    with Prefect), the compose file with a bundled Prefect server and runner (profile
+    `runner`), `init.sh` for secrets, `smoke.sh` with `smoke_check.py`, the operator's README;
+    CI's `compose` job runs the smoke test. The local executor no longer passes the app's
+    `ECHO_*` settings to scripts.
+  - [x] An external Prefect server by default: web and app only, runs to
+    `ECHO_PREFECT_API_URL` with basic auth or an API key; the runner in the stack is a profile,
+    the bundled server an override file (`init.sh --with-prefect`, the smoke test);
+    `PREFECT_VERSION` builds the runner image for the server's version; `echolot-admin
+    check-runs` checks the server, the deployment and that a runner polls it.
+  - [x] On echolot.ijs.si (2026-11-11): https in front, the first admin, `check-runs` green
+    against the stack's own Prefect server, a run through the runner and ECHOLOT.
+  - [ ] Acceptance: `deploy/smoke.sh` green in CI; on the owner's host, https in front, the
+    first admin created, `check-runs` green against the external Prefect server, a tester signs
+    in with a key of their own and completes the loop with ECHOLOT through the runner.
+
+## 12f. Milestone 5: Enrichment from Wikidata (checklist)
+
+Goal: the agent can look up what Wikidata holds for a sample's QIDs, suggest and analyse what to
+add to the dataset, and write the script that extracts the chosen data. The final script runs
+end to end on the whole dataset without the agent. Where the QIDs come from (a column,
+reconciliation, both), the order of steps and the script's parameters are for the user and the
+agent to settle per dataset; the platform does not prescribe them (DECISIONS 2026-11-11).
+
+- [x] M5.1 ECHOLOT: `POST /wikidata/statements` in the standalone API, on the branch
+  `feat/wikidata-statements` of `echolot-wp4-api-service` (off `llm-and-rule-based`), for its
+  owner to review. Done 2026-11-11 (`eecc6a9` there; not pushed).
+  - Request: `ids` (1 to 50 QIDs or entity URLs), `properties` (optional property ids), `lang`
+    (default `en`; labels fall back to English and `mul`).
+  - Reply: per requested id, in order: the item's id (after redirects), label, description and
+    statements. Without `properties`, every property of the item with its label, datatype, the
+    number of values and one example value: what a sample is explored with. With `properties`,
+    those properties in the order asked, with every non-deprecated value (preferred first), an
+    absent property as `count: 0`. A value is readable text plus typed fields: the QID and label
+    of an item, a date with its precision, an amount with its unit, a language.
+  - Built on `reconciliation/enrichment/wikidata.py` (batches, label cache, date formatting);
+    the same API key as `/reconcile`; 422 for bad input, 502 when Wikidata fails, an unknown
+    item as `found: false`.
+  - Acceptance: tests with canned Wikidata replies for both modes, redirects, unknown items,
+    bad input and an upstream failure; a live call for Q5593 and Q156736 in both modes; the
+    README section.
+- [x] M5.2 `services/echolot.md`: the endpoint for the agent (request, reply, errors, speed and
+  rate limits, the 4,000-character view of a record when exploring) with a short example that
+  `test_service_docs.py` runs against a fake endpoint.
+- [ ] M5.3 The agent's instructions: what it can do with Wikidata (explore a sample's QIDs,
+  suggest data, extract), and that the final script must work end to end on its own. (The
+  prompt lines are in, 2026-11-11; the acceptance below is open.) Acceptance:
+  with a real model, a session explores a sample's QIDs, suggests data, and writes a script that
+  gets the QIDs and extracts the chosen data, run on a sample.
+- [x] M5.4 `service_call`: the agent sends one request to a service and gets the reply, without a
+  script or a run, approved on a card every time (owner, 2026-11-11). It travels like a one-record
+  run through the executor and the runner (7.3), so service keys stay on the runner; it leaves
+  no run, script version or file. Acceptance: tests through the local executor for a reply, a
+  GET with a query, a service error, a denied call, bad arguments and the call endpoints' token;
+  the card's own tests.
+
+## 12g. Milestone 6: Running scripts safely on a shared host (checklist)
+
+Goal: a script, which is any Python a signed-in user (or a dataset steering the agent) gets to
+run, cannot reach beyond the services it is meant to call, cannot take the host down, and cannot
+read the runner's secrets or other users' runs. Ordered by what each step stops for its cost;
+the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
+`feat/runner-hardening` (off `feat/wikidata-statements`).
+
+- [x] M6.1 The runner's network. In the one-host set-up (`docker-compose.prefect.yml`) the runner
+  is only on an internal network, `runs`, with no route out: the app and Prefect are on it and
+  on the default network, and a service the runner calls joins it in its own Compose file (on
+  echolot.ijs.si, ECHOLOT's in `/etc/echolot`). The network's bridge has a fixed name,
+  `echolot-runs`, because Docker's internal networks stop forwarding but not traffic to the
+  host's own addresses: the host's firewall refuses that (deploy/README.md gives the rule).
+  Acceptance: the smoke check runs a script that tries to reach the internet and gets no
+  connection, besides the normal run; on the server, a script reaches ECHOLOT through
+  `ctx.service` and neither the internet, the IJS network nor the host's ssh. (Built
+  2026-11-23: the smoke check passes, the probe finds no route out. Deployed 2026-11-24 with
+  ECHOLOT added to `runs` in `/etc/echolot`: a script reaches ECHOLOT, and neither the
+  internet, the IJS network nor the host's LAN address. Done 2026-11-24: ufw had been off on
+  the host; the owner turned it on with the bridge's deny first, so the host's ssh and nginx no
+  longer answer a script on 172.21.0.1.)
+- [x] M6.2 Limits on the runner's container: memory (`RUNNER_MEMORY`, default 2g, no swap
+  beyond it), CPUs (`RUNNER_CPUS`, 2), processes and threads (`RUNNER_PIDS`, 512), and a
+  read-only root filesystem with `/tmp` and the home directory on size-capped tmpfs
+  (`RUNNER_TMP_SIZE`, 1g; tmpfs counts towards the memory limit). A script that exhausts them
+  fails its own run or is killed with it; the app, Prefect and the host carry on. Acceptance:
+  the smoke check passes with the limits; a run whose script allocates without end ends failed
+  and the next run works. Done 2026-11-23; deployed 2026-11-24 with the defaults, which fit the
+  host (4 CPUs, 7 GB), and the same check passes there.
+- [x] M6.3 A run timeout in the app. The poller cancels, through the executor, a running run in
+  which no record has finished for `ECHO_RUN_STALL_MINUTES` (default 30), or that has run for
+  `ECHO_RUN_MAX_HOURS` (default 24; 0 for no limit). Prefect then kills the run's process, so
+  a script stuck in a loop stops too. The run ends failed with the reason. The agent's
+  workspace block names both limits, so it plans full runs to fit. Acceptance: tests
+  with the local executor for both limits, a run that keeps finishing records, and a cancel
+  that fails (tried again on the next pass). Done 2026-11-23 (`test_run_limits.py`).
+- [x] M6.4 Scripts in a container of their own (design and build: DECISIONS 2026-11-24). A
+  `sandbox` container with no network and no secrets runs each run's script in a worker under a
+  uid of its own; the runner keeps the token, the keys and the Prefect credentials, and makes
+  the service calls the worker asks for over a Unix socket (`ctx.service` unchanged for
+  scripts). Without Docker the worker is a child process with an empty environment. Acceptance:
+  the smoke check runs a script that finds no key, token or Prefect credential in its
+  environment, `/proc` or files, reaches no address (the internet, the app, Prefect, ECHOLOT
+  directly), cannot read or signal a run going on beside it, and a script that exhausts the
+  memory fails its run while the next run works; tests for records, service calls and
+  `ServiceError`, `ctx.log`, a failing `setup`, a worker that dies or sends garbage, and a call
+  outside the run's services or a service's base URL. Done 2026-11-24: the tests and the Docker
+  smoke check pass; deployed to echolot.ijs.si the same day (`096af15`), where the same checks
+  pass with real ECHOLOT calls.
+- [x] M6.5 Small fixes: ECHOLOT's image runs as a user, not root (its repository); the API
+  documentation pages are off in production (the app's `/api/docs` and ECHOLOT's `/docs`). (The
+  runner's `no-new-privileges` and `cap_drop` came with M6.4.) Done 2026-11-24 (DECISIONS
+  2026-11-24): `ECHO_API_DOCS`, off in the Compose deployment; ECHOLOT's `API_DOCS`, on by default
+  for other deployments and off on echolot.ijs.si, and its image as uid 10001 (branch
+  `feat/hardening` there).
+
+For the owner, outside the code: kernel updates and reboots on the backend; ssh without
+passwords; the hop from the frontend to the backend, which is plain HTTP across the IJS network
+(since 2026-11-24 the backend's firewall admits only the frontend on port 80; HTTPS is left);
+the frontend's CentOS 7, which has had no security updates since June 2024.
+
 ## 13. System prompt (outline for `agent/prompts/system.md`)
 
 - **Role.** You are the data engineer for a domain expert. You work in a workbench where the
@@ -602,28 +823,39 @@ Goal: the first real use case, end to end, with a person confirming matches.
 - Isolation: a Prefect Docker work pool, so a script cannot read the runner's environment or
   disk; a service gateway, so keys are not in the script's process at all.
 - An object-store data plane when the runner cannot reach the app (presigned URLs, same harness).
-- Login (the OIDC BFF from the archive), when more than a trusted group uses it.
+- Single sign-on (the OIDC BFF from the archive) next to local accounts, if testers come from
+  an institution with an identity provider.
 - Enrichment as the second use case, for example verifying candidates against Wikidata's public
   API (`wbgetentities`) as a second service in the same script.
 - Dataset-level scripts (`process_all(records, ctx)`) for deduplication and clustering.
-- XLSX input; Alembic; a one-container deployment (server with the built web); conversation
-  compaction; cost per turn.
+- XLSX input; Alembic; images published to a registry by CI; conversation compaction; cost per
+  turn.
 
 ## 15. Risks and fallbacks
 
-- **Scripts run unsandboxed on the runner host** with its network, disk and environment,
-  including the service keys. Mitigation: every agent-submitted run needs approval; the run
-  card names the services; trusted users only. Hardening is in section 14.
+- **Scripts are any Python.** In the Docker set-ups they run in the runner's sandbox (M6.4): no
+  network, no secrets, a uid per run, limits; the runner makes their service calls. Run without
+  it (a native runner host, `ECHO_EXECUTOR=local`) a script runs as the runner's or the app's
+  user, with that user's network and files and the environments of its other processes: single
+  users or trusted groups only. Every run the agent submits needs approval; the run card names
+  the services.
 - **The run token travels in Prefect parameters**, visible to anyone with access to the Prefect
-  UI. It is scoped to one run and expires at its end.
+  UI. It is scoped to one run and expires at its end. On an external, shared Prefect server
+  that is everyone with access to it.
 - **The runner must reach the app.** Same host or network in M2; otherwise the object-store data
   plane.
 - **Prefect scheduling latency** (the runner polls every 10 s by default) slows the sample loop
   in the chat. Measure in M2.3; lower `PREFECT_RUNNER_POLL_FREQUENCY`; samples can stay on
   `LocalExecutor` if the app host can reach the services.
 - **Prefect versions.** The runner's `prefect` must match the server's; ECHOLOT pins a dev build.
-  Confirm with the owner before M2.
-- **No auth.** Bind to 127.0.0.1; expose only behind an authenticating proxy.
+  The runner image takes `PREFECT_VERSION`; the app's few REST routes are stable across Prefect 3.
+- **Accounts are local and in-process.** Sign-in throttling lives in memory (one process) and
+  forgets on restart; there is no e-mail flow, so an admin hands out temporary passwords. Serve
+  the app over https only (the cookie is Secure then) and run uvicorn with `--proxy-headers`
+  behind the proxy, so throttling sees the client's address.
+- **Users' keys sit on the server.** Encrypted, but the encryption key is on the same machine:
+  set `ECHO_SECRET_KEY` from the environment rather than the generated file, and keep it out of
+  backups of the data directory.
 - **SQLite under concurrent writes** (the poller and requests): WAL, `busy_timeout`, short
   transactions.
 

@@ -27,6 +27,26 @@ def test_unknown_keys_are_rejected(tmp_path: Path) -> None:
         load_services(path)
 
 
-def test_the_example_file_loads() -> None:
-    example = Path(__file__).parents[1] / "services.example.toml"
-    assert set(load_services(example)) == {"echolot"}
+def test_narrower_limits_per_query_value(tmp_path: Path) -> None:
+    path = tmp_path / "services.toml"
+    path.write_text(
+        '[e]\nurl = "http://e"\nconcurrency_for = { "algorithm=llm_based" = 2 }\n',
+        encoding="utf-8",
+    )
+    assert load_services(path)["e"].concurrency_for == {"algorithm=llm_based": 2}
+    for bad in ('{ "llm_based" = 2 }', '{ "=x" = 2 }', '{ "algorithm=x" = 0 }', '"x"'):
+        path.write_text(f'[e]\nurl = "http://e"\nconcurrency_for = {bad}\n', encoding="utf-8")
+        with pytest.raises(ServicesConfigError, match="concurrency_for maps"):
+            load_services(path)
+
+
+def test_the_example_files_load() -> None:
+    root = Path(__file__).parents[2]
+    for example in (
+        root / "runner/services.example.toml",
+        root / "deploy/config/services.example.toml",
+    ):
+        echolot = load_services(example)["echolot"]
+        assert echolot.timeout_s >= 120  # the first rule_based call indexes its table
+        assert echolot.concurrency_for == {"algorithm=llm_based": 2}
+        assert 503 not in echolot.retry_statuses  # an algorithm that is not configured

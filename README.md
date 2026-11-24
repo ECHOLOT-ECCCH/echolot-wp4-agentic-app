@@ -11,17 +11,21 @@ against the ECHOLOT reconciliation service, and later enrichment:
 5. The results come back as a table to review and export.
 
 Three panes: files, task, scripts and runs on the left, a preview in the middle, the chat on
-the right.
+the right. Each tester signs in with an account an admin made, works in private workspaces and
+chooses the agent's model: the server's, or one from Anthropic, OpenAI, Google, Mistral,
+OpenRouter or DeepSeek with their own key.
 
 ## Status
 
 Cut down from the Elexifier app (dictionary conversion; last commit `98999b1`). Built and
 tested: workspaces, file upload with a paged records view, task notes, the agent chat with
 approvals, versioned scripts, runs on a local executor or a Prefect deployment (the runner in
-`runner/`), results with reconciliation candidates, per-row decisions and CSV/JSONL export.
+`runner/`), results with reconciliation candidates, per-row decisions and CSV/JSONL export, accounts with
+private workspaces, and bring-your-own model keys (PLAN 7.11).
 Still open: the checks with a real model and the owner's own data (M1.7, M3.1, M3.4). See
 [docs/PLAN.md](docs/PLAN.md) for the architecture, contracts, milestones and current status,
-[docs/DECISIONS.md](docs/DECISIONS.md) for the decision log, and
+[docs/DECISIONS.md](docs/DECISIONS.md) for the decision log, [CHANGELOG.md](CHANGELOG.md) for
+what was added when (by commit, and what is deployed), and
 [docs/runner-host.md](docs/runner-host.md) for setting up the runner next to the services.
 
 ## Requirements
@@ -40,11 +44,31 @@ make setup             # uv sync, pnpm install, playwright browsers
 cp .env.example .env   # the test model needs no key; set ECHO_MODEL_* for a real one
 # to call services from scripts: list them in ./services.toml (runner/services.example.toml)
 # and put their keys in ./runner.env, e.g. ECHOLOT_API_KEY=... (both gitignored)
+uv run echolot-admin create-user you@example.org --name "You" --admin   # prints a password
 make api               # FastAPI on 127.0.0.1:8000, SQLite and files under ./data
-make web               # Vite on :5173
+make web               # Vite on :5173, sign in with the account above
 make check             # lint, types, unit tests
 make e2e               # browser smoke tests (start their own servers)
 ```
+
+## Deploying for testers
+
+[deploy/README.md](deploy/README.md): Docker Compose on one host, with https (Caddy) and the app.
+Runs go to your Prefect server, where a runner next to ECHOLOT executes the scripts, away from
+the app's data and secrets ([docs/runner-host.md](docs/runner-host.md)); the stack can also run
+the runner, or a Prefect server of its own (`./init.sh --with-prefect`).
+
+```bash
+cd deploy && ./init.sh             # .env with a new secret key; then set SITE_ADDRESS,
+                                   # ECHO_PREFECT_API_URL and its credentials, ECHO_PUBLIC_URL
+docker compose up -d --build
+docker compose exec app echolot-admin create-user you@example.org --admin
+docker compose exec app echolot-admin check-runs    # the Prefect server and the runner
+```
+
+Testers sign in with accounts an admin makes (Settings → Users), bring their own model keys, or
+use the server's model if `.env` provides one. `make deploy-smoke` builds the images and checks
+the whole stack end to end.
 
 ## License
 

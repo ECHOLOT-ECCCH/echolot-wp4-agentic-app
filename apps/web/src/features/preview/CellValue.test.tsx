@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { CellValue } from '@/features/preview/CellValue'
-import { cellTitle, isCandidateList } from '@/lib/cells'
+import { cellTitle, decisionOptions, isCandidateList } from '@/lib/cells'
 
 const matches = [
   {
@@ -75,5 +75,86 @@ describe('CellValue', () => {
     expect(container.textContent).toBe('Quentin0.123{"a":1}none')
     expect(isCandidateList([])).toBe(false)
     expect(isCandidateList([{ a: 1 }])).toBe(false)
+  })
+  it("shows llm_based's choice as selected, not as a score", () => {
+    const chosen = [
+      {
+        url: 'http://www.wikidata.org/entity/Q937',
+        wikidata_item_id: 'Q937',
+        title: 'Albert Einstein',
+        score: 1,
+        algorithm: 'llm_based',
+      },
+    ]
+    render(<CellValue value={chosen} />)
+    expect(screen.getByText('selected')).toHaveAttribute(
+      'title',
+      expect.stringContaining('no confidence'),
+    )
+    expect(screen.queryByText('1.00')).not.toBeInTheDocument()
+    expect(screen.queryByText('llm_based')).not.toBeInTheDocument() // one algorithm: no label
+    expect(cellTitle(chosen)).toBe('1. Q937 Albert Einstein (selected by llm_based)')
+  })
+
+  it('names the algorithm when one list mixes them', () => {
+    const mixed = [
+      { url: 'u', wikidata_item_id: 'Q1', title: 'A', score: 0.97, algorithm: 'rule_based' },
+      { url: 'v', wikidata_item_id: 'Q2', title: 'B', score: 0.8, algorithm: 'wikifier' },
+    ]
+    render(<CellValue value={mixed} />)
+    expect(screen.getByText('rule_based')).toBeInTheDocument()
+    expect(screen.getByText('wikifier')).toBeInTheDocument()
+    expect(cellTitle(mixed).split('\n')[0]).toBe('1. Q1 A (rule_based score 0.97)')
+  })
+
+  it('offers each QID once across the algorithms, with who proposed it', () => {
+    const wikifier = [
+      {
+        url: 'http://en.wikipedia.org/wiki/A',
+        wikidata_item_id: 'Q1',
+        title: 'A',
+        score: 0.98,
+        algorithm: 'wikifier',
+      },
+      {
+        url: 'http://en.wikipedia.org/wiki/N',
+        wikidata_item_id: null,
+        title: 'N',
+        score: 0.5,
+        algorithm: 'wikifier',
+      },
+    ]
+    const llm = [
+      {
+        url: 'http://www.wikidata.org/entity/Q1',
+        wikidata_item_id: 'Q1',
+        title: 'A',
+        score: 1,
+        algorithm: 'llm_based',
+      },
+    ]
+    const rules = [
+      {
+        url: 'http://vocab.getty.edu/ulan/500000000',
+        wikidata_item_id: null,
+        title: 'U',
+        score: 0.95,
+        algorithm: 'rule_based',
+      },
+      {
+        url: 'http://www.wikidata.org/entity/Q2',
+        wikidata_item_id: 'Q2',
+        title: 'B',
+        score: 0.95,
+        algorithm: 'rule_based',
+      },
+    ]
+    expect(decisionOptions([wikifier, llm, [], undefined, rules])).toEqual([
+      { qid: 'Q1', title: 'A', notes: ['wikifier 0.98', 'llm_based selected'] },
+      { qid: 'Q2', title: 'B', notes: ['rule_based 0.95'] },
+    ])
+    expect(decisionOptions([[{ wikidata_item_id: 'Q3', title: 'C', score: 0.5 }]])).toEqual([
+      { qid: 'Q3', title: 'C', notes: ['0.50'] },
+    ])
   })
 })

@@ -11,6 +11,12 @@ import { isTerminal } from '@/lib/types'
 import type {
   Conversation,
   FileRecord,
+  ModelChoice,
+  ModelListing,
+  ProbeResult,
+  User,
+  UserWithPassword,
+  Vendor,
   RecordsPage,
   RunRecord,
   RunRowsPage,
@@ -22,6 +28,11 @@ import type {
 } from '@/lib/types'
 
 export const keys = {
+  me: ['me'] as const,
+  users: ['admin', 'users'] as const,
+  vendors: ['vendors'] as const,
+  vendorModels: (provider: string) => ['vendors', provider, 'models'] as const,
+  modelChoice: ['me', 'model'] as const,
   workspaces: ['workspaces'] as const,
   workspace: (id: string) => ['workspaces', id] as const,
   files: (workspaceId: string) => ['workspaces', workspaceId, 'files'] as const,
@@ -317,4 +328,140 @@ export function refreshAfterTurn(queryClient: QueryClient, workspaceId: string) 
   void queryClient.invalidateQueries({ queryKey: keys.task(workspaceId) })
   void queryClient.invalidateQueries({ queryKey: keys.scripts(workspaceId), exact: true })
   void queryClient.invalidateQueries({ queryKey: keys.runs(workspaceId), exact: true })
+}
+
+// --- accounts (docs/PLAN.md 7.11) --------------------------------------------------------------
+
+export function useMe() {
+  return useQuery({
+    queryKey: keys.me,
+    queryFn: () => api<User>('/api/me'),
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useLogin() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { email: string; password: string }) =>
+      api<User>('/api/auth/login', { method: 'POST', json: body }),
+    onSuccess: (user) => {
+      // whatever was cached belonged to the session before
+      queryClient.clear()
+      queryClient.setQueryData(keys.me, user)
+    },
+  })
+}
+
+export function useLogout() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<void>('/api/auth/logout', { method: 'POST' }),
+    onSettled: () => queryClient.clear(),
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (body: { current_password: string; new_password: string }) =>
+      api<void>('/api/me/password', { method: 'POST', json: body }),
+  })
+}
+
+export function useUsers(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.users,
+    queryFn: () => api<User[]>('/api/admin/users'),
+    enabled,
+  })
+}
+
+export function useCreateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { email: string; name: string; is_admin: boolean }) =>
+      api<UserWithPassword>('/api/admin/users', { method: 'POST', json: body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.users }),
+  })
+}
+
+export function useUpdateUser() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string; is_admin?: boolean; is_active?: boolean }) =>
+      api<User>(`/api/admin/users/${id}`, { method: 'PATCH', json: body }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.users }),
+  })
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api<UserWithPassword>(`/api/admin/users/${userId}/reset-password`, { method: 'POST' }),
+  })
+}
+
+// --- model vendors, keys and the model choice (docs/PLAN.md 7.11) ------------------------------
+
+export function useVendors() {
+  return useQuery({ queryKey: keys.vendors, queryFn: () => api<Vendor[]>('/api/vendors') })
+}
+
+function afterKeyChange(queryClient: QueryClient, provider: string) {
+  void queryClient.invalidateQueries({ queryKey: keys.vendors })
+  void queryClient.invalidateQueries({ queryKey: keys.modelChoice })
+  queryClient.removeQueries({ queryKey: keys.vendorModels(provider) })
+}
+
+export function useSaveKey() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      provider,
+      ...body
+    }: {
+      provider: string
+      api_key?: string
+      base_url?: string
+    }) => api<Vendor>(`/api/me/keys/${provider}`, { method: 'PUT', json: body }),
+    onSuccess: (_vendor, { provider }) => afterKeyChange(queryClient, provider),
+  })
+}
+
+export function useDeleteKey() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (provider: string) => api<void>(`/api/me/keys/${provider}`, { method: 'DELETE' }),
+    onSuccess: (_void, provider) => afterKeyChange(queryClient, provider),
+  })
+}
+
+export function useTestKey() {
+  return useMutation({
+    mutationFn: ({ provider, model_id }: { provider: string; model_id?: string }) =>
+      api<ProbeResult>(`/api/me/keys/${provider}/test`, { method: 'POST', json: { model_id } }),
+  })
+}
+
+export function useVendorModels(provider: string | null) {
+  return useQuery({
+    queryKey: keys.vendorModels(provider ?? ''),
+    queryFn: () => api<ModelListing>(`/api/vendors/${provider}/models`),
+    enabled: Boolean(provider),
+    staleTime: 10 * 60_000,
+  })
+}
+
+export function useModelChoice() {
+  return useQuery({ queryKey: keys.modelChoice, queryFn: () => api<ModelChoice>('/api/me/model') })
+}
+
+export function useSetModelChoice() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { provider: string | null; model_id?: string }) =>
+      api<ModelChoice>('/api/me/model', { method: 'PUT', json: body }),
+    onSuccess: (choice) => queryClient.setQueryData(keys.modelChoice, choice),
+  })
 }

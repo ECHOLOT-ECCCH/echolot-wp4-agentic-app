@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { UserMenu } from '@/features/auth/UserMenu'
 import { formatDate } from '@/lib/format'
 import { useCreateWorkspace, useWorkspaces } from '@/lib/queries'
 
@@ -30,7 +31,10 @@ export function WorkspacesPage() {
             Reconcile, enrich and transform datasets record by record with an agent
           </p>
         </div>
-        <NewWorkspaceDialog />
+        <div className="flex items-center gap-2">
+          <NewWorkspaceDialog />
+          <UserMenu />
+        </div>
       </header>
       {workspaces.isPending && <p className="text-muted-foreground text-sm">Loading workspaces…</p>}
       {workspaces.isError && <p className="text-destructive text-sm">{workspaces.error.message}</p>}

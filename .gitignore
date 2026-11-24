@@ -51,3 +51,6 @@ legacy/kks/*
 /services.toml
 # the runner's service keys for the LocalExecutor
 /runner.env
+# deploy/: the operator's service list and keys (deploy/.env is covered by .env above)
+/deploy/config/services.toml
+/deploy/config/runner.env

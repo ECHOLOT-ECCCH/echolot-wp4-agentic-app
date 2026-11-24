@@ -373,3 +373,494 @@ Newest at the bottom. Each entry: date, what was decided, why. Elexifier's log i
   which was then fast-forwarded into `main`; `main` is the branch to deploy, and PLAN 16 points
   there.
 - The old repositories stay with their owner, to be archived.
+
+## 2026-11-09 Accounts and bring-your-own model keys (M4.1, M4.2; branch `feat/users-and-byok`)
+
+The owner asked for login and for users to bring their own keys and pick among model vendors,
+"nice and simple, but robust enough to deploy for real testing with real users". Both existed in
+Elexifier (`6ed7527` OIDC login with Keycloak, `84b1b04` credentials and catalogs) and were cut
+for the demo. PLAN section 3 (Auth, Model) and the new contract 7.11 change with this entry.
+
+- **Local accounts, not OIDC.** Elexifier's login needed a Keycloak next to the app; that is the
+  part that made it heavy. Accounts here are e-mail and password, made by an admin (no sign-up:
+  testers are invited), stored in the app's SQLite. Single sign-on stays possible later
+  (BACKLOG). Passwords: stdlib scrypt with OWASP's N=2^15, r=8, p=3 (no new dependency),
+  verified in a thread; unknown addresses are checked against a dummy hash so they take as long
+  as a wrong password; at least 12 characters (between NIST's 8 and its 15 for password-only
+  sign-in, as testers get a generated one first).
+- **Server-side sessions** rather than signed cookies, so sign-out, a password change and
+  disabling an account end sessions at once. The cookie holds a random token; the table holds
+  its SHA-256. Expiry slides by use, written at most hourly.
+- **CSRF by a required header** (`X-Echolot-Request`) on unsafe `/api/` requests, on top of
+  SameSite=Lax: a page elsewhere cannot add the header without a CORS preflight that this app
+  never answers. Simpler than Elexifier's double-submit token: no token to fetch or rotate. Done
+  as pure ASGI middleware so the streamed chat and uploads pass untouched.
+- **Throttling in memory** per e-mail and per client address. One process (PLAN section 3);
+  a restart forgets the counts, acceptable for a pilot.
+- **Workspaces are private.** Owner column, checked by a router dependency on every router under
+  `/api/workspaces/{workspace_id}`, so a route that never loads the workspace is covered too.
+  The test enumerates the routes from the OpenAPI schema (FastAPI 0.162 nests included routers,
+  so `app.routes` does not list them) and expects 404 for another user and 401 for nobody. The
+  workspace's own routes take the workspace as a dependency, so ownership is checked before the
+  body is validated. Admins see only their own workspaces; nothing is shared yet.
+- **Old databases.** No Alembic yet: `create_all` makes the new tables, and a short list of
+  added columns is applied with `ALTER TABLE` at startup (`workspaces.owner_id`). Workspaces
+  without an owner go to the first admin created.
+- **One key per vendor per user**, Fernet-encrypted (`cryptography`, now a direct dependency)
+  with `ECHO_SECRET_KEY` or a generated `<data_dir>/secret.key` (0600). Labelled multiple
+  credentials per vendor (Elexifier) were dropped as more than testers need.
+- **Vendors**: Anthropic, OpenAI, Google, Mistral, OpenRouter, DeepSeek. Mistral is new (an
+  EU vendor, relevant to an EU project); it goes through `OpenAIChatModel` on
+  `https://api.mistral.ai/v1`, because pydantic-ai's own Mistral provider needs the `mistralai`
+  package. `openai_compatible` for users is off unless `ECHO_ALLOW_CUSTOM_ENDPOINTS`: a
+  user-entered base URL lets a signed-in user make the server call internal addresses (SSRF);
+  the operator's own `ECHO_MODEL_BASE_URL` is unaffected.
+- **No silent fallback.** The SDKs read e.g. `OPENAI_API_KEY` when given no key; `build_model`
+  now refuses a vendor that needs a key without one, so a user without a key never runs on a
+  key in the server's environment.
+- **The model choice is per user**, not per conversation or workspace: one place to look, and
+  the agent run records which model and whose key served each turn. The server's
+  `ECHO_MODEL_*` model is offered as "Server default" only when it is usable; with no key it is
+  hidden and the chat answers 409 "add a key".
+- **Model lists** come live from each vendor with the user's key (Elexifier's catalog, slimmed:
+  no prices or capabilities), suggested models first, non-chat models (embeddings, speech,
+  images) dropped, cached an hour per key; on failure the suggestions come back with the reason,
+  and any id can be typed. A "Test" button sends one tiny request; its errors are shown with
+  anything key-like masked.
+- **Web.** `/login` and an `AuthGuard` around the rest; any 401 (API, upload, chat stream) goes
+  to sign-in and back to the same page (`next` only accepts paths on this site). Settings has
+  model keys, account and (for admins) users; a new user's temporary password is shown once.
+  The model picker sits in the chat header. The chat transport now turns a refused turn's JSON
+  body into its detail, which assistant-ui shows inline.
+- Checked: `make check` (145 Python and 30 web tests) and `make e2e` (5 smoke tests, signing in
+  with an account `playwright.config.ts` creates through `echolot-admin`). In a real browser:
+  sign-in, the settings tabs, a Mistral key with a fake value (the vendor refused the listing,
+  the suggestions appeared with the reason), a new user's temporary password, the picker in the
+  chat header, and a turn refused for lack of a model showing the plain reason.
+- Not done (M4.3): a pilot behind https with the owner.
+
+## 2026-11-09 Docker Compose deployment (M4.3, first part)
+
+The owner asked to prepare the app for docker-compose deployment.
+
+- **Scripts do not run in the app's container by default.** With the local executor a script is
+  a subprocess of the app, as the same user: it can read `/proc/1/environ` (the secret key, the
+  server's model key) and `app.db` (the users' encrypted keys), so one tester's script could
+  decrypt everyone's keys. The compose file therefore bundles what PLAN section 3 always meant
+  runs to use: a Prefect server and a runner container (profile `runner`, on by default in
+  `.env`), with no app volume and no app secret. A script reaches the app only with its run's
+  token. The local executor stays available as `docker-compose.local-runs.yml`, documented as
+  trusted users only. Independently, the local executor now drops the app's `ECHO_*` variables
+  from the subprocess's environment (variables from `runner.env` still pass); that keeps
+  secrets out of `os.environ` but is not isolation.
+- **Service keys stay out of the app container** in the default stack: `config/` is mounted
+  into the runner only (and into the app only by the local-runs override).
+- **Caddy in front, the single-page app inside its image**, as Elexifier's `deploy/compose` did:
+  automatic https for a domain, or `:80` behind an institution's proxy. Caddy proxies `/api`,
+  `/runner` and `/healthz` and sends one `X-Forwarded-For` value, `{client_ip}`, which already
+  honours `trusted_proxies`. uvicorn trusts it (`FORWARDED_ALLOW_IPS=*`, safe because the app
+  publishes no port) and, in 0.54, takes the first value, so a client cannot choose its own
+  address for sign-in throttling. Static files are compressed; the API is not, so the chat
+  stream is passed on chunk by chunk (`flush_interval -1`). Security headers (nosniff, frame
+  denial, referrer policy, HSTS) and caching (hashed assets immutable, the page revalidated)
+  are set there.
+- **One Dockerfile, three targets** (`web`, `app`, `runner`) from the repository root, with an
+  allowlist `.dockerignore` so `deploy/.env` and `deploy/config/` never reach a build. The
+  Python images install the locked dependencies first (cached), then the workspace packages
+  non-editable; the app image has no Prefect and no dev tools, the runner image no app code.
+  Both recipes were run on this machine with uv 0.9.5 (the image's) into fresh environments:
+  the app imports and has `echolot-admin`, the runner has Prefect 3.8.8, neither has the other.
+  Processes run as uid 10001.
+- **The Prefect server is the official `prefecthq/prefect:3.8.8-python3.12` image**, with basic
+  auth (`PREFECT_AUTH_STRING`, generated by `init.sh`, shared by app, server and runner). Our
+  own environment cannot serve it: the workspace lock's FastAPI 0.162 breaks Prefect 3.8.8's
+  server (docs/runner-host.md); the client side used by the runner is fine with it.
+- **Compose features stay within v2.3** (this machine's): profiles, health conditions,
+  `host-gateway`. `docker compose config` renders the default stack, the local-runs override
+  and the smoke stack here, and refuses to start without `ECHO_SECRET_KEY` or
+  `PREFECT_AUTH_STRING`. The three file paths (`APP_ENV_FILE`, `RUNNER_ENV_FILE`,
+  `SERVICES_FILE`) are variables so the smoke test can use throwaway files.
+- **Checked without Docker** (this account cannot reach the daemon, and downloading a Caddy
+  binary to validate the Caddyfile was not allowed): the app and the runner from the
+  image-equivalent environments, with the compose file's settings, against a Prefect 3.8.8
+  server with basic auth; `smoke_check.py --api-only` passed: sign-in and the CSRF refusal, a
+  streamed chat turn, a 3-record run through Prefect and the runner with the right results,
+  sign-out. Neither log contained the secret key, the Prefect credentials or the password. The
+  web stage was built from the allowlisted files alone. Not run here: the images, Caddy and the
+  compose stack itself; CI's new `compose` job runs `deploy/smoke.sh`, which does all of it
+  through Caddy, on the first push.
+
+
+## 2026-11-09 An external Prefect server (M4.3)
+
+The owner: "prefect will be running on some external address". The Compose deployment now
+assumes that, and keeps the bundled server as an option.
+
+- **The default stack is web and app.** The app sends runs to `ECHO_PREFECT_API_URL`; the runner
+  serves the flow on that server, normally next to ECHOLOT on a host of its own
+  (docs/runner-host.md, natively or with the runner image on the host's network, so ECHOLOT
+  can stay on 127.0.0.1). `ECHO_PUBLIC_URL` defaults in `.env.example` to the site's own
+  address, which that runner reaches through Caddy's `/runner/*`.
+- **Options, by file rather than by profile.** `COMPOSE_PROFILES=runner` adds the runner to the
+  stack, with the app's Prefect settings. `docker-compose.prefect.yml` adds a Prefect server
+  of the stack's own and points the app and the runner at it (`init.sh --with-prefect` writes
+  the `.env` for it; `smoke.sh` and CI use it). A separate file, because a runner depending on
+  a server in an inactive profile is an error before Compose 2.20 (`required: false`).
+- **One name per setting.** `.env` uses the app's names (`ECHO_PREFECT_API_URL`,
+  `ECHO_PREFECT_AUTH_STRING`, `ECHO_PREFECT_API_KEY`), which reach the app through `env_file`;
+  Compose maps them to the runner's `PREFECT_API_*` and the bundled server's
+  `PREFECT_SERVER_API_AUTH_STRING`. `PREFECT_AUTH_STRING` is gone (the branch is unreleased).
+  Empty values are safe: Prefect's client sends no header for an empty key or auth string
+  (checked with 3.8.8).
+- **An API key, too.** The executor sends `Bearer <key>` when only `ECHO_PREFECT_API_KEY` is set
+  (Prefect Cloud, or a proxy with tokens), with basic auth first as in Prefect's client. A 403
+  now reads as a refusal like a 401. This extends PLAN 7.6; the routes are unchanged.
+- **The runner's Prefect follows the server.** `PREFECT_VERSION` (build argument; in `.env` for
+  Compose) installs that version over uv.lock's 3.8.8 in the runner image; checked here with
+  3.4.0 in an environment built as the image's: the runner imports and serves. The bundled
+  server's image takes the same variable.
+- **`echolot-admin check-runs`**, because we cannot test the owner's server from here: where
+  runs go (the URL without credentials, the auth kind), then the server's version from
+  `/admin/version` (or, when a server does not report it, that `/deployments/filter` answers
+  like Prefect, which catches a URL without `/api`), the deployment, and its `status`, which
+  Prefect sets to `READY` while a runner polls and `NOT_READY` 60 s after the last poll. A note
+  says who can reach `ECHO_PUBLIC_URL` when it is a loopback or a one-label (Docker) name.
+  `smoke.sh` waits for it to pass before the end-to-end check. The app also logs the Prefect
+  URL and `ECHO_PUBLIC_URL` at start.
+- **Checked against a real Prefect 3.8.8 server with basic auth** (uvx, as in M2.3): no runner →
+  "no deployment"; wrong password and an API key against basic auth → refused (401); the URL
+  without `/api` → "no Prefect API answers"; nothing listening → not reachable; with
+  `echolot_runner.serve` running → all ok at the first try; 65 s after stopping it → "no runner
+  has polled it lately". Credentials in the URL are not printed. `docker compose config`
+  renders the default stack, the runner profile, the bundled override (and refuses it without
+  an auth string) and the local-runs override; `init.sh` with and without `--with-prefect`
+  writes a `.env` that Compose reads as intended. The images and the stack are still unbuilt
+  here (no Docker daemon); CI's `compose` job covers the bundled variant.
+
+## 2026-11-10 ECHOLOT's three reconciliation algorithms
+
+ECHOLOT's `POST /reconcile` takes `?algorithm=wikifier|llm_based|rule_based` (default
+`wikifier`), and that is its only per-request choice. The owner passed on the service's own
+contract for dashboards; this app follows it in four places. Prefect is left as it was.
+
+- **The agent's doc (`services/echolot.md`)** now describes the three: what each reads (for
+  `rule_based` only `name`, `entity_type == "person"` and `information.gender`), what its
+  matches look like (Wikipedia URLs for `wikifier`, Wikidata or ULAN URLs for the others), what
+  its score means (`llm_based`: always 1.0, no confidence), and its traps: an empty reply from
+  `llm_based` can be a failed Wikidata lookup, `rule_based` only knows its table and can change
+  answers after a restart, scores are not comparable, agreement is by `wikidata_item_id`. A 503
+  naming the algorithm means "not configured here", not "retry". The example script takes the
+  algorithm from `ctx.params`, so the user switches between runs without a new script; a second
+  example compares the algorithms per record (one column per algorithm, an `agreement` column).
+  Both are run against a fake ECHOLOT in `test_service_docs.py`.
+- **Matches are tagged with their algorithm** by the scripts (`{**m, "algorithm": a}`), because
+  the reply's `algorithm` is outside the match list the review reads. The review then shows
+  `llm_based`'s pick as "selected" instead of 1.00, names the algorithm in a list that mixes
+  them, and the decision select offers every candidate column's QIDs once, with who proposed
+  each ("wikifier 0.98, llm_based selected"). The server stores any QID, so nothing changed
+  there.
+- **The runner** gets `post(path, json, params)` (PLAN 7.1; a query in the path also works) and
+  `concurrency_for` in `services.toml`: a lower limit for requests with a given query value,
+  `{ "algorithm=llm_based" = 2 }` in the examples, because each such call makes six Wikidata
+  requests and Wikidata's rate limit shows up as silent "no match". The narrower slot is taken
+  before the service's, in a fixed order. In the runner, not in the script or the run's
+  thread count, so a comparison script with 16 threads still keeps `llm_based` at 2.
+- **Timeouts**: the examples go from 70 s to 180 s (the contract says at least 120: the first
+  `rule_based` call indexes its table, `llm_based` retries Wikidata). 503 stays out of
+  `retry_statuses`.
+- Not changed: `uri` is still required; extra fields such as `algorithm` in our match lists are
+  ours. Not tried against a live ECHOLOT: the instance on 127.0.0.1:5000 here still answers
+  without the parameter (its `openapi.json` has none); the checkout next to this repository has
+  the new code (`bdfd048`), whose registry and wikifier module match the contract.
+
+## 2026-11-11 Enrichment from Wikidata (M5, planned)
+
+- **What the owner wants:** the agent looks up what Wikidata holds for a sample's QIDs, suggests
+  and analyses what to add, and writes the script that extracts the chosen data. Review happens
+  on samples only: the datasets can have millions of rows, so the final script must run end to
+  end, unattended. Everything per record is therefore one script (get the QID, however it is
+  got, then extract), not a chain of runs.
+- **Not prescribed:** where the QIDs come from (a column, reconciliation, reconciling only the
+  rows without one, or reconciling anyway), the order of the steps, and the script's parameters.
+  The user and the agent settle them per dataset; the docs show building blocks, not a flow.
+- **Where the Wikidata access lives:** an endpoint in the ECHOLOT service,
+  `POST /wikidata/statements`, not the app and not raw Wikidata from scripts. Turning Wikidata's
+  JSON into usable values (item labels, dates at their precision, ranks) should be written once,
+  not by the agent in every script; ECHOLOT already has the code for `/enrich`; caching,
+  Wikimedia's User-Agent rule and rate limits belong in one place; and a large dataset may later
+  need a local Wikidata copy behind the same endpoint, which scripts would not notice.
+- **No new agent tools:** the agent explores through a sample run, like any service call, with
+  the usual approval card. A direct lookup tool would make the app call a service itself (today
+  only the runner does, with config and keys on the runner host). Revisit if the cards get in
+  the way.
+- **Two modes, one shape:** without `properties`, every property with a count and one example
+  (exploring); with `properties`, every value of those (extracting). A famous person has
+  hundreds of statements, most of them external identifiers, so an exploring script must
+  condense what it returns: the agent reads at most 4,000 characters of a record.
+- **Scale, noted for later:** at M2.3's rate (200 records in 53 s with `wikifier`) a million
+  records take about three days to reconcile, before any Wikidata lookups, and Wikidata's
+  public API is not meant for millions of requests. The app has not been run beyond 200 rows.
+
+## 2026-11-11 `POST /wikidata/statements` in ECHOLOT (M5.1)
+
+- Built in `echolot-wp4-api-service` on the branch `feat/wikidata-statements` (`eecc6a9`, off
+  `llm-and-rule-based`, not pushed), on the Wikidata helpers `/enrich` uses: batches of 50,
+  the label cache, dates at their precision. New: values keep their statement's rank
+  (preferred first), carry typed fields beside `text` (`id` and `label` of items, `time`,
+  `precision` and `calendar`, `amount` and `unit`, `language`), and a requested property the
+  item lacks comes back as `count: 0`. Unknown QIDs are `found: false`, not an error; a
+  redirect is followed and the reply's `id` is the target. Qualifiers and references are left
+  out for now.
+- That repository had no tests on this branch: pytest is added as a dev dependency, and 15
+  tests run the endpoint against canned Wikidata replies (both modes, typed values, language
+  fallback, the Julian calendar, redirects, unknown ids, bad input, 401, Wikidata failures).
+- Live, 2026-11-11: summary of Q5593 and Q156736 together in 8.3 s with a cold label cache
+  (92 KB; Picasso 435 properties, 365 of them external identifiers; Chillida 191 and 147);
+  six chosen properties of both in 2.3 s, labels in Basque. Through the running service on
+  127.0.0.1:5002, three properties of Aurelio Arteta in 0.8 s.
+- Wikidata's data is not always right: on that day it gave Tel Aviv (Q33935) as Chillida's
+  place of birth. The doc tells the agent to say values are copied as they stand.
+
+## 2026-11-11 The Wikidata statements in the agent's doc (M5.2)
+
+- `services/echolot.md` gets a last section on `/wikidata/statements`: the call, both modes,
+  the reply with its typed values, errors, speed, and what to present. It names where a QID can
+  come from (a column, `/reconcile` in the same script, both) without choosing: that is settled
+  with the user per dataset. The front matter's description mentions it, so `list_services`
+  shows it.
+- Two short examples, both run through the harness against a fake in `test_service_docs.py`:
+  an exploring script that condenses an item to one line per property and identifiers by name,
+  each list cut to fit (checked on a fake item with 480 statements: under 4,000 characters), and
+  an extracting script with one column per chosen property, values joined with `; ` and a
+  `_qid` column beside item labels. The fake ECHOLOT in `run_script` now answers both endpoints.
+
+## 2026-11-11 Deployed to echolot.ijs.si (M4.3)
+
+- **Topology:** one host inside the institute's network, behind the institute's nginx front,
+  which ends TLS (Let's Encrypt, webroot challenge, like its other sites) and forwards to the
+  host's own nginx on port 80. That nginx accepts only the front and sends `/service/` to
+  ECHOLOT's API and everything else to the workbench's web container. Both containers publish
+  on the host's 127.0.0.1 only: Docker's published ports bypass `ufw`, so a port bound to the
+  host's address would be open to the whole internal network.
+- **One Compose project** with the stack's own Prefect server and runner (`./init.sh
+  --with-prefect`'s layout, the owner's choice here instead of an external Prefect server) and
+  ECHOLOT's API, added by a Compose file kept on the host. The runner calls it as
+  `http://echolot:5000`. ECHOLOT runs with `--root-path /service`, so its `/docs` work behind
+  the prefix while the runner's calls without it still route.
+- **Shared maintenance:** code in `/opt/echolot` (git checkouts), configuration and secrets in
+  `/etc/echolot` (the deploy `.env` is a link to it), both owned by an `echolot` group with
+  setgid directories and `core.sharedRepository=group`; a system-wide `safe.directory` lets
+  any member pull. Maintainers are in `echolot` and `docker`. A README on the host describes
+  the layout, updates, keys and operation.
+- **Code:** the organization disables deploy keys, so the owner made both repositories public;
+  the host clones over https with no credentials. Both run `feat/wikidata-statements`.
+- **Keys:** none copied from anyone's machine. The secret key, the Prefect password and
+  ECHOLOT's API key were generated on the host; Wikifier and OpenRouter keys are to be added
+  there at the end (until then `wikifier` and `llm_based` answer 503); no server model key,
+  testers bring their own.
+- **Found on the way:** the runner (uid 10001) must be able to read the mounted
+  `services.toml`; a group-only file fails every run at setup with `PermissionError`. It holds
+  no secrets and stays world-readable.
+- **Checked from outside:** the certificate, the pages, sign-in required, ECHOLOT's health and
+  docs, its API key required, and a run over three names (`rule_based`, then
+  `/wikidata/statements`) through Prefect and the runner in 7 s with the expected QIDs and
+  birth dates. The earlier ECHOLOT installation on the host is stopped, for its owner to remove.
+
+## 2026-11-11 `service_call`: single requests on a card (M5.4)
+
+- **Why:** looking at one QID, or trying one record, meant writing or changing the workspace's
+  script, which makes a version, then a sample run. The M5 decision left this to be revisited
+  when the cards got in the way; the owner chose a general tool over a Wikidata-specific one in
+  the app, and a card for every call.
+- **How it travels:** a call is stored apart from runs (`service_calls`) and goes through the
+  executor like a one-record run. The runner gets the platform's own script, which sends the
+  request with `ctx.service(name)`, and three endpoints under `/runner/calls/{id}` (PLAN 7.3)
+  with a per-call token. So the service keys stay on the runner, as for runs, and both
+  executors work unchanged. A call leaves no run, script version or result file; the tool waits
+  up to 200 s (a service's 180 s timeout and its retries) and cancels after that.
+- **The card** shows the purpose, the service, the method, path and query, and the body, so
+  what leaves for the service is visible before it does. Only `service_call` is new on the
+  approval list (CLAUDE.md, PLAN 7.9).
+- **Limits:** POST or GET, a path from the service's doc (no URLs), a body up to 100,000
+  characters, a reply kept up to 2 MB and shown to the model up to about 6,000 tokens, like any
+  tool output. The prompt and `services/echolot.md` say when to use it (one item, one record,
+  checking a request) and when to write a script instead.
+- **Speed:** about the time of a sample run of one record: instant with the local executor, a
+  few seconds through Prefect, where the runner checks for work every 2 s.
+
+## 2026-11-12 `llm_based` through HiTZ's hosted service
+
+- **The service:** HiTZ runs the Latxa reconciliation pipeline at
+  `POST https://zerbitzuak.hitz.eus/api/reconciliation` (`name`, `info` as one text,
+  `context`, `vector`, `top_k`). Its docs page shows no key for this endpoint, but it needs
+  one, in an `apikey` header; keys come from https://zerbitzuak.hitz.eus/tresnak, Profile,
+  Generate new API Key. Its reply has the draft's own fields (`desambiguation_result`,
+  `full_results`, plus `reasoning`), so it is the hosted version of what `llm_based` ran locally.
+- **Tried 2026-11-12:** Eduardo Chillida, Kirmen Uribe and Aurelio Arteta right (where
+  `wikifier` found nothing or the wrong person), Pablo Picasso right, a made-up name "None";
+  6 to 12 s per entity, 0.5 s with no candidates. With `vector` on it missed Arteta although
+  the right candidate was in its list, so it stays off.
+- **In ECHOLOT, not as a service of its own:** `llm_based` calls HiTZ whenever ECHOLOT has
+  `HITZ_API_KEY`, and the local draft (the OpenAI-compatible path) otherwise. The algorithm name,
+  its match format (one match, score 1.0) and the runner's `concurrency_for` stay as they were,
+  so scripts, the review and the public API need nothing new. A key HiTZ refuses answers 503
+  (not configured), not 502, so the runner does not retry every record.
+- **For the agent:** `services/echolot.md` says what runs `llm_based`, its speed (about 500
+  records an hour per concurrent call, so weeks for a million records at 2 calls), and these
+  results.
+- **Keys:** the local test used the owner's key on their machine; the server gets its own,
+  added by the owner to `/etc/echolot/api-service.env`. Until then the server's `llm_based`
+  keeps using the Llama stand-in on OpenRouter.
+
+## 2026-11-23 Running scripts safely on a shared host (M6, planned)
+
+- **Why now:** echolot.ijs.si runs every user's scripts on one host, inside the IJS network. A
+  script is any Python, by design, and comes from a signed-in user, someone with a stolen
+  password, or a dataset whose text steers the agent and a user who approves without reading.
+  Reviewed on 2026-11-23 against the code and the deployment. Without an account there is little
+  to attack (sessions on every route, scrypt, throttled sign-in, runner endpoints 404 without the
+  run's token; `/enrich` only fetches `*.wikipedia.org`). A script, though, can today:
+  - reach the internet, the IJS network and the host's own services;
+  - use unlimited memory, CPU, processes and disk, and run for ever;
+  - read the runner's environment: ECHOLOT's API key (usable from anywhere, since the API is
+    public at /service/) and Prefect's credentials, and through Prefect every run's parameters:
+    other users' scripts, and the tokens of runs in progress, enough to download their input
+    and overwrite their results.
+  Taking over the host still needs a way out of the container, an unpatched kernel or runtime
+  flaw: the runner is not privileged, has no Docker socket, sees no host directory but
+  `services.toml` (read-only) and runs as uid 10001.
+- **The order (PLAN 12g):** the network first (M6.1) and limits (M6.2, M6.3): Compose and a few
+  lines in the poller, and they stop the reach into the institute, the outage and the endless
+  run. Then the secrets (M6.4), which needs the harness split in two processes. Small fixes last.
+- **The network:** only in the one-host set-up, where Prefect, the app and the runner share a
+  Compose project. With an external Prefect server the runner needs a route out to it and to the
+  app's public address; there, limiting where it goes is the runner host's firewall's job. Scripts
+  are meant to reach the outside only through `ctx.service` (CLAUDE.md), so the internal network
+  takes nothing a script should have.
+- **The timeout:** in the app, through the executor's `cancel`, because Prefect's serve runs each
+  flow run in a process of its own and kills it on cancel (SIGTERM, then SIGKILL; checked in
+  Prefect 3.8.8), which a timeout inside the flow cannot do to a thread stuck in a script. No
+  progress for 30 minutes is generous: the slowest normal record is a service's 180 s timeout
+  with its retries. The 24-hour ceiling suits this host, which runs samples (owner, 2026-11-13:
+  large runs go elsewhere later); a deployment for large runs raises it or turns it off. A
+  cancelled run keeps no results, as before.
+- **Not now:** a throwaway container per run (the Elexifier sandbox's way). It isolates runs
+  from each other best, but the app or a launcher then needs the Docker socket, which is root on
+  the host. M6.4 gets the part that matters here, secrets out of the script's reach, without it.
+
+## 2026-11-24 The backend's firewall on (M6.1 done)
+
+- **Found at deployment:** ufw was off on echolot.ijs.si's backend (`ufw status`: inactive,
+  although systemd showed its unit active), so the host had no firewall: ssh and nginx answered
+  anyone on the IJS network and, over the host's public IPv6 address, possibly beyond. A script
+  in the runner reached both on the bridge's address, 172.21.0.1.
+- **Now (owner, 2026-11-24):** ufw on, dropping what comes in by default, with in order: deny on
+  `echolot-runs` (the runner), ssh from anywhere, port 80 only from the frontend
+  (194.249.231.96), IPv6 likewise (no port 80). Checked: a script times out on the host's ssh and
+  nginx; ECHOLOT still reaches Wikidata; runs go through Prefect; the public site answers; port
+  80 refuses the VPN.
+- **Why ssh stays open to all:** narrowing it to the VPN's and the frontend's ranges risks a
+  lock-out for little gain inside the institute; the owner can narrow it later.
+- deploy/README.md now says to check `ufw status` and to allow ssh before turning ufw on.
+
+## 2026-11-24 M6.4 design: scripts in a container of their own (proposed, for the owner)
+
+- **Today:** the harness loads the script with `exec` into its own process. Everything the run
+  holds is a line of Python away: the run's token and URLs, the HTTP client, the service keys
+  (in each `ServiceClient`'s headers) and the Prefect credentials (in the environment, and with
+  them every run's parameters on the Prefect server).
+- **Why not the planned child process in the runner's container.** Checked on echolot.ijs.si
+  (2026-11-24, variable names only): every process there runs as uid 10001 and reads every
+  other's `/proc/<pid>/environ`: Prefect's serve (pid 1), Prefect's multiprocessing resource
+  tracker and each flow-run process carry `ECHOLOT_API_KEY` and `PREFECT_API_AUTH_STRING`. A
+  child with an empty environment still reads its parents'. Making each of them non-dumpable
+  would close `/proc`, but Prefect starts helpers we do not control, and a flow-run process
+  needs the Prefect credentials to report its state. The same uid also reads other runs' files
+  in `/tmp` (a run killed for memory left its input there) and signals every process.
+- **The design.** A second container, `sandbox`, runs the scripts; the runner keeps all that is
+  secret and makes the service calls.
+  - The sandbox has no network at all (`network_mode: none`), no env file, a read-only
+    filesystem with a size-capped `/tmp`, and limits of its own (most of the runner's memory
+    moves there). A script cannot open a connection: PLAN 7.1's rule, until now only in the
+    agent's prompt, is enforced.
+  - Its supervisor (`python -m echolot_runner.sandbox`) starts as root with only `CAP_SETUID`,
+    `CAP_SETGID` and `CAP_KILL` (`cap_drop: [ALL]`, `no-new-privileges`). It listens on a Unix
+    socket in a root-owned tmpfs volume, so a script cannot replace the socket, and for each
+    connection starts a worker under a uid of its own: a fresh one per run from a range, not
+    reused before the container restarts. It reads nothing from the connection; the worker
+    talks to the harness directly.
+  - The worker (`python -m echolot_runner.worker`) has an empty environment, makes itself
+    non-dumpable, loads the script and runs `setup` and `process` on its thread pool as the
+    harness does now. `ctx.service(name).get/post` sends the request over the connection and
+    waits for the reply (or `ServiceError`); `ctx.log` and `ctx.params` as now. It receives the
+    script, `script_params`, the service names and the records, never the token, URLs or keys.
+  - The harness, in the runner, connects to the socket (mounted read-only), streams the records,
+    writes the results and posts progress as now, and makes the service calls with
+    `ServiceClient`, so keys, retries and concurrency limits stay where they are. It treats what
+    the worker sends as untrusted: a service of the run, GET or POST, a path under the service's
+    base URL, a size cap per message, only rows it sent.
+  - When the connection ends (the run is done or cancelled, the M6.3 timeout, the flow-run
+    process killed), the supervisor kills every process of that uid. When the worker dies (out
+    of memory in the sandbox), the harness fails the run with that reason; the runner and other
+    runs carry on.
+- **What it gives:** a script finds no secret or token in its container, reaches no address,
+  sees neither the runner's processes nor its files, and cannot read, signal or leave files for
+  another run (another uid; the worker is non-dumpable).
+- **What stays:** a script calls the run's services as the user approved; a runaway script can
+  slow the other runs' scripts within the sandbox's limits, not the runner or the host; a kernel
+  flaw stays the way out of any container.
+- **Without Docker** (a native runner host, the LocalExecutor in dev and tests) the harness
+  starts the worker as a child process with an empty environment over a socket pair: the same
+  protocol and code, but the same uid, so it stops only careless access. Those set-ups are for
+  trusted users, as now.
+- **Contracts:** 7.1 unchanged for scripts except that the network rule is enforced; 7.2 to 7.4
+  unchanged; the worker protocol is internal to the runner package (documented in `worker.py`).
+- **With it:** `no-new-privileges` and `cap_drop: [ALL]` on the runner too (from M6.5), since its
+  Compose service changes anyway.
+- **Cost:** worker and supervisor about 250 lines, the harness's side about 150, Compose, tests
+  in the child-process mode, smoke probes; about two days. Messaging adds well under a
+  millisecond per record and per call, against service calls of 100 ms and more.
+- **Considered:** one uid for all workers (no capabilities after binding the socket), simpler but
+  concurrent runs could signal each other and read what the other leaves in `/tmp`; a container
+  per run, which needs the Docker socket (DECISIONS 2026-11-23).
+
+## 2026-11-24 M6.4 built: what the design did not say
+
+- **Go-ahead:** the owner approved the design as proposed, with the supervisor's three
+  capabilities and the memory split: runner 1 GB (its `/tmp` 512 MB), sandbox 2 GB.
+- **Only the runner may open the socket:** root:10001, mode 0660, in a root-owned volume. A
+  script cannot even ask the supervisor for a worker, let alone replace the socket.
+- **The exit code reaches the harness:** after a worker ends, the supervisor sends
+  `{"t": "exit", "code"}` before closing its copy of the connection, so a run killed for memory
+  says so instead of "ended unexpectedly".
+- **Per worker:** at most 256 processes and threads (`RLIMIT_NPROC`, which the uid of its own
+  makes per run), no core dumps, non-dumpable, umask 077, a private directory as `HOME` and
+  `TMPDIR`. When a worker ends, its uid's processes are killed and its uid removes what it left
+  in `/tmp`.
+- **`print()` goes to the run log** (it went to the runner's stdout, where nobody read it), and
+  stderr as warnings. PLAN 7.1 and the agent's prompt say so.
+- **The service path is checked** now that it comes from an untrusted process: `ServiceClient`
+  refuses a path that leads to another host or out of the service's own path, `..` included,
+  percent-encoded too.
+- **Without the sandbox** (`RUNNER_SANDBOX_SOCKET` unset: tests, the app's LocalExecutor, a
+  native runner host) the harness starts the same worker as a child process with an empty
+  environment.
+- **Checks:** `runner_tests/test_worker.py` (no secret in the worker's environment or memory,
+  with a negative control run by hand; logs; a worker that dies or lies; paths; mistakes that
+  fail one record), `test_sandbox.py` (the supervisor as an ordinary user: runs, the exit code,
+  a stopped run ends its worker), and `deploy/smoke.sh --sandbox` in Docker: a uid of its own, no
+  key or credential in the environment or `/proc`, no address, a service call through the
+  runner, a run beside it out of reach, a memory-hog run that fails without harm to the next.
+
+## 2026-11-24 M6.5: the documentation pages, and ECHOLOT as a user
+
+- **The docs pages:** the app's `/api/docs` and `/api/openapi.json` answered without a session
+  on echolot.ijs.si, listing every route. `ECHO_API_DOCS` turns them off; it defaults to on for
+  development and the Compose deployment sets it off. ECHOLOT's `/docs`, `/redoc` and
+  `/openapi.json` answer without a key too; its `API_DOCS` stays on by default, since partners
+  running their own ECHOLOT read them, and echolot.ijs.si sets it off in
+  `/etc/echolot/api-service.env`. If partners use the public API's docs page, turning it back
+  on there is one line.
+- **ECHOLOT as a user:** its image ran as root. It now runs as uid 10001 (its Dockerfile, branch
+  `feat/hardening` of its repository); it writes only to `/tmp`, and the mounted ULAN table is
+  world-readable on the server.

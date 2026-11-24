@@ -145,3 +145,62 @@ export interface RunRowsPage {
 export function isTerminal(status: RunStatus): boolean {
   return status === 'done' || status === 'failed' || status === 'cancelled'
 }
+
+// --- accounts and models (docs/PLAN.md 7.11) ---------------------------------------------------
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  is_admin: boolean
+  is_active: boolean
+  created_at: string
+  last_login_at: string | null
+}
+
+/** A new account or a reset: the temporary password is shown once. */
+export interface UserWithPassword {
+  user: User
+  password: string | null
+}
+
+export interface Vendor {
+  name: string
+  label: string
+  needs_key: boolean
+  needs_base_url: boolean
+  key_url: string
+  suggested: { id: string; label: string }[]
+  has_key: boolean
+  key_hint: string
+  base_url: string | null
+  key_updated_at: string | null
+  key_last_used_at: string | null
+}
+
+export interface ModelInfo {
+  id: string
+  label: string
+  suggested: boolean
+}
+
+export interface ModelListing {
+  models: ModelInfo[]
+  error: string | null
+}
+
+export interface ModelChoice {
+  provider: string
+  model_id: string
+  source: 'server' | 'own'
+  server_model: { provider: string; model_id: string } | null
+  ready: boolean
+  problem: string | null
+}
+
+export interface ProbeResult {
+  ok: boolean
+  model_id: string
+  latency_ms: number
+  message: string
+}
