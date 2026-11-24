@@ -63,8 +63,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 - M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
   (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
   deployed to echolot.ijs.si (2026-11-24, `6a74095`) and done, with the host's firewall on
-  (DECISIONS 2026-11-24). M6.4 (scripts in a sandbox container) is built and passes the tests
-  and the Docker smoke check. Next: deploying M6.4 (with the owner's go-ahead), then M6.5.
+  (DECISIONS 2026-11-24). M6.4 (scripts in a sandbox container) is done and deployed
+  (`096af15`). Next: M6.5 (ECHOLOT's image as a user, the API docs pages off in production).
 - Last update: 2026-11-24.
 
 Update this block at the end of every task.
@@ -773,7 +773,8 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   memory fails its run while the next run works; tests for records, service calls and
   `ServiceError`, `ctx.log`, a failing `setup`, a worker that dies or sends garbage, and a call
   outside the run's services or a service's base URL. Done 2026-11-24: the tests and the Docker
-  smoke check pass; on echolot.ijs.si once deployed.
+  smoke check pass; deployed to echolot.ijs.si the same day (`096af15`), where the same checks
+  pass with real ECHOLOT calls.
 - [ ] M6.5 Small fixes: ECHOLOT's image runs as a user, not root (its repository); the API
   documentation pages are off in production (the app's `/api/docs` and ECHOLOT's `/docs`). (The
   runner's `no-new-privileges` and `cap_drop` came with M6.4.)

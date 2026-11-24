@@ -14,6 +14,7 @@ its own changelog.
 | 2026-11-12 | https://echolot.ijs.si | `1cebcda` | `d0af95e` | `service_call` (single requests on a card); the changelogs |
 | 2026-11-12 | https://echolot.ijs.si | `67fed4e` | `ce6175f` | `llm_based` through HiTZ's hosted Latxa service, with the server's own HiTZ key |
 | 2026-11-24 | https://echolot.ijs.si | `6a74095` | `ce6175f` | The runner fenced in (M6.1 to M6.3): only on the internal network `runs`, which ECHOLOT joins; limits on its container; the run timeout. The owner turned on the host's firewall (ufw), with the bridge refused first and port 80 only for the frontend |
+| 2026-11-24 | https://echolot.ijs.si | `096af15` | `ce6175f` | Scripts in a sandbox container (M6.4): no network, no secrets, a uid per run; the runner 1 GB, the sandbox 2 GB. Checked on the server with real ECHOLOT calls |
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
 
@@ -24,7 +25,9 @@ review of what a script can reach on echolot.ijs.si (DECISIONS 2026-11-23).
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-24 | **Scripts in a sandbox container (M6.4):** a `sandbox` container with no network and no secrets runs each run's script in a worker under a uid of its own; the runner keeps the token, the keys and Prefect's credentials and makes the service calls over a Unix socket only it may open. A worker that dies fails the run with its reason; `print()` goes to the run log; a service path may not lead out of the service. Without Docker the worker is a child process with an empty environment. The runner gets `no-new-privileges` and no capabilities; its memory default goes to 1g, the sandbox has 2g. | `runner/src/echolot_runner/` (`worker.py`, `sandbox.py`, `protocol.py`, `harness.py`, `context.py`, `services.py`), `deploy/` (Dockerfile, compose, smoke), tests, docs |
+| (this commit) | 2026-11-24 | The deployment of `096af15` recorded, and the hashes above filled in | `CHANGELOG.md`, `docs/PLAN.md` |
+| `096af15` | 2026-11-24 | The sandbox's supervisor no longer counts a killed worker that waits to be collected as running, which made it retry and log a false alarm after every run (seen on the server) | `runner/src/echolot_runner/sandbox.py`, `runner/runner_tests/test_sandbox.py` |
+| `47ade40` | 2026-11-24 | **Scripts in a sandbox container (M6.4):** a `sandbox` container with no network and no secrets runs each run's script in a worker under a uid of its own; the runner keeps the token, the keys and Prefect's credentials and makes the service calls over a Unix socket only it may open. A worker that dies fails the run with its reason; `print()` goes to the run log; a service path may not lead out of the service. Without Docker the worker is a child process with an empty environment. The runner gets `no-new-privileges` and no capabilities; its memory default goes to 1g, the sandbox has 2g. | `runner/src/echolot_runner/` (`worker.py`, `sandbox.py`, `protocol.py`, `harness.py`, `context.py`, `services.py`), `deploy/` (Dockerfile, compose, smoke), tests, docs |
 | `8d8b26b` | 2026-11-24 | M6.4 designed (proposed): scripts in a `sandbox` container with no network and no secrets, a uid per run; the runner makes the service calls | `docs/DECISIONS.md`, `docs/PLAN.md` |
 | `cea0010` | 2026-11-24 | M6.1 done: the host's firewall on, recorded; deploy/README.md says to check `ufw status` and to allow ssh before turning ufw on | `deploy/README.md`, `docs/PLAN.md`, `docs/DECISIONS.md` |
 | `2653b56` | 2026-11-24 | The deployment of `6a74095` recorded, and its hash filled in below | `CHANGELOG.md`, `docs/PLAN.md` |
