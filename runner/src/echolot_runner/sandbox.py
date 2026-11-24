@@ -97,17 +97,19 @@ def start(conn: socket.socket, uid: int, as_root: bool, max_processes: int) -> W
     return Worker(process, conn, uid)
 
 
-def processes_of(uid: int) -> list[int]:
+def processes_of(uid: int, proc: str = "/proc") -> list[int]:
+    """The live processes of ``uid``; a zombie (killed, not yet collected) no longer runs."""
     found = []
-    for name in os.listdir("/proc"):
+    for name in os.listdir(proc):
         if not name.isdigit():
             continue
         try:
-            with open(f"/proc/{name}/status") as fh:
-                line = next(x for x in fh if x.startswith("Uid:"))
-        except (OSError, StopIteration):
+            with open(os.path.join(proc, name, "status")) as fh:
+                fields = dict(line.split(":", 1) for line in fh if ":" in line)
+        except OSError:
             continue
-        if uid in (int(x) for x in line.split()[1:]):
+        uids = fields.get("Uid", "").split()
+        if fields.get("State", "").split()[:1] != ["Z"] and str(uid) in uids:
             found.append(int(name))
     return found
 

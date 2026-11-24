@@ -11,10 +11,12 @@ import sys
 import tempfile
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
 from echolot_runner.harness import RunFailed, run
+from echolot_runner.sandbox import processes_of
 
 from .conftest import FakeWorld, params, service
 from .test_worker import ok
@@ -128,3 +130,17 @@ harness.script_log = Grab()
 world = FakeWorld(records=[{"a": 1}])
 harness.run(params(script), http=world.client(), services={}, sandbox=sys.argv[1])
 """
+
+
+def test_a_killed_worker_waiting_to_be_collected_does_not_count(tmp_path: Path) -> None:
+    def process(pid: int, state: str, uid: int) -> None:
+        (tmp_path / str(pid)).mkdir()
+        status = f"Name:\tpython\nState:\t{state}\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n"
+        (tmp_path / str(pid) / "status").write_text(status)
+
+    process(10, "S (sleeping)", 20001)
+    process(11, "Z (zombie)", 20001)
+    process(12, "R (running)", 20002)
+    (tmp_path / "self").mkdir()
+    assert processes_of(20001, proc=str(tmp_path)) == [10]
+    assert processes_of(20003, proc=str(tmp_path)) == []
