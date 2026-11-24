@@ -15,18 +15,11 @@ from typing import Any
 
 import httpx
 
+from echolot_runner.context import ServiceError
+
+__all__ = ["ServiceClient", "ServiceConfig", "ServiceError", "ServicesConfigError", "load_services"]
+
 BODY_EXCERPT = 500
-
-
-class ServiceError(Exception):
-    """A service call failed after its retries."""
-
-    def __init__(self, service: str, status: int | None, message: str) -> None:
-        self.service = service
-        self.status = status
-        self.message = message
-        where = f"{status} from {service}" if status is not None else f"{service} unreachable"
-        super().__init__(f"{where}: {message}" if message else where)
 
 
 class ServicesConfigError(Exception):
@@ -128,7 +121,7 @@ class ServiceClient:
         return self.request("POST", path, json=json, params=params)
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
-        url = self.config.url.rstrip("/") + "/" + path.lstrip("/")
+        url = self._url(path)
         query = httpx.URL(url).copy_merge_params(kwargs.get("params") or {}).params
         slots = [  # the narrower limits first, always in the same order, then the service's
             *(s for (k, v), s in self._slots_for.items() if v in query.get_list(k)),
@@ -169,6 +162,22 @@ class ServiceClient:
         raise ServiceError(
             self.config.name, last.status, f"{last.message} (after {attempts} attempts)"
         )
+
+    def _url(self, path: str) -> str:
+        """The service's URL with ``path`` under it. The path comes from a script, so it may not
+        lead to another host or out of the service's own path ("..", also percent-encoded)."""
+        url = self.config.url.rstrip("/") + "/" + path.lstrip("/")
+        try:
+            target, base = httpx.URL(url), httpx.URL(self.config.url)
+        except httpx.InvalidURL as exc:
+            raise ServiceError(self.config.name, None, "not a valid path") from exc
+        place = (target.scheme, target.host, target.port)
+        same_place = place == (base.scheme, base.host, base.port)
+        under = target.path.startswith(base.path.rstrip("/") + "/")
+        dots = any(part in (".", "..") for part in target.path.split("/"))
+        if not same_place or not under or dots:
+            raise ServiceError(self.config.name, None, "the path leads out of the service")
+        return url
 
 
 def _excerpt(response: httpx.Response) -> str:

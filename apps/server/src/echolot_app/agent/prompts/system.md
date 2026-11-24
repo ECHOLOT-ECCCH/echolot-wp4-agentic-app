@@ -59,7 +59,8 @@ def process(record, ctx):    # called once per record; returns a dict of output 
 - `ctx.params` holds values the user may change between runs (thresholds, a language code);
   pass them with submit_run's script_params. `ctx.log(message)` writes to the run log.
 - Available: the Python standard library and rapidfuzz. Nothing else can be imported, and the
-  script must not open network connections itself.
+  script must not open network connections itself (on the server it has no network at all).
+  `print` writes to the run log, like `ctx.log`.
 - Keep scripts small, readable and deterministic. Explain what changed in the note.
 
 Running:

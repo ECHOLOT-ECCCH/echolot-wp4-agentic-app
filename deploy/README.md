@@ -150,16 +150,29 @@ sudo ufw enable               # then check ssh from a second session before clos
 Traffic between the containers on `runs` does not pass this rule. To check it, run a script
 that connects to that address on port 22: it should time out.
 
-**The runner's limits** (whenever the runner runs in this stack). A script that runs away fails
-its own run instead of taking the host down: the runner's container has a memory limit with no
-swap beyond it (`RUNNER_MEMORY`, default `2g`), CPUs (`RUNNER_CPUS`, `2`; at most the host's),
-processes and threads (`RUNNER_PIDS`, `512`), and a read-only filesystem except `/tmp`
-(`RUNNER_TMP_SIZE`, `1g`) and the home directory, both in memory. `/tmp` holds a run's input
-and results while it runs, and counts towards the memory limit: for large files raise both.
-A run whose script exhausts the memory ends failed; the runner carries on with the next. The
-app also stops a run in which no record has finished for `ECHO_RUN_STALL_MINUTES` (30) or that
-has run for `ECHO_RUN_MAX_HOURS` (24; 0 for no limit). After changing a limit:
-`docker compose up -d runner` (or `app` for the two `ECHO_` ones).
+**The script sandbox** (whenever the runner runs in this stack; docs/PLAN.md M6.4). Scripts do
+not run in the runner but in the `sandbox` container: no network (`network_mode: none`), no
+environment file, a read-only filesystem with `/tmp` in memory, and each run's script under a
+uid of its own. A script finds no key, token or Prefect credential, reaches no address, and
+cannot read or signal a run beside it. The runner makes the service calls a script asks for,
+with the keys, and reaches the sandbox through the volume `sandbox-socket`, whose socket only
+the runner's group may open. The sandbox's supervisor starts as root and keeps only
+`CAP_SETUID`, `CAP_SETGID` and `CAP_KILL`. Never give the sandbox a network, an env file or a
+secret.
+
+**The limits** (whenever the runner runs in this stack). A script that runs away fails its own
+run instead of taking the host down. The sandbox has a memory limit with no swap beyond it
+(`SANDBOX_MEMORY`, default `2g`), CPUs (`SANDBOX_CPUS`, `2`; at most the host's), processes and
+threads (`SANDBOX_PIDS`, `1024`; 256 per run) and `/tmp` (`SANDBOX_TMP_SIZE`, `512m`); the
+scripts of runs going on at the same time share them, at most `SANDBOX_MAX_WORKERS` (16) runs.
+The runner's container has its own: `RUNNER_MEMORY` (`1g`), `RUNNER_CPUS` (`2`), `RUNNER_PIDS`
+(`512`) and a read-only filesystem except `/tmp` (`RUNNER_TMP_SIZE`, `512m`) and the home
+directory, both in memory. The runner's `/tmp` holds each run's input and results while it runs
+and counts towards its memory: for large files raise both. A run whose script exhausts the
+memory ends failed with that reason; the next run is not affected. The app also stops a run in
+which no record has finished for `ECHO_RUN_STALL_MINUTES` (30) or that has run for
+`ECHO_RUN_MAX_HOURS` (24; 0 for no limit). After changing a limit:
+`docker compose up -d runner sandbox` (or `app` for the two `ECHO_` ones).
 
 **ECHOLOT and a runner in this stack, with an external Prefect server.** The runner is then on
 the default network, with a route out (it has to reach the Prefect server and `ECHO_PUBLIC_URL`;

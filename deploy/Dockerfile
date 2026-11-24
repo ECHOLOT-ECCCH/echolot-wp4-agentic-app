@@ -2,7 +2,8 @@
 #   web     Caddy with the built single-page app: TLS, static files, proxy to the app
 #   app     the FastAPI app (agent, runs, SQLite under /data) and echolot-admin
 #   runner  the Prefect flow that runs scripts, next to the services (docs/runner-host.md)
-# deploy/docker-compose.yml builds all three. The runner also runs alone on a runner host.
+#   sandbox where the runner's scripts run: no network, no secrets, a uid per run
+# deploy/docker-compose.yml builds all four. The runner and sandbox also run on a runner host.
 
 ARG PYTHON_IMAGE=python:3.12-slim-bookworm
 
@@ -74,3 +75,11 @@ ENV PATH=/opt/venv/bin:$PATH
 USER echolot
 WORKDIR /home/echolot
 CMD ["python", "-m", "echolot_runner.serve"]
+
+FROM runner AS sandbox
+# the script sandbox (echolot_runner.sandbox; docs/DECISIONS.md 2026-11-24): its supervisor
+# starts as root to run each run's worker under a uid of its own; deploy/docker-compose.yml
+# leaves it three capabilities and no network
+USER root
+WORKDIR /
+CMD ["python", "-m", "echolot_runner.sandbox"]

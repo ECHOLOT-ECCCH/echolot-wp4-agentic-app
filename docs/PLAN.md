@@ -63,8 +63,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 - M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
   (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
   deployed to echolot.ijs.si (2026-11-24, `6a74095`) and done, with the host's firewall on
-  (DECISIONS 2026-11-24). Next: M6.4, whose design (a sandbox container for scripts,
-  DECISIONS 2026-11-24) waits for the owner's go-ahead.
+  (DECISIONS 2026-11-24). M6.4 (scripts in a sandbox container) is built and passes the tests
+  and the Docker smoke check. Next: deploying M6.4 (with the owner's go-ahead), then M6.5.
 - Last update: 2026-11-24.
 
 Update this block at the end of every task.
@@ -211,8 +211,9 @@ def process(record: dict[str, Any], ctx) -> dict[str, Any]:
   body_excerpt)`.
 - `ctx.log(message)` writes to the run log. `ctx.params` holds the run's `script_params` (a dict,
   empty by default) for values the user may want to change between runs, such as thresholds.
-- Scripts must not open network connections themselves. This is stated in the agent's prompt and
-  not enforced in the POC (section 15).
+- Scripts must not open network connections themselves. The agent's prompt says so; in the
+  runner's sandbox (M6.4, the Docker set-ups) a script has no network at all; elsewhere it is not
+  enforced (section 15). `print()` goes to the run log, like `ctx.log` (2026-11-24).
 - `script_write` rejects code that does not parse, that has no top-level
   `def process(record, ctx)`, or that calls `ctx.service` with a non-literal name. The service
   names found by an AST scan are stored with the version and shown on the approval card.
@@ -761,7 +762,7 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   workspace block names both limits, so it plans full runs to fit. Acceptance: tests
   with the local executor for both limits, a run that keeps finishing records, and a cancel
   that fails (tried again on the next pass). Done 2026-11-23 (`test_run_limits.py`).
-- [ ] M6.4 Scripts in a container of their own (design: DECISIONS 2026-11-24, proposed). A
+- [x] M6.4 Scripts in a container of their own (design and build: DECISIONS 2026-11-24). A
   `sandbox` container with no network and no secrets runs each run's script in a worker under a
   uid of its own; the runner keeps the token, the keys and the Prefect credentials, and makes
   the service calls the worker asks for over a Unix socket (`ctx.service` unchanged for
@@ -771,9 +772,11 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   directly), cannot read or signal a run going on beside it, and a script that exhausts the
   memory fails its run while the next run works; tests for records, service calls and
   `ServiceError`, `ctx.log`, a failing `setup`, a worker that dies or sends garbage, and a call
-  outside the run's services or a service's base URL.
+  outside the run's services or a service's base URL. Done 2026-11-24: the tests and the Docker
+  smoke check pass; on echolot.ijs.si once deployed.
 - [ ] M6.5 Small fixes: ECHOLOT's image runs as a user, not root (its repository); the API
-  documentation pages are off in production (the app's `/api/docs` and ECHOLOT's `/docs`).
+  documentation pages are off in production (the app's `/api/docs` and ECHOLOT's `/docs`). (The
+  runner's `no-new-privileges` and `cap_drop` came with M6.4.)
 
 For the owner, outside the code: kernel updates and reboots on the backend; ssh without
 passwords; the hop from the frontend to the backend, which is plain HTTP across the IJS network
@@ -822,12 +825,12 @@ the frontend's CentOS 7, which has had no security updates since June 2024.
 
 ## 15. Risks and fallbacks
 
-- **Scripts run unsandboxed on the runner host** with its network, disk and environment,
-  including the service keys. Mitigation: every agent-submitted run needs approval; the run
-  card names the services; the Compose deployment runs them in a runner container that holds
-  nothing of the app (deploy/README.md). With `ECHO_EXECUTOR=local` a script runs as the app's
-  user and can read the app's data and secrets: single users or trusted groups only. Hardening
-  is in section 14.
+- **Scripts are any Python.** In the Docker set-ups they run in the runner's sandbox (M6.4): no
+  network, no secrets, a uid per run, limits; the runner makes their service calls. Run without
+  it (a native runner host, `ECHO_EXECUTOR=local`) a script runs as the runner's or the app's
+  user, with that user's network and files and the environments of its other processes: single
+  users or trusted groups only. Every run the agent submits needs approval; the run card names
+  the services.
 - **The run token travels in Prefect parameters**, visible to anyone with access to the Prefect
   UI. It is scoped to one run and expires at its end. On an external, shared Prefect server
   that is everyone with access to it.

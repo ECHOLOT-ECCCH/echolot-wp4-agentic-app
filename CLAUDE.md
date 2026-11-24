@@ -39,6 +39,8 @@ images, Caddy, an optional runner and Prefect server; deploy/README.md)
   the runner host, never in the app, the browser or the model's context.
 - Approval-gated: submit_run, retry_failed, service_call, and any delete tool. Runs started by the user in the UI need no card.
 - Scripts reach services only through ctx.service(name). The app never executes scripts in its own process.
+  On the runner they run in the sandbox container (no network, no secrets, a uid per run) and the harness
+  makes their service calls; never give the sandbox a network, an env file or a secret (PLAN M6.4).
 - With the bundled Prefect (deploy/docker-compose.prefect.yml) the runner is only on the internal network `runs`:
   a service it calls joins `runs`; never give the runner a network with a route out (PLAN M6.1).
 - The app has no Prefect dependency; it talks to Prefect over REST. Prefect lives in runner/ only.

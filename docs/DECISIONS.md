@@ -823,3 +823,31 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
 - **Considered:** one uid for all workers (no capabilities after binding the socket), simpler but
   concurrent runs could signal each other and read what the other leaves in `/tmp`; a container
   per run, which needs the Docker socket (DECISIONS 2026-11-23).
+
+## 2026-11-24 M6.4 built: what the design did not say
+
+- **Go-ahead:** the owner approved the design as proposed, with the supervisor's three
+  capabilities and the memory split: runner 1 GB (its `/tmp` 512 MB), sandbox 2 GB.
+- **Only the runner may open the socket:** root:10001, mode 0660, in a root-owned volume. A
+  script cannot even ask the supervisor for a worker, let alone replace the socket.
+- **The exit code reaches the harness:** after a worker ends, the supervisor sends
+  `{"t": "exit", "code"}` before closing its copy of the connection, so a run killed for memory
+  says so instead of "ended unexpectedly".
+- **Per worker:** at most 256 processes and threads (`RLIMIT_NPROC`, which the uid of its own
+  makes per run), no core dumps, non-dumpable, umask 077, a private directory as `HOME` and
+  `TMPDIR`. When a worker ends, its uid's processes are killed and its uid removes what it left
+  in `/tmp`.
+- **`print()` goes to the run log** (it went to the runner's stdout, where nobody read it), and
+  stderr as warnings. PLAN 7.1 and the agent's prompt say so.
+- **The service path is checked** now that it comes from an untrusted process: `ServiceClient`
+  refuses a path that leads to another host or out of the service's own path, `..` included,
+  percent-encoded too.
+- **Without the sandbox** (`RUNNER_SANDBOX_SOCKET` unset: tests, the app's LocalExecutor, a
+  native runner host) the harness starts the same worker as a child process with an empty
+  environment.
+- **Checks:** `runner_tests/test_worker.py` (no secret in the worker's environment or memory,
+  with a negative control run by hand; logs; a worker that dies or lies; paths; mistakes that
+  fail one record), `test_sandbox.py` (the supervisor as an ordinary user: runs, the exit code,
+  a stopped run ends its worker), and `deploy/smoke.sh --sandbox` in Docker: a uid of its own, no
+  key or credential in the environment or `/proc`, no address, a service call through the
+  runner, a run beside it out of reach, a memory-hog run that fails without harm to the next.
