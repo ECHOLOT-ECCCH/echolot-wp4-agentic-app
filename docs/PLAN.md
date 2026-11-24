@@ -61,11 +61,11 @@ chat, persistence and approval code being lifted, and are worth reading before t
   in, and M5.4 (`service_call`, single requests on a card) is built; next: M5.3's acceptance, a
   session with a real model in the app.
 - M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
-  (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 (the runner's
-  network) is built and passes the smoke check; its check on the server waits for deployment.
-  M6.2 (limits on the runner's container) and M6.3 (the run timeout) are done. Next: deploying
-  M6.1 to M6.3 to echolot.ijs.si (with the owner's go-ahead), then M6.4.
-- Last update: 2026-11-23.
+  (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
+  deployed to echolot.ijs.si (2026-11-24, `6a74095`). M6.2 (limits on the runner's container)
+  and M6.3 (the run timeout) are done; M6.1 (the runner's network) is done but for the host's
+  ufw rule for the bridge, which the owner adds with sudo. Next: M6.4, design first.
+- Last update: 2026-11-24.
 
 Update this block at the end of every task.
 
@@ -741,16 +741,18 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   Acceptance: the smoke check runs a script that tries to reach the internet and gets no
   connection, besides the normal run; on the server, a script reaches ECHOLOT through
   `ctx.service` and neither the internet, the IJS network nor the host's ssh. (Built
-  2026-11-23: the smoke check passes, the probe finds no route out; the server's part is open
-  until it is deployed, with ECHOLOT added to `runs` in `/etc/echolot`.)
+  2026-11-23: the smoke check passes, the probe finds no route out. Deployed 2026-11-24 with
+  ECHOLOT added to `runs` in `/etc/echolot`: a script reaches ECHOLOT, and neither the
+  internet, the IJS network nor the host's LAN address. The host's ssh and nginx still answer
+  on the bridge's address, 172.21.0.1, until the owner adds the ufw rule.)
 - [x] M6.2 Limits on the runner's container: memory (`RUNNER_MEMORY`, default 2g, no swap
   beyond it), CPUs (`RUNNER_CPUS`, 2), processes and threads (`RUNNER_PIDS`, 512), and a
   read-only root filesystem with `/tmp` and the home directory on size-capped tmpfs
   (`RUNNER_TMP_SIZE`, 1g; tmpfs counts towards the memory limit). A script that exhausts them
   fails its own run or is killed with it; the app, Prefect and the host carry on. Acceptance:
   the smoke check passes with the limits; a run whose script allocates without end ends failed
-  and the next run works. Done 2026-11-23; on the server, `RUNNER_CPUS` and `RUNNER_MEMORY` are
-  set to fit the host when it is deployed.
+  and the next run works. Done 2026-11-23; deployed 2026-11-24 with the defaults, which fit the
+  host (4 CPUs, 7 GB), and the same check passes there.
 - [x] M6.3 A run timeout in the app. The poller cancels, through the executor, a running run in
   which no record has finished for `ECHO_RUN_STALL_MINUTES` (default 30), or that has run for
   `ECHO_RUN_MAX_HOURS` (default 24; 0 for no limit). Prefect then kills the run's process, so
