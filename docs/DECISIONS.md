@@ -762,3 +762,64 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
 - **Why ssh stays open to all:** narrowing it to the VPN's and the frontend's ranges risks a
   lock-out for little gain inside the institute; the owner can narrow it later.
 - deploy/README.md now says to check `ufw status` and to allow ssh before turning ufw on.
+
+## 2026-11-24 M6.4 design: scripts in a container of their own (proposed, for the owner)
+
+- **Today:** the harness loads the script with `exec` into its own process. Everything the run
+  holds is a line of Python away: the run's token and URLs, the HTTP client, the service keys
+  (in each `ServiceClient`'s headers) and the Prefect credentials (in the environment, and with
+  them every run's parameters on the Prefect server).
+- **Why not the planned child process in the runner's container.** Checked on echolot.ijs.si
+  (2026-11-24, variable names only): every process there runs as uid 10001 and reads every
+  other's `/proc/<pid>/environ`: Prefect's serve (pid 1), Prefect's multiprocessing resource
+  tracker and each flow-run process carry `ECHOLOT_API_KEY` and `PREFECT_API_AUTH_STRING`. A
+  child with an empty environment still reads its parents'. Making each of them non-dumpable
+  would close `/proc`, but Prefect starts helpers we do not control, and a flow-run process
+  needs the Prefect credentials to report its state. The same uid also reads other runs' files
+  in `/tmp` (a run killed for memory left its input there) and signals every process.
+- **The design.** A second container, `sandbox`, runs the scripts; the runner keeps all that is
+  secret and makes the service calls.
+  - The sandbox has no network at all (`network_mode: none`), no env file, a read-only
+    filesystem with a size-capped `/tmp`, and limits of its own (most of the runner's memory
+    moves there). A script cannot open a connection: PLAN 7.1's rule, until now only in the
+    agent's prompt, is enforced.
+  - Its supervisor (`python -m echolot_runner.sandbox`) starts as root with only `CAP_SETUID`,
+    `CAP_SETGID` and `CAP_KILL` (`cap_drop: [ALL]`, `no-new-privileges`). It listens on a Unix
+    socket in a root-owned tmpfs volume, so a script cannot replace the socket, and for each
+    connection starts a worker under a uid of its own: a fresh one per run from a range, not
+    reused before the container restarts. It reads nothing from the connection; the worker
+    talks to the harness directly.
+  - The worker (`python -m echolot_runner.worker`) has an empty environment, makes itself
+    non-dumpable, loads the script and runs `setup` and `process` on its thread pool as the
+    harness does now. `ctx.service(name).get/post` sends the request over the connection and
+    waits for the reply (or `ServiceError`); `ctx.log` and `ctx.params` as now. It receives the
+    script, `script_params`, the service names and the records, never the token, URLs or keys.
+  - The harness, in the runner, connects to the socket (mounted read-only), streams the records,
+    writes the results and posts progress as now, and makes the service calls with
+    `ServiceClient`, so keys, retries and concurrency limits stay where they are. It treats what
+    the worker sends as untrusted: a service of the run, GET or POST, a path under the service's
+    base URL, a size cap per message, only rows it sent.
+  - When the connection ends (the run is done or cancelled, the M6.3 timeout, the flow-run
+    process killed), the supervisor kills every process of that uid. When the worker dies (out
+    of memory in the sandbox), the harness fails the run with that reason; the runner and other
+    runs carry on.
+- **What it gives:** a script finds no secret or token in its container, reaches no address,
+  sees neither the runner's processes nor its files, and cannot read, signal or leave files for
+  another run (another uid; the worker is non-dumpable).
+- **What stays:** a script calls the run's services as the user approved; a runaway script can
+  slow the other runs' scripts within the sandbox's limits, not the runner or the host; a kernel
+  flaw stays the way out of any container.
+- **Without Docker** (a native runner host, the LocalExecutor in dev and tests) the harness
+  starts the worker as a child process with an empty environment over a socket pair: the same
+  protocol and code, but the same uid, so it stops only careless access. Those set-ups are for
+  trusted users, as now.
+- **Contracts:** 7.1 unchanged for scripts except that the network rule is enforced; 7.2 to 7.4
+  unchanged; the worker protocol is internal to the runner package (documented in `worker.py`).
+- **With it:** `no-new-privileges` and `cap_drop: [ALL]` on the runner too (from M6.5), since its
+  Compose service changes anyway.
+- **Cost:** worker and supervisor about 250 lines, the harness's side about 150, Compose, tests
+  in the child-process mode, smoke probes; about two days. Messaging adds well under a
+  millisecond per record and per call, against service calls of 100 ms and more.
+- **Considered:** one uid for all workers (no capabilities after binding the socket), simpler but
+  concurrent runs could signal each other and read what the other leaves in `/tmp`; a container
+  per run, which needs the Docker socket (DECISIONS 2026-11-23).

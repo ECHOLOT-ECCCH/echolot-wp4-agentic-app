@@ -63,7 +63,8 @@ chat, persistence and approval code being lifted, and are worth reading before t
 - M6 (running scripts safely on a shared host) is planned on the branch `feat/runner-hardening`
   (off `feat/wikidata-statements`): section 12g, DECISIONS 2026-11-23. M6.1 to M6.3 are
   deployed to echolot.ijs.si (2026-11-24, `6a74095`) and done, with the host's firewall on
-  (DECISIONS 2026-11-24). Next: M6.4, design first.
+  (DECISIONS 2026-11-24). Next: M6.4, whose design (a sandbox container for scripts,
+  DECISIONS 2026-11-24) waits for the owner's go-ahead.
 - Last update: 2026-11-24.
 
 Update this block at the end of every task.
@@ -760,10 +761,17 @@ the reasons and what stays open are in DECISIONS 2026-11-23. On the branch
   workspace block names both limits, so it plans full runs to fit. Acceptance: tests
   with the local executor for both limits, a run that keeps finishing records, and a cancel
   that fails (tried again on the next pass). Done 2026-11-23 (`test_run_limits.py`).
-- [ ] M6.4 Scripts without the runner's secrets. The script runs in a child process with an
-  empty environment; the runner's process keeps the Prefect credentials and the service keys,
-  makes the service requests for it over a pipe (`ctx.service` unchanged for scripts) and
-  cannot be read by the child. Design in DECISIONS before building it.
+- [ ] M6.4 Scripts in a container of their own (design: DECISIONS 2026-11-24, proposed). A
+  `sandbox` container with no network and no secrets runs each run's script in a worker under a
+  uid of its own; the runner keeps the token, the keys and the Prefect credentials, and makes
+  the service calls the worker asks for over a Unix socket (`ctx.service` unchanged for
+  scripts). Without Docker the worker is a child process with an empty environment. Acceptance:
+  the smoke check runs a script that finds no key, token or Prefect credential in its
+  environment, `/proc` or files, reaches no address (the internet, the app, Prefect, ECHOLOT
+  directly), cannot read or signal a run going on beside it, and a script that exhausts the
+  memory fails its run while the next run works; tests for records, service calls and
+  `ServiceError`, `ctx.log`, a failing `setup`, a worker that dies or sends garbage, and a call
+  outside the run's services or a service's base URL.
 - [ ] M6.5 Small fixes: ECHOLOT's image runs as a user, not root (its repository); the API
   documentation pages are off in production (the app's `/api/docs` and ECHOLOT's `/docs`).
 
