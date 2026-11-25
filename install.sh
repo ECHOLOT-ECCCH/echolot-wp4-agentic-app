@@ -153,8 +153,15 @@ fi
 
 # --- build and start
 
-say "Building and starting the containers (the first time takes several minutes)..."
-compose up -d --build --wait --wait-timeout 300 --remove-orphans ||
+say "Building the images (the first time takes several minutes)..."
+if ! compose build; then
+  say "That did not work, most often because a download was interrupted. Trying once more..."
+  compose build || fail "The images were not built; the reason is above. Run ./install.sh again: it
+continues with what is already there."
+fi
+
+say "Starting the containers..."
+compose up -d --wait --wait-timeout 300 --remove-orphans ||
   fail "The containers did not all start. What they say: ./install.sh compose logs --tail 50
 If a port is taken, change HTTP_PORT or PREFECT_PORT in deploy/local/workbench.env and run ./install.sh again."
 

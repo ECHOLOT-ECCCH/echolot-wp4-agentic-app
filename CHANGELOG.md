@@ -23,7 +23,8 @@ The host keeps the same log, with the exact commits checked out, in `/opt/echolo
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-24 | **Local install with one command (M4.4):** `./install.sh` builds and starts the whole stack on one computer, ECHOLOT's API included, on http://localhost:8080 for that computer only; it makes the settings and keys (`deploy/local/`, never overwritten), fetches the ULAN table so that `rule_based` needs no key, creates the first account and checks that runs and ECHOLOT work | `install.sh`, `deploy/docker-compose.echolot.yml`, `README.md`, `deploy/README.md`, `docs/PLAN.md`, `docs/DECISIONS.md` |
+| (this commit) | 2026-11-25 | The local install builds the images first, tries a failed build once more (a download timed out in the first run on Linux) and says why it stopped; the README lists the keys a user adds and where; M4.4 checked on Linux and done | `install.sh`, `README.md`, `docs/PLAN.md` |
+| `f62ae7e` | 2026-11-24 | **Local install with one command (M4.4):** `./install.sh` builds and starts the whole stack on one computer, ECHOLOT's API included, on http://localhost:8080 for that computer only; it makes the settings and keys (`deploy/local/`, never overwritten), fetches the ULAN table so that `rule_based` needs no key, creates the first account and checks that runs and ECHOLOT work | `install.sh`, `deploy/docker-compose.echolot.yml`, `README.md`, `deploy/README.md`, `docs/PLAN.md`, `docs/DECISIONS.md` |
 
 ## `main` after the merge of 2026-11-24
 

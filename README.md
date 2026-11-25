@@ -43,11 +43,25 @@ The first time takes several minutes. It starts the app, a Prefect server, the r
 sandbox and ECHOLOT's reconciliation API, checks that they work together, and prints the address
 (http://localhost:8080, reachable from this computer only) and the first account's password.
 
-- **The agent needs a model key:** after signing in, add one under Settings → Model keys.
-- **Reconciliation** works at once for people (`rule_based`, against Getty ULAN). `wikifier` and
-  `llm_based` need a key each: put them in `deploy/local/echolot.env`, run `./install.sh` again.
-- **Update:** `git pull && ./install.sh`. **Stop:** `./install.sh compose stop`. **Remove:**
-  `./install.sh compose down` (with `-v`, the data too). More: `./install.sh --help`.
+**Update:** `git pull && ./install.sh`. **Stop:** `./install.sh compose stop`. **Remove:**
+`./install.sh compose down` (with `-v`, the data too). More: `./install.sh --help`.
+
+### Keys you add
+
+Installing asks for none: the script makes the app's own secrets. Add these afterwards:
+
+| Key | What for | Where |
+|---|---|---|
+| A model key, from Anthropic, OpenAI, Google, Mistral, OpenRouter or DeepSeek | The agent. **Required** to chat with it | In the app: Settings → Model keys |
+| [Wikifier](https://wikifier.org/register.html) key | `wikifier`, ECHOLOT's default algorithm. Optional | `WIKIFIER_API_KEY` in `deploy/local/echolot.env` |
+| [HiTZ](https://zerbitzuak.hitz.eus/tresnak) key (Profile, Generate new API Key) | `llm_based`. Optional | `HITZ_API_KEY` in `deploy/local/echolot.env` |
+
+After changing `echolot.env`, run `./install.sh` again. An algorithm without its key answers "not
+configured". Without either key, ask the agent to use `rule_based`: it needs no key, matches people
+only, and uses the Getty ULAN table the script downloads. Wikidata lookups need no key either.
+
+`deploy/local/` holds the keys and passwords in plain text: git ignores it, so keep it to
+yourself.
 
 ## Development: requirements
 

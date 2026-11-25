@@ -691,12 +691,15 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
   - [ ] Acceptance: `deploy/smoke.sh` green in CI; on the owner's host, https in front, the
     first admin created, `check-runs` green against the external Prefect server, a tester signs
     in with a key of their own and completes the loop with ECHOLOT through the runner.
-- [ ] M4.4 A local install with one command (owner, 2026-11-24): `./install.sh` on a fresh clone
+- [x] M4.4 A local install with one command (owner, 2026-11-24): `./install.sh` on a fresh clone
   runs the whole stack on one computer, ECHOLOT's API included, for the people who use that
   computer (DECISIONS 2026-11-24). Acceptance: on macOS and on Linux from zero, the command ends
   with an address and an account; signing in works, a run reconciles names through the runner,
   the sandbox and ECHOLOT without any key, and a second run of the command changes nothing.
-  Met on macOS (2026-11-24, Docker Desktop); Linux from zero is still to be checked.
+  Met on macOS (2026-11-24, Docker Desktop) and on Linux (2026-11-25, Docker 27 on arm64, an
+  ordinary user, in a container). There the first attempt stopped when a download of ECHOLOT's
+  packages timed out and a second run finished; since then the script builds first, tries a
+  failed build once more and says why it stopped.
 
 ## 12f. Milestone 5: Enrichment from Wikidata (checklist)
 
