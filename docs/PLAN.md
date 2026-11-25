@@ -45,9 +45,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
   90 of 199 well-known (mostly Basque) people, e.g. Eduardo Chillida (DECISIONS 2026-10-27, M2.3).
   CI has not run yet (nothing pushed).
 - Open questions for the owner (do not block M0 and M1 on them):
-  - The external Prefect server's address, its auth (basic or an API key) and its Prefect
-    version (ECHOLOT pins `prefect>=3.7.5.dev5`, a dev build); where the runner runs (next to
-    ECHOLOT, or in the app's stack). Needed for M4.3.
+  - Full runs at ACDH (owner, 2026-11-24): a full run over a whole dataset goes to ACDH's
+    Prefect (3.7.7, OeAW's Kubernetes) through GitHub repositories. Everything else stays in
+    the app. The design is to settle with ACDH (DECISIONS 2026-11-24) and becomes milestone 7
+    when agreed.
   - Whether the runner host can reach the app over HTTP (section 7.3). Needed for M2.
   - A real export of entities from ehkultura.wikibase.cloud for M3 (CSV or JSONL).
 - ECHOLOT has three reconciliation algorithms (`?algorithm=wikifier|llm_based|rule_based`,

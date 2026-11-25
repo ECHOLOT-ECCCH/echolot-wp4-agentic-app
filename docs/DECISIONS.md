@@ -865,6 +865,64 @@ contract for dashboards; this app follows it in four places. Prefect is left as 
   `feat/hardening` of its repository); it writes only to `/tmp`, and the mounted ULAN table is
   world-readable on the server.
 
+## 2026-11-24 Full runs on ACDH's Prefect, through GitHub repositories (direction)
+
+The owner: a full run over a whole dataset goes to the partner's Prefect at ACDH (OeAW).
+Everything else stays in the app, with its own Prefect and runner:
+- designing the script with the agent;
+- runs on samples;
+- the agent's single service calls.
+
+The one firm requirement from the partner so far is that the work goes through GitHub
+repositories. Their initial proposal is https://github.com/ECHOLOT-ECCCH/echolot-WP4-prefect-flows
+(Matthias Schlögl, July 2026):
+- **Server and compute:** Prefect 3.7.7 with basic auth. Flows run as pods on OeAW's Kubernetes
+  cluster, work pool `acdh cluster workpool`.
+- **Deploying:** a push to the flows repository's `main` deploys them (`prefect deploy --all` in
+  GitHub Actions). Each pod clones that repository and installs its requirements.
+- **Secrets:** Prefect Secret blocks, named in the flows' parameters.
+- **Data moves through git.** The pipeline clones a data repository (`ECHOLOT-ECCCH/edm2hdto` in
+  its `prefect.yaml`), converts the records with X3ML, pushes the RDF to a branch of its own and
+  registers digital twins in ECCCH.
+- **Reconciliation** is only a sketch, on the unmerged branch `ms/reconcile-dataset-flow`: Wikifier
+  only, with the entities inline as a parameter.
+
+What follows for us:
+- **Scripts are reviewed before they run there.** A workbench script is new code for each
+  dataset, and our sandbox is not part of their set-up, so the review in git is the gate: the
+  approved script goes to a repository as a pull request, someone merges it, and the full run
+  runs that exact commit.
+- **Proposal, to settle with ACDH:**
+  1. The workbench commits to a data repository, on a branch, and opens a pull request. The
+     repository is made once, by hand (for example `ECHOLOT-ECCCH/workbench-runs`, private),
+     with a folder per workspace. It is the only repository the app may write to. Each
+     folder holds:
+     - the script;
+     - `run.yaml`: the script, the input, the services and `script_params`, with secrets by
+       name only;
+     - the input: the whole dataset, as uploaded to the workbench.
+  2. After the merge, the app starts the run on ACDH's Prefect with the repository, the merged
+     commit and the paths. This is a second `PrefectExecutor`. It needs no run token, since the
+     data is in git.
+  3. One generic flow on their side, added once with one entry in their `prefect.yaml`:
+     - clones the repository at that commit;
+     - runs the script with our harness, reading and writing files;
+     - takes the service keys from their Secret blocks;
+     - commits the results to a branch `workbench/<run>`.
+  4. The app follows the run's state and reads the results from that branch for the run
+     review.
+- **In the runner:** a file mode for the harness (input and results as files, no app URLs). The
+  contracts in PLAN 7 stay as they are for runs in the app.
+- **Open:**
+  - who reviews and merges;
+  - datasets that already have a data repository of their own (like `edm2hdto`): read from
+    it instead of copying;
+  - the app's GitHub credential for private repositories (a GitHub App or a fine-grained
+    token), held only by the app;
+  - files over GitHub's 100 MB limit (git-lfs, which their pods install);
+  - where ECHOLOT's API runs for full runs;
+  - whether results come back to the app, or the pipeline goes on to the wiki or ECCCH.
+
 ## 2026-11-24 A local install with one command (M4.4)
 
 The owner: a local install with a script. Until now a newcomer had to clone ECHOLOT's repository
