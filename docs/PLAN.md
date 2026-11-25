@@ -71,9 +71,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
 - 2026-11-24: `feat/users-and-byok` (pzajec, who agreed), `feat/wikidata-statements` and
   `feat/runner-hardening` merged into `main`; ECHOLOT's `llm-and-rule-based`,
   `feat/wikidata-statements` and `feat/hardening` into its `main`. New work branches off `main`.
-- M4.4 (a local install with one command, `./install.sh`) is built on the branch
-  `feat/local-install` (2026-11-24). A one-command server install was left out (owner).
-- Last update: 2026-11-24.
+- M4.4 (a local install with one command, `./install.sh`) is done and merged into `main`
+  (2026-11-25, `feat/local-install`). A one-command server install was left out (owner).
+- Last update: 2026-11-25.
 
 Update this block at the end of every task.
 

@@ -19,11 +19,12 @@ its own changelog.
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
 
-## Branch `feat/local-install` (off `main`, not merged)
+## Branch `feat/local-install` (merged into `main` on 2026-11-25)
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-25 | Full runs at ACDH through GitHub repositories: the owner's direction, a proposal to settle with ACDH, and what is open | `docs/DECISIONS.md`, `docs/PLAN.md` |
+| (this commit) | 2026-11-25 | The branch marked as merged into `main`, and the hashes filled in | `CHANGELOG.md`, `docs/PLAN.md` |
+| `2f4ca6a` | 2026-11-25 | Full runs at ACDH through GitHub repositories: the owner's direction, a proposal to settle with ACDH, and what is open | `docs/DECISIONS.md`, `docs/PLAN.md` |
 | `0c0c94e` | 2026-11-25 | The local install builds the images first, tries a failed build once more (a download timed out in the first run on Linux) and says why it stopped; the README lists the keys a user adds and where; M4.4 checked on Linux and done | `install.sh`, `README.md`, `docs/PLAN.md` |
 | `f62ae7e` | 2026-11-24 | **Local install with one command (M4.4):** `./install.sh` builds and starts the whole stack on one computer, ECHOLOT's API included, on http://localhost:8080 for that computer only; it makes the settings and keys (`deploy/local/`, never overwritten), fetches the ULAN table so that `rule_based` needs no key, creates the first account and checks that runs and ECHOLOT work | `install.sh`, `deploy/docker-compose.echolot.yml`, `README.md`, `deploy/README.md`, `docs/PLAN.md`, `docs/DECISIONS.md` |
 
@@ -33,7 +34,7 @@ New work branches off `main` and is merged back into it.
 
 | Commit | Date | What it adds | Where |
 |---|---|---|---|
-| (this commit) | 2026-11-24 | The deployment of `33c8cca` recorded | `CHANGELOG.md`, `docs/PLAN.md` |
+| `e4f379e` | 2026-11-24 | The deployment of `33c8cca` recorded | `CHANGELOG.md`, `docs/PLAN.md` |
 | `33c8cca` | 2026-11-24 | The merge of `feat/runner-hardening`, and with it `feat/wikidata-statements` and `feat/users-and-byok` (pzajec agreed) | |
 
 ## Branch `feat/runner-hardening` (merged into `main` on 2026-11-24; built on `feat/wikidata-statements`)
