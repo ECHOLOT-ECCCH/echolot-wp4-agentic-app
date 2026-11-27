@@ -113,6 +113,67 @@ describe('SettingsPage', () => {
   })
 })
 
+describe('SettingsPage requests for an account', () => {
+  const request = (id: string, status: 'pending' | 'unconfirmed', email: string) => ({
+    ...me(false),
+    id,
+    email,
+    name: email.split('@')[0],
+    is_active: false,
+    last_login_at: null,
+    status,
+    organisation: 'Example Institute',
+    purpose: 'Reconcile our archive.',
+    email_confirmed_at: status === 'pending' ? '2026-11-26T09:00:00Z' : null,
+    approved_at: null,
+  })
+
+  it('shows the waiting requests first and approves or rejects them', async () => {
+    window.history.replaceState(null, '', '/settings?tab=users')
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    )
+    const { calls } = mockApi([
+      { path: '/api/me/model', body: serverChoice },
+      { path: '/api/me', body: { ...me(true), status: 'approved' } },
+      { path: '/api/vendors', body: [] },
+      {
+        path: '/api/admin/users',
+        body: [
+          { ...me(true), status: 'approved' },
+          request('u2', 'pending', 'maja@example.org'),
+          request('u3', 'unconfirmed', 'bot@example.org'),
+        ],
+      },
+      { method: 'POST', path: '/api/admin/users/u2/approve', body: {} },
+      { method: 'POST', path: '/api/admin/users/u3/reject', status: 204, body: null },
+    ])
+    renderWithProviders(<SettingsPage />)
+    // ?tab=users opens the users at once, with the count of waiting requests on the tab
+    expect(await screen.findByLabelText('1 waiting for approval')).toBeInTheDocument()
+    const section = (await screen.findByRole('heading', { name: 'Requests for an account' }))
+      .parentElement!
+    expect(
+      within(section).getByText('Reconcile our archive.', { selector: 'p' }),
+    ).toBeInTheDocument()
+    // requests are not in the accounts table
+    expect(screen.getByRole('table')).not.toHaveTextContent('maja@example.org')
+
+    fireEvent.click(within(section).getByRole('button', { name: 'Approve' }))
+    await waitFor(() =>
+      expect(calls.some((c) => c.url === '/api/admin/users/u2/approve')).toBe(true),
+    )
+    fireEvent.click(
+      within(section).getByRole('button', { name: 'Delete the request of bot@example.org' }),
+    )
+    await waitFor(() =>
+      expect(calls.some((c) => c.url === '/api/admin/users/u3/reject')).toBe(true),
+    )
+    window.history.replaceState(null, '', '/')
+  })
+})
+
 describe('ModelPicker', () => {
   it('chooses a model of a vendor the user has a key for', async () => {
     const { calls } = mockApi([

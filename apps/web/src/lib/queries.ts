@@ -14,6 +14,8 @@ import type {
   ModelChoice,
   ModelListing,
   ProbeResult,
+  RegisterForm,
+  RegistrationInfo,
   User,
   UserWithPassword,
   Vendor,
@@ -29,6 +31,7 @@ import type {
 
 export const keys = {
   me: ['me'] as const,
+  registration: ['registration'] as const,
   users: ['admin', 'users'] as const,
   vendors: ['vendors'] as const,
   vendorModels: (provider: string) => ['vendors', provider, 'models'] as const,
@@ -399,6 +402,49 @@ export function useResetPassword() {
   return useMutation({
     mutationFn: (userId: string) =>
       api<UserWithPassword>(`/api/admin/users/${userId}/reset-password`, { method: 'POST' }),
+  })
+}
+
+// --- requests for an account (docs/PLAN.md 7.12) ----------------------------------------------
+
+export function useRegistrationInfo() {
+  return useQuery({
+    queryKey: keys.registration,
+    queryFn: () => api<RegistrationInfo>('/api/auth/registration'),
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useRegister() {
+  return useMutation({
+    mutationFn: (body: RegisterForm) =>
+      api<{ status: 'check_email' }>('/api/auth/register', { method: 'POST', json: body }),
+  })
+}
+
+export function useConfirmEmail() {
+  return useMutation({
+    mutationFn: (token: string) =>
+      api<{ status: 'pending' }>('/api/auth/confirm-email', { method: 'POST', json: { token } }),
+  })
+}
+
+export function useApproveRequest() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api<User>(`/api/admin/users/${userId}/approve`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.users }),
+  })
+}
+
+export function useRejectRequest() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) =>
+      api<void>(`/api/admin/users/${userId}/reject`, { method: 'POST' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.users }),
   })
 }
 

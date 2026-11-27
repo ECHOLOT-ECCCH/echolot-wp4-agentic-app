@@ -131,8 +131,17 @@ class AgentRunStatus(StrEnum):
 # --- tables ------------------------------------------------------------------------------------
 
 
+class UserStatus(StrEnum):
+    """Where an account stands (docs/PLAN.md 7.12). An admin's accounts start approved."""
+
+    UNCONFIRMED = "unconfirmed"  # requested; the e-mail address is not confirmed yet
+    PENDING = "pending"  # the address is confirmed; waiting for an admin
+    APPROVED = "approved"  # may sign in (unless disabled)
+
+
 class User(IdMixin, TimestampMixin, Base):
-    """A person who can sign in (docs/PLAN.md 7.11). Accounts are made by an admin."""
+    """A person who can sign in (docs/PLAN.md 7.11). An admin makes the account, or approves
+    the person's own request for one (7.12)."""
 
     __tablename__ = "users"
 
@@ -144,6 +153,26 @@ class User(IdMixin, TimestampMixin, Base):
     # the model the agent uses for this user: {"provider", "model_id"}; empty = server default
     model: Mapped[dict[str, Any]] = mapped_column(default=dict)
     last_login_at: Mapped[datetime | None] = mapped_column()
+    # a request for an account (7.12): its state, and what the person told the reviewer
+    status: Mapped[str] = mapped_column(
+        String(16), default=UserStatus.APPROVED, server_default=UserStatus.APPROVED.value
+    )
+    organisation: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    purpose: Mapped[str] = mapped_column(Text, default="", server_default="")
+    email_confirmed_at: Mapped[datetime | None] = mapped_column()
+    approved_at: Mapped[datetime | None] = mapped_column()
+
+
+class EmailToken(CreatedAtMixin, Base):
+    """A link sent by e-mail, such as the one that confirms an address (7.12). Only the token's
+    SHA-256 is stored."""
+
+    __tablename__ = "email_tokens"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[uuid.UUID] = _fk("users.id")
+    purpose: Mapped[str] = mapped_column(String(16))
+    expires_at: Mapped[datetime] = mapped_column()
 
 
 class UserSession(CreatedAtMixin, Base):
@@ -305,20 +334,28 @@ def _sqlite_pragmas(dbapi_connection: Any, _record: Any) -> None:
 
 # Columns added to existing tables after their first release. ``create_all`` makes new tables
 # but never alters old ones, and there is no Alembic yet (PLAN section 3): each entry is added
-# with ALTER TABLE when a database from before it lacks it. Append only.
-_ADDED_COLUMNS: list[tuple[str, str, str]] = [
-    ("workspaces", "owner_id", "CHAR(32) REFERENCES users (id) ON DELETE CASCADE"),
+# with ALTER TABLE when a database from before it lacks it, and indexed when the last item says
+# so. Append only.
+_ADDED_COLUMNS: list[tuple[str, str, str, bool]] = [
+    ("workspaces", "owner_id", "CHAR(32) REFERENCES users (id) ON DELETE CASCADE", True),
+    # self-registration (7.12): accounts from before it are approved
+    ("users", "status", "VARCHAR(16) NOT NULL DEFAULT 'approved'", False),
+    ("users", "organisation", "VARCHAR(200) NOT NULL DEFAULT ''", False),
+    ("users", "purpose", "TEXT NOT NULL DEFAULT ''", False),
+    ("users", "email_confirmed_at", "DATETIME", False),
+    ("users", "approved_at", "DATETIME", False),
 ]
 
 
 def _add_missing_columns(connection: Any) -> None:
-    for table, column, ddl in _ADDED_COLUMNS:
+    for table, column, ddl, indexed in _ADDED_COLUMNS:
         present = {row[1] for row in connection.exec_driver_sql(f"PRAGMA table_info({table})")}
         if column not in present:
             connection.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
-            connection.exec_driver_sql(
-                f"CREATE INDEX IF NOT EXISTS ix_{table}_{column} ON {table} ({column})"
-            )
+            if indexed:
+                connection.exec_driver_sql(
+                    f"CREATE INDEX IF NOT EXISTS ix_{table}_{column} ON {table} ({column})"
+                )
 
 
 class Database:

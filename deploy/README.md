@@ -51,7 +51,8 @@ docker compose exec app echolot-admin check-runs
 
 `create-user` prints a temporary password. Sign in at `https://<SITE_ADDRESS>`, change it
 under Settings → Account, and add the testers under Settings → Users: each new account gets a
-temporary password, shown once, that you hand over privately. There is no sign-up and no e-mail.
+temporary password, shown once, that you hand over privately. People can also ask for an
+account themselves (next section).
 
 `check-runs` shows where runs go and whether the Prefect server answers, the runner's
 deployment (`run-script/default`) exists and a runner polls it:
@@ -63,6 +64,32 @@ ok    the deployment run-script/default exists
 ok    a runner polls it (last at 2026-11-09T10:00:02Z)
 note  the runner fetches input and sends results to https://workbench.example.org (ECHO_PUBLIC_URL)
 ```
+
+## Requests for an account
+
+Off by default. With it on, the sign-in page offers "Request an account": the person enters a
+name, organisation, e-mail address, what they will use the workbench for, and a password; they
+confirm the address with a link sent to it (valid 24 hours), and every admin gets an e-mail. An
+admin approves or rejects the request under Settings → Users (or `echolot-admin approve-user`,
+`reject-user`), and the person is told by e-mail. Rejected requests are deleted, and so are
+unconfirmed ones after two days. The form answers the same for every address, so it does not
+reveal who has an account.
+
+It needs an SMTP server the app container can reach. In `.env`:
+
+```bash
+ECHO_ALLOW_REGISTRATION=true
+ECHO_REGISTRATION_REVIEWER=An administrator at Example Institute
+ECHO_SITE_URL=https://workbench.example.org
+ECHO_MAIL_BACKEND=smtp
+ECHO_MAIL_FROM=ECHOLOT Workbench <noreply@example.org>
+ECHO_SMTP_HOST=smtp.example.org      # ECHO_SMTP_PORT=587, ECHO_SMTP_SECURITY=starttls
+ECHO_SMTP_USERNAME=...               # if the server wants a login
+ECHO_SMTP_PASSWORD=...
+```
+
+Then `docker compose up -d` and `docker compose exec app echolot-admin send-test-mail
+you@example.org`. The app refuses to start with registration on and no mail backend.
 
 ## Models
 
@@ -239,7 +266,8 @@ for a plain-http trial from another machine (http://localhost works with it on).
 |---|---|
 | Logs (JSON lines for the app) | `docker compose logs -f app` (or `web`, `runner`, `prefect`) |
 | Update | `git pull && docker compose up -d --build` |
-| Accounts from the shell | `docker compose exec app echolot-admin --help` (create, reset, disable, list) |
+| Accounts from the shell | `docker compose exec app echolot-admin --help` (create, reset, disable, list, approve and reject requests) |
+| Mail does not arrive | `docker compose exec app echolot-admin send-test-mail you@example.org`; `docker compose logs app \| grep mail.` |
 | Runs fail to start | `docker compose exec app echolot-admin check-runs` |
 | Stop / start | `docker compose stop` / `docker compose up -d` |
 

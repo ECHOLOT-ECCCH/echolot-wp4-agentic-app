@@ -6,10 +6,11 @@ Move an item into docs/PLAN.md when it is scheduled. Elexifier's backlog is in `
 - Prefect Docker work pool so a script cannot read the runner host's environment or disk; a service gateway so keys are not in the script's process at all.
 - Object-store data plane (presigned GET/PUT URLs) for when the runner host cannot reach the app; the harness stays the same.
 - Single sign-on (the OIDC BFF from commit 98999b1) next to local accounts, for testers whose institution has an identity provider.
-- Password reset by e-mail and invitations by link, instead of an admin handing out temporary passwords.
+- Password reset by e-mail and invitations by link, instead of an admin handing out temporary passwords (the mail of PLAN 7.12 makes both possible).
 - Sharing a workspace with other users (read-only or editing); an admin view of everyone's workspaces.
 - Usage and cost per user and model from `agent_runs.usage`; spending limits on the server's own model.
 - Dataset-level scripts (`process_all(records, ctx)`) for deduplication and clustering.
 - A result cache keyed by service, request body and script hash, so re-runs do not repeat identical service calls.
 - XLSX input (openpyxl), Alembic migrations, conversation compaction, cost per turn.
 - Publish the three images to ghcr.io from CI (tags per branch and release), so a host pulls instead of building (`IMAGE_PREFIX`, `IMAGE_TAG` in deploy/.env are ready for it).
+- Requests for an account (PLAN 7.12): an allow-list of e-mail domains that need no approval, a reason in the rejection e-mail, an admin chosen as the reviewer instead of all of them; on echolot.ijs.si, a shared mailbox as the sender instead of a person's.

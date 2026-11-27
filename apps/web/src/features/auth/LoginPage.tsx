@@ -4,12 +4,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { safeNext } from '@/lib/api'
-import { useLogin } from '@/lib/queries'
+import { useLogin, useRegistrationInfo } from '@/lib/queries'
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const login = useLogin()
+  const registration = useRegistrationInfo()
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -66,9 +67,18 @@ export function LoginPage() {
         <Button type="submit" disabled={login.isPending || !email.trim() || !password}>
           {login.isPending ? 'Signing in…' : 'Sign in'}
         </Button>
-        <p className="text-muted-foreground text-xs">
-          No account yet? Ask the person who runs this workbench to create one for you.
-        </p>
+        {registration.data?.enabled ? (
+          <p className="text-muted-foreground text-xs">
+            No account yet?{' '}
+            <a href="/register" className="text-foreground underline underline-offset-2">
+              Request an account
+            </a>
+          </p>
+        ) : (
+          <p className="text-muted-foreground text-xs">
+            No account yet? Ask the person who runs this workbench to create one for you.
+          </p>
+        )}
       </form>
     </div>
   )

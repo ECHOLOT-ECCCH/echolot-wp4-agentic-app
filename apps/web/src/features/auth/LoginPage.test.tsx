@@ -21,6 +21,7 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'not it' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Wrong e-mail address or password')
-    expect(calls[0]?.body).toEqual({ email: 'ana@example.org', password: 'not it' })
+    const post = calls.find((c) => c.method === 'POST')
+    expect(post?.body).toEqual({ email: 'ana@example.org', password: 'not it' })
   })
 })

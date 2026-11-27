@@ -14,7 +14,8 @@ from echolot_app.auth import (
     find_user,
     set_password,
 )
-from echolot_app.deps import CurrentSettings, CurrentUser, DbSession, State
+from echolot_app.db import UserStatus
+from echolot_app.deps import CurrentSettings, CurrentUser, DbSession, State, client_address
 from echolot_app.schemas import LoginIn, PasswordChange, UserOut
 from echolot_app.settings import Settings
 
@@ -34,9 +35,13 @@ def _set_cookie(response: Response, token: str, settings: Settings) -> None:
     )
 
 
-def _client(request: Request) -> str:
-    # behind a proxy, uvicorn's --proxy-headers puts the forwarded address here
-    return request.client.host if request.client else "unknown"
+# the right password, but the request for the account is not through yet (docs/PLAN.md 7.12)
+_NOT_YET = {
+    UserStatus.UNCONFIRMED: "Confirm your e-mail address first: open the link in the e-mail we "
+    "sent you.",
+    UserStatus.PENDING: "Your request for an account is waiting for approval. You will get an "
+    "e-mail when it is approved.",
+}
 
 
 @router.post("/auth/login", response_model=UserOut)
@@ -44,7 +49,7 @@ async def login(
     body: LoginIn, request: Request, response: Response, db: DbSession, state: State
 ) -> UserOut:
     email = body.email.strip().lower()
-    keys = (f"email:{email}", f"ip:{_client(request)}")
+    keys = (f"email:{email}", f"ip:{client_address(request)}")
     limiter = state.login_limiter
     wait = limiter.retry_after(*keys)
     if wait:
@@ -55,6 +60,10 @@ async def login(
         )
     user = await find_user(db, email)
     ok = await check_password(body.password, user.password_hash if user else None)
+    if user is not None and ok and user.status in _NOT_YET:
+        # told only to someone who knows the password
+        limiter.succeeded(keys[0])
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _NOT_YET[UserStatus(user.status)])
     if user is None or not ok or not user.is_active:
         limiter.failed(*keys)
         log.info("auth.login_failed", client=keys[1])

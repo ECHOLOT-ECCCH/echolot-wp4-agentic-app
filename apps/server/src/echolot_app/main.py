@@ -21,6 +21,7 @@ from echolot_app.routers import (
     chat,
     files,
     models,
+    registration,
     runner_io,
     runs,
     scripts,
@@ -124,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(CsrfGuard)
 
     app.include_router(auth.router)
+    app.include_router(registration.router)
     app.include_router(admin.router)
     app.include_router(models.router)
     app.include_router(workspaces.router)

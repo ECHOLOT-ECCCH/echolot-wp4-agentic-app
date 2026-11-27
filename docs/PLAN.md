@@ -38,6 +38,9 @@ chat, persistence and approval code being lifted, and are worth reading before t
   (the owner's choice for this host) and ECHOLOT's API at /service/ (DECISIONS 2026-11-11);
   what M4.3 still lacks is a tester completing the loop with their own key, and the Wikifier
   and OpenRouter keys on the host.
+- M4.5, requests for an account with approval by an admin (owner, 2026-11-26), is built on the
+  branch `feat/registration` (section 12e, 7.12). Its acceptance needs an SMTP server for
+  echolot.ijs.si, the From address, and a deployment.
 - Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
   M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
@@ -380,9 +383,10 @@ model.
 ### 7.11 Accounts and model keys (2026-11-09)
 
 - **Accounts.** `users` (e-mail, stored lower-case and unique; name; scrypt password hash;
-  `is_admin`; `is_active`). No sign-up: an admin creates accounts in Settings → Users or with
-  `echolot-admin create-user` (which also makes the first admin). A new account gets a
-  generated temporary password, shown once. Passwords have at least 12 characters.
+  `is_admin`; `is_active`). An admin creates accounts in Settings → Users or with
+  `echolot-admin create-user` (which also makes the first admin), or approves a person's own
+  request for one (7.12). A new account gets a generated temporary password, shown once.
+  Passwords have at least 12 characters.
 - **Sessions.** `POST /api/auth/login` sets the cookie `echolot_session` (HttpOnly,
   SameSite=Lax, Secure when `ECHO_PUBLIC_URL` is https or `ECHO_COOKIE_SECURE`); the database
   keeps only the token's SHA-256. A session ends after `ECHO_SESSION_DAYS` (14) without use, at
@@ -412,10 +416,54 @@ model.
   when the vendor cannot be asked, the suggested models come back with the reason. Any model id
   can be typed in.
 
+### 7.12 Requests for an account (2026-11-26)
+
+- **Off by default.** `ECHO_ALLOW_REGISTRATION` opens it, and needs a mail backend
+  (`ECHO_MAIL_BACKEND` `smtp` or `file`), or the settings refuse to load.
+  `GET /api/auth/registration` answers `{enabled, reviewer}` without a session; the sign-in
+  page then offers "Request an account" (`/register`).
+- **Asking.** `POST /api/auth/register` `{email, name, organisation, purpose, password,
+  website}`, without a session (with the CSRF header, like every unsafe request). It answers
+  202 `{"status": "check_email"}` whatever the address, and the password is hashed every time:
+  - a new address: a `users` row with `status=unconfirmed`, `is_active=false`, and a
+    confirmation link by e-mail;
+  - an unconfirmed address: a new link for the first request, which stays as it was (a second
+    request must not swap in another password for the owner of the address to confirm);
+  - a pending request or an account: an e-mail that says so.
+
+  `website` is hidden from people: filled in, nothing is recorded. Limits:
+  `ECHO_REGISTRATION_MAX_ATTEMPTS` (5) per address and per client in
+  `ECHO_REGISTRATION_WINDOW_S` (3600), then 429; at most `ECHO_REGISTRATION_MAX_PENDING` (50)
+  requests waiting, then 503. A name and an organisation are one line without control
+  characters or bidirectional overrides; the purpose has at most 2,000 characters.
+- **Confirming.** The link `{site}/confirm-email?token=…` is valid for 24 hours; `email_tokens`
+  keeps the token's SHA-256. The page confirms on a click, not on opening (mail systems open
+  links to check them): `POST /api/auth/confirm-email {token}` sets `status=pending` and
+  `email_confirmed_at`, and e-mails every active admin the request with a link to
+  `/settings?tab=users`. Unconfirmed requests are deleted after two days.
+- **Signing in** with the right password before approval answers 403 with what is missing; a
+  wrong password answers 401 as always. A session needs `status=approved`.
+- **Approving.** `POST /api/admin/users/{uid}/approve`, for a `pending` request only: approved,
+  active, `approved_at`, an e-mail to the person. `POST /api/admin/users/{uid}/reject` deletes a
+  request with what the person entered; a confirmed address is told, an unconfirmed one is not.
+  A request cannot be edited, reset or enabled (409). From the shell: `echolot-admin
+  approve-user|reject-user`, and `send-test-mail` to check the settings. Approved accounts are
+  plain users.
+- **Mail.** `smtp`: `ECHO_SMTP_HOST`, `ECHO_SMTP_PORT` (587), `ECHO_SMTP_SECURITY`
+  (`starttls`, `tls` or `none`), `ECHO_SMTP_USERNAME`, `ECHO_SMTP_PASSWORD`, `ECHO_MAIL_FROM`;
+  `file`: `.eml` files with mode 0600 in `<data_dir>/outbox`, for development and tests.
+  Plain text with `Auto-Submitted: auto-generated`, sent after the response. A failure is
+  logged with the subject and the recipient's domain, never the body. The texts name
+  `ECHO_REGISTRATION_REVIEWER` ("An administrator").
+- **Addresses.** Links use `ECHO_SITE_URL`; unset, `ECHO_PUBLIC_URL`, which in a Compose stack
+  may be the internal address the runner uses.
+
 ## 8. Data model (SQLite, UUID primary keys as text, timestamps everywhere)
 
-- `users` (email, name, password_hash, is_admin, is_active, model json, last_login_at),
-  `user_sessions` (token_hash primary key, user_id, expires_at, last_seen_at),
+- `users` (email, name, password_hash, is_admin, is_active, model json, last_login_at; for a
+  request (7.12) status unconfirmed|pending|approved, organisation, purpose,
+  email_confirmed_at, approved_at), `email_tokens` (token_hash primary key, user_id, purpose,
+  expires_at), `user_sessions` (token_hash primary key, user_id, expires_at, last_seen_at),
   `provider_keys` (user_id, provider, encrypted_key, key_hint, base_url, last_used_at); unique
   (user_id, provider)
 - `workspaces` (owner_id, name, description, task_md)
@@ -438,13 +486,16 @@ On disk under `ECHO_DATA_DIR`:
   object per line, row = line number) and `.records.idx.json` (byte offsets every 1,000 lines)
   next to it
 - `workspaces/{wid}/runs/{rid}/result.jsonl`
+- `outbox/*.eml` with `ECHO_MAIL_BACKEND=file` (7.12)
 
 ## 9. API routes
 
 - `GET /healthz`
 - Accounts (7.11): `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/me`,
   `POST /api/me/password`; admins: `GET/POST /api/admin/users`, `PATCH /api/admin/users/{uid}`,
-  `POST /api/admin/users/{uid}/reset-password`
+  `POST /api/admin/users/{uid}/reset-password`, `POST /api/admin/users/{uid}/approve|reject`
+- Requests for an account (7.12), without a session: `GET /api/auth/registration`,
+  `POST /api/auth/register`, `POST /api/auth/confirm-email`
 - Models (7.11): `GET /api/vendors`, `GET /api/vendors/{provider}/models`,
   `PUT/DELETE /api/me/keys/{provider}`, `POST /api/me/keys/{provider}/test`,
   `GET/PUT /api/me/model`
@@ -701,6 +752,18 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
   ordinary user, in a container). There the first attempt stopped when a download of ECHOLOT's
   packages timed out and a second run finished; since then the script builds first, tries a
   failed build once more and says why it stopped.
+- [ ] M4.5 Requests for an account (owner, 2026-11-26): people ask for an account on the sign-in
+  page, confirm their e-mail address, and an admin approves them (7.12, DECISIONS 2026-11-26).
+  - [x] Server: settings, mail (SMTP and files), `users` columns and `email_tokens`, the routes,
+    sign-in messages, approve and reject, `echolot-admin approve-user|reject-user|send-test-mail`.
+    Web: `/register`, `/confirm-email`, the link on the sign-in page, requests in Settings →
+    Users with a count on the tab. Tests: the whole way, the same answer for every address, a
+    second request, rejection, robots, limits, expiry, a failing mail server, an old database,
+    both mail backends, the command line; vitest for the pages; a Playwright test from the
+    request to signing in, with the link read from the outbox.
+  - [ ] Acceptance: on echolot.ijs.si with the institute's mail server, a person outside the
+    admins asks for an account, receives the link, an admin is e-mailed and approves, and the
+    person signs in.
 
 ## 12f. Milestone 5: Enrichment from Wikidata (checklist)
 

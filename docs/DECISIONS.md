@@ -949,3 +949,42 @@ internal network `runs`, cannot reach.
 - **No other tools:** POSIX sh, Docker with Compose, curl; not python3.
 - **Left out** (owner: just the local install): a one-command server install, images from a
   registry, the fix to `init.sh --with-prefect`, running the script in CI.
+
+## 2026-11-26 Requests for an account, approved by an admin (M4.5)
+
+The owner: people register themselves, and someone at IJS approves each account before it can
+sign in. Of three options (in the app only; e-mail notices; e-mail notices and a check that the
+address is the person's), the owner chose the last. Until now accounts were made only by an admin
+(2026-11-09, "no sign-up"); PLAN 7.11 and CLAUDE.md change with this entry, and 7.12 is the
+contract.
+
+- **The address check.** Without it an admin approves a name and an address that nobody has
+  shown to be theirs. The link proves that the person reads that mailbox, and the confirmation
+  is what tells the admins.
+- **Off by default, per server, and only with mail:** the local install and other deployments
+  keep accounts made by admins. The settings refuse registration without a mail backend.
+- **One answer for every address** ("check your inbox", 202), so the form does not tell who
+  has an account; the e-mail tells the owner of the address. The password is hashed every time,
+  so the timing does not tell either.
+- **The first request stands.** Asking again for an unconfirmed address sends its link again
+  and keeps the first password: otherwise someone could put in their own password and have the
+  owner of the address confirm it.
+- **Confirming takes a click** on the page the link opens, not the opening itself: mail systems
+  (Microsoft's Safe Links and the like) open links to check them.
+- **Rejected requests are deleted** with what the person entered, and unconfirmed ones after two
+  days; nothing about people who were not let in is kept. Only a confirmed address is told of a
+  rejection.
+- **All active admins are e-mailed** about a confirmed request and see a count on Settings →
+  Users; one named reviewer is a later choice (BACKLOG).
+- **Abuse:** limits per address and per client address, a hidden field for robots, at most 50
+  requests waiting. No CAPTCHA: it would put a third party in the page.
+- **Mail with the standard library** (smtplib in a thread), no new dependency. A file backend
+  writes `.eml` files for development and the Playwright test.
+- **`ECHO_SITE_URL`** for the links, because in a Compose stack `ECHO_PUBLIC_URL` is the address
+  the runner uses (`http://app:8000` with the bundled runner).
+- **Left out:** password reset by e-mail (now possible, BACKLOG), an allow-list of e-mail
+  domains, a reason in the rejection e-mail.
+- **On echolot.ijs.si (settled 2026-11-27):** mail goes through the institute's relay, which
+  takes an existing mailbox as the From address; the settings are on the host, not in this
+  repository. The reviewer is "An administrator at the Jožef Stefan Institute". A shared mailbox
+  for the From address would be better than a person's (BACKLOG).

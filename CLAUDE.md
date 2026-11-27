@@ -45,8 +45,11 @@ images, Caddy, an optional runner and Prefect server; deploy/README.md)
 - With the bundled Prefect (deploy/docker-compose.prefect.yml) the runner is only on the internal network `runs`:
   a service it calls joins `runs`; never give the runner a network with a route out (PLAN M6.1).
 - The app has no Prefect dependency; it talks to Prefect over REST. Prefect lives in runner/ only.
-- Every /api route except sign-in needs a session; every route under /api/workspaces/{id} checks ownership (PLAN 7.11).
-  Unsafe /api requests need the X-Echolot-Request header. Accounts are local, made by an admin; no sign-up.
+- Every /api route except sign-in and asking for an account (/api/auth/registration, register, confirm-email)
+  needs a session; every route under /api/workspaces/{id} checks ownership (PLAN 7.11).
+  Unsafe /api requests need the X-Echolot-Request header. Accounts are local: made by an admin, or asked for by the
+  person, who confirms their e-mail address, and approved by an admin (PLAN 7.12; off unless ECHO_ALLOW_REGISTRATION).
+  An approved request is a plain user. The registration answer never tells whether an address has an account.
 - Do not add Postgres, Redis, Celery, brokers, Procrastinate, Next.js or another agent framework.
 
 ## Git

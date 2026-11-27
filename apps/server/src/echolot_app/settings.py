@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,6 +54,33 @@ class Settings(BaseSettings):
     login_max_failures: int = 10
     login_window_s: int = 900
 
+    # Self-registration (docs/PLAN.md 7.12): people ask for an account, confirm their e-mail
+    # address, and an admin approves them. Off by default; needs a mail backend.
+    allow_registration: bool = False
+    # who reviews the requests, as the pages and e-mails put it ("... reviews each request")
+    registration_reviewer: str = "An administrator"
+    # requests waiting at once (unconfirmed or unapproved); beyond that, 503
+    registration_max_pending: int = 50
+    # requests per e-mail address and per client address in the window, then 429
+    registration_max_attempts: int = 5
+    registration_window_s: int = 3600
+    # the address people open in a browser, for links in e-mails; unset: public_url (which in
+    # a Compose stack may be an internal address only the runner uses)
+    site_url: str | None = None
+
+    # Mail (7.12): "smtp" sends through smtp_host; "file" writes each message as an .eml file to
+    # <data_dir>/outbox (development, tests); "none" sends nothing
+    mail_backend: Literal["none", "smtp", "file"] = "none"
+    # the From address, e.g. "ECHOLOT Workbench <noreply@example.org>"
+    mail_from: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    # "starttls" upgrades a plain connection (port 587), "tls" connects with TLS (port 465)
+    smtp_security: Literal["starttls", "tls", "none"] = "starttls"
+    smtp_username: str = ""
+    smtp_password: SecretStr | None = None
+    smtp_timeout_s: float = 20.0
+
     # Where runs execute (docs/PLAN.md 7.6) and the URL the runner uses to reach this app
     executor: Literal["local", "prefect"] = "local"
     public_url: str = "http://127.0.0.1:8000"
@@ -80,6 +107,21 @@ class Settings(BaseSettings):
     # the API's documentation pages, /api/docs and /api/openapi.json, which answer without a
     # session; on for development, off in the Compose deployment (docs/PLAN.md M6.5)
     api_docs: bool = True
+
+    @model_validator(mode="after")
+    def _registration_needs_mail(self) -> Settings:
+        if self.mail_backend == "smtp" and not (self.smtp_host and self.mail_from):
+            raise ValueError("ECHO_MAIL_BACKEND=smtp needs ECHO_SMTP_HOST and ECHO_MAIL_FROM")
+        if self.allow_registration and self.mail_backend == "none":
+            raise ValueError(
+                "ECHO_ALLOW_REGISTRATION needs mail to confirm addresses: set ECHO_MAIL_BACKEND"
+            )
+        return self
+
+    @property
+    def site_address(self) -> str:
+        """Where a browser reaches this app, without a trailing slash."""
+        return (self.site_url or self.public_url).rstrip("/")
 
     @property
     def database_url(self) -> str:

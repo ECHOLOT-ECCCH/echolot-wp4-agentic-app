@@ -1,13 +1,15 @@
-"""User accounts, managed by admins (docs/PLAN.md 7.11). There is no self sign-up."""
+"""User accounts, managed by admins (docs/PLAN.md 7.11), and the requests for one that people
+make themselves (7.12), which an admin approves or rejects."""
 
 from __future__ import annotations
 
 import uuid
 
 import structlog
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, status
 from sqlalchemy import select
 
+from echolot_app import registration
 from echolot_app.auth import (
     AccountError,
     active_admins,
@@ -16,8 +18,10 @@ from echolot_app.auth import (
     generate_password,
     set_password,
 )
-from echolot_app.db import User
-from echolot_app.deps import AdminUser, DbSession
+from echolot_app.db import User, UserStatus
+from echolot_app.deps import AdminUser, DbSession, State
+from echolot_app.mail import send_all
+from echolot_app.registration import RequestStateError, purge_unconfirmed
 from echolot_app.schemas import UserCreate, UserOut, UserUpdate, UserWithPassword
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin"])
@@ -31,8 +35,20 @@ async def _user(db: DbSession, user_id: uuid.UUID) -> User:
     return user
 
 
+async def _account(db: DbSession, user_id: uuid.UUID) -> User:
+    """An approved account; a request is approved or rejected, not edited."""
+    user = await _user(db, user_id)
+    if user.status != UserStatus.APPROVED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This is a request for an account: approve or reject it"
+        )
+    return user
+
+
 @router.get("", response_model=list[UserOut])
 async def list_users(db: DbSession, _admin: AdminUser) -> list[UserOut]:
+    """Accounts and the requests for one; unconfirmed requests past their time are dropped."""
+    await purge_unconfirmed(db)
     rows = (await db.execute(select(User).order_by(User.email))).scalars()
     return [UserOut.model_validate(u) for u in rows]
 
@@ -54,7 +70,7 @@ async def add_user(body: UserCreate, db: DbSession, admin: AdminUser) -> UserWit
 async def update_user(
     user_id: uuid.UUID, body: UserUpdate, db: DbSession, admin: AdminUser
 ) -> UserOut:
-    user = await _user(db, user_id)
+    user = await _account(db, user_id)
     losing_admin = (body.is_admin is False and user.is_admin) or (
         body.is_active is False and user.is_admin and user.is_active
     )
@@ -81,9 +97,40 @@ async def update_user(
 @router.post("/{user_id}/reset-password", response_model=UserWithPassword)
 async def reset_password(user_id: uuid.UUID, db: DbSession, admin: AdminUser) -> UserWithPassword:
     """A new temporary password, shown once; the user is signed out everywhere."""
-    user = await _user(db, user_id)
+    user = await _account(db, user_id)
     password = generate_password()
     await set_password(db, user, password)
     await db.refresh(user)
     log.info("admin.password_reset", by=str(admin.id), user_id=str(user.id))
     return UserWithPassword(user=UserOut.model_validate(user), password=password)
+
+
+@router.post("/{user_id}/approve", response_model=UserOut)
+async def approve_request(
+    user_id: uuid.UUID, background: BackgroundTasks, db: DbSession, admin: AdminUser, state: State
+) -> UserOut:
+    """Approve a request whose address is confirmed: the person may sign in and is told so."""
+    user = await _user(db, user_id)
+    try:
+        mail = await registration.approve(db, state.settings, user)
+    except RequestStateError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await db.refresh(user)
+    background.add_task(send_all, state.mailer, [mail])
+    log.info("admin.request_approved", by=str(admin.id), user_id=str(user.id))
+    return UserOut.model_validate(user)
+
+
+@router.post("/{user_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+async def reject_request(
+    user_id: uuid.UUID, background: BackgroundTasks, db: DbSession, admin: AdminUser, state: State
+) -> Response:
+    """Delete a request with what the person entered; a confirmed address is told."""
+    user = await _user(db, user_id)
+    try:
+        mail = await registration.reject(db, state.settings, user)
+    except RequestStateError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    background.add_task(send_all, state.mailer, [mail] if mail else [])
+    log.info("admin.request_rejected", by=str(admin.id), user_id=str(user_id))
+    return Response(status_code=status.HTTP_204_NO_CONTENT, background=background)

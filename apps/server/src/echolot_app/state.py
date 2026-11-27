@@ -9,6 +9,7 @@ from echolot_app.agent.runtime import AgentRuntime, PydanticAIRuntime
 from echolot_app.auth import LoginLimiter
 from echolot_app.crypto import SecretBox
 from echolot_app.db import Database
+from echolot_app.mail import Mailer, build_mailer
 from echolot_app.runs.executor import Executor
 from echolot_app.runs.local import LocalExecutor
 from echolot_app.runs.poller import Poller
@@ -28,6 +29,9 @@ class AppState:
     secret_box: SecretBox
     catalog: ModelCatalog
     login_limiter: LoginLimiter
+    # requests for an account (docs/PLAN.md 7.12): every attempt counts, not only failures
+    registration_limiter: LoginLimiter
+    mailer: Mailer
 
 
 def build_executor(settings: Settings) -> Executor:
@@ -66,4 +70,8 @@ def build_state(settings: Settings) -> AppState:
         ),
         catalog=ModelCatalog(),
         login_limiter=LoginLimiter(settings.login_max_failures, settings.login_window_s),
+        registration_limiter=LoginLimiter(
+            settings.registration_max_attempts, settings.registration_window_s
+        ),
+        mailer=build_mailer(settings),
     )

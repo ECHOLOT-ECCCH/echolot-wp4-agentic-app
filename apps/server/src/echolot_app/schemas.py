@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -182,6 +182,45 @@ class UserOut(ApiModel):
     is_active: bool
     created_at: datetime
     last_login_at: datetime | None
+    # a request for an account (7.12): "unconfirmed", "pending" or "approved"
+    status: Literal["unconfirmed", "pending", "approved"]
+    organisation: str
+    purpose: str
+    email_confirmed_at: datetime | None
+    approved_at: datetime | None
+
+
+# --- self-registration (docs/PLAN.md 7.12) -----------------------------------------------------
+
+
+class RegistrationInfoOut(BaseModel):
+    enabled: bool
+    # who reviews requests, e.g. "An administrator at the Jožef Stefan Institute"
+    reviewer: str
+
+
+class RegisterIn(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    name: str = Field(max_length=400)
+    organisation: str = Field(max_length=400)
+    purpose: str = Field(max_length=4000)
+    password: str = Field(min_length=1, max_length=256)
+    # a field people never see and leave empty; form-filling robots tend to fill it
+    website: str = Field(default="", max_length=400)
+
+
+class RegisterOut(BaseModel):
+    """The same answer whether or not the address already has an account."""
+
+    status: Literal["check_email"] = "check_email"
+
+
+class ConfirmEmailIn(BaseModel):
+    token: str = Field(min_length=16, max_length=200)
+
+
+class ConfirmEmailOut(BaseModel):
+    status: Literal["pending"] = "pending"
 
 
 class PasswordChange(BaseModel):

@@ -156,6 +156,28 @@ export interface User {
   is_active: boolean
   created_at: string
   last_login_at: string | null
+  /** A request for an account stays "unconfirmed", then "pending", until approved (PLAN 7.12). */
+  status: 'unconfirmed' | 'pending' | 'approved'
+  organisation: string
+  purpose: string
+  email_confirmed_at: string | null
+  approved_at: string | null
+}
+
+/** Whether people can ask for an account here, and who reviews the requests (PLAN 7.12). */
+export interface RegistrationInfo {
+  enabled: boolean
+  reviewer: string
+}
+
+export interface RegisterForm {
+  email: string
+  name: string
+  organisation: string
+  purpose: string
+  password: string
+  /** A field people never see: robots fill it in. */
+  website: string
 }
 
 /** A new account or a reset: the temporary password is shown once. */

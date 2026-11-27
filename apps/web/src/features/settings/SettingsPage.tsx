@@ -13,11 +13,13 @@ import { ModelPicker } from '@/features/settings/ModelPicker'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatDate } from '@/lib/format'
 import {
+  useApproveRequest,
   useChangePassword,
   useCreateUser,
   useDeleteKey,
   useMe,
   useModelChoice,
+  useRejectRequest,
   useResetPassword,
   useSaveKey,
   useTestKey,
@@ -29,8 +31,21 @@ import type { User, Vendor } from '@/lib/types'
 
 const MIN_PASSWORD = 12
 
+const TABS = ['models', 'account', 'users'] as const
+
+/** A request for an account, not yet an account (docs/PLAN.md 7.12). */
+const isRequest = (user: User) => user.status === 'unconfirmed' || user.status === 'pending'
+
 export function SettingsPage() {
   const me = useMe()
+  const isAdmin = me.data?.is_admin ?? false
+  const users = useUsers(isAdmin)
+  const waiting = users.data?.filter((user) => user.status === 'pending').length ?? 0
+  // ?tab=users opens the requests, as the admins' e-mail about a new one links to
+  const asked = new URLSearchParams(window.location.search).get('tab')
+  const initialTab = TABS.find((tab) => tab === asked && (tab !== 'users' || isAdmin)) ?? TABS[0]
+  // until a tab is clicked, the asked one; known only once the user is (Users is for admins)
+  const [chosen, setChosen] = useState<string | null>(null)
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col gap-6 overflow-y-auto p-6">
       <header className="flex items-center justify-between gap-2">
@@ -48,11 +63,18 @@ export function SettingsPage() {
         </div>
         <UserMenu />
       </header>
-      <Tabs defaultValue="models">
+      <Tabs value={chosen ?? initialTab} onValueChange={(value) => setChosen(String(value))}>
         <TabsList>
           <TabsTrigger value="models">Model keys</TabsTrigger>
           <TabsTrigger value="account">Account</TabsTrigger>
-          {me.data?.is_admin && <TabsTrigger value="users">Users</TabsTrigger>}
+          {isAdmin && (
+            <TabsTrigger value="users">
+              Users
+              {waiting > 0 && (
+                <Badge aria-label={`${waiting} waiting for approval`}>{waiting}</Badge>
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="models" className="flex flex-col gap-6 pt-2">
           <ModelSection />
@@ -368,8 +390,12 @@ function UsersSection({ me }: { me: User }) {
     update.mutate({ id: user.id, ...body }, { onError: (error) => toast.error(error.message) })
   }
 
+  const requests = users.data?.filter(isRequest) ?? []
+  const accounts = users.data?.filter((user) => !isRequest(user))
+
   return (
     <div className="flex flex-col gap-6">
+      {requests.length > 0 && <Requests requests={requests} />}
       <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex flex-1 flex-col gap-1">
           <Label htmlFor="new-user-email">E-mail</Label>
@@ -408,7 +434,7 @@ function UsersSection({ me }: { me: User }) {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {users.data?.map((user) => (
+            {accounts?.map((user) => (
               <tr key={user.id} className={user.is_active ? '' : 'opacity-60'}>
                 <td className="p-2">
                   <div className="font-medium">{user.email}</div>
@@ -467,6 +493,92 @@ function UsersSection({ me }: { me: User }) {
         </table>
       </div>
     </div>
+  )
+}
+
+/** Requests for an account: approve or reject the confirmed ones; unconfirmed ones can be
+ *  deleted and go by themselves after two days (docs/PLAN.md 7.12). */
+function Requests({ requests }: { requests: User[] }) {
+  const approve = useApproveRequest()
+  const reject = useRejectRequest()
+  const pending = requests.filter((user) => user.status === 'pending')
+  const unconfirmed = requests.filter((user) => user.status === 'unconfirmed')
+  const busy = approve.isPending || reject.isPending
+
+  function onApprove(user: User) {
+    approve.mutate(user.id, {
+      onSuccess: () => toast.success(`${user.name} can sign in now and was told by e-mail.`),
+      onError: (error) => toast.error(error.message),
+    })
+  }
+
+  function onReject(user: User) {
+    const told = user.status === 'pending' ? ' They will be told by e-mail.' : ''
+    if (!confirm(`Reject the request of ${user.name} <${user.email}> and delete it?${told}`)) return
+    reject.mutate(user.id, { onError: (error) => toast.error(error.message) })
+  }
+
+  return (
+    <section aria-labelledby="requests-heading" className="flex flex-col gap-3">
+      <h2 id="requests-heading" className="text-sm font-medium">
+        Requests for an account
+      </h2>
+      {pending.length === 0 && (
+        <p className="text-muted-foreground text-sm">None is waiting for approval.</p>
+      )}
+      {pending.map((user) => (
+        <div
+          key={user.id}
+          className="flex flex-col gap-2 rounded-lg border p-3 text-sm sm:flex-row sm:items-start"
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div>
+              <span className="font-medium">{user.name}</span>{' '}
+              <span className="text-muted-foreground">&lt;{user.email}&gt;</span>
+            </div>
+            <div className="text-muted-foreground text-xs">
+              {user.organisation}
+              {user.email_confirmed_at &&
+                ` · address confirmed ${formatDate(user.email_confirmed_at)}`}
+            </div>
+            <p className="break-words whitespace-pre-wrap">{user.purpose}</p>
+          </div>
+          <div className="flex gap-1">
+            <Button size="xs" disabled={busy} onClick={() => onApprove(user)}>
+              Approve
+            </Button>
+            <Button size="xs" variant="destructive" disabled={busy} onClick={() => onReject(user)}>
+              Reject
+            </Button>
+          </div>
+        </div>
+      ))}
+      {unconfirmed.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="text-muted-foreground text-xs">
+            Address not confirmed yet (deleted after two days if it stays so):
+          </p>
+          <ul className="flex flex-col gap-1">
+            {unconfirmed.map((user) => (
+              <li key={user.id} className="text-muted-foreground flex items-center gap-2 text-xs">
+                <span className="min-w-0 truncate">
+                  {user.name} &lt;{user.email}&gt;, {user.organisation}
+                </span>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => onReject(user)}
+                  aria-label={`Delete the request of ${user.email}`}
+                >
+                  Delete
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   )
 }
 

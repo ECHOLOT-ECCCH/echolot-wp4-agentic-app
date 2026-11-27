@@ -29,6 +29,12 @@ def get_settings_dep(state: State) -> Settings:
     return state.settings
 
 
+def client_address(request: Request) -> str:
+    """The client's address for throttling; behind a proxy, uvicorn's --proxy-headers puts the
+    forwarded one here."""
+    return request.client.host if request.client else "unknown"
+
+
 async def get_db(state: State) -> AsyncIterator[AsyncSession]:
     async with state.db.session() as session:
         try:

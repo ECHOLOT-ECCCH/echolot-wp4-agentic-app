@@ -4,6 +4,9 @@
     uv run echolot-admin set-password ana@example.org
     uv run echolot-admin list-users
     uv run echolot-admin disable-user ana@example.org   (enable-user to undo)
+    uv run echolot-admin approve-user ana@example.org   (a request for an account, PLAN 7.12;
+                                                          reject-user deletes it)
+    uv run echolot-admin send-test-mail you@example.org   (the ECHO_MAIL_* and ECHO_SMTP_* settings)
     uv run echolot-admin check-runs     (the Prefect server answers, a runner serves the flow)
 
 Uses the same settings as the app (ECHO_DATA_DIR, .env). Without --password-stdin a temporary
@@ -19,6 +22,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
+from echolot_app import registration
 from echolot_app.auth import (
     AccountError,
     create_user,
@@ -27,7 +31,8 @@ from echolot_app.auth import (
     generate_password,
     set_password,
 )
-from echolot_app.db import Database, User
+from echolot_app.db import Database, User, UserStatus
+from echolot_app.mail import Mail, MailError, build_mailer
 from echolot_app.runs.prefect import PrefectExecutor, display_url
 from echolot_app.settings import Settings, get_settings
 from echolot_app.state import build_executor
@@ -48,9 +53,14 @@ async def _run(args: argparse.Namespace) -> int:
             if args.command == "list-users":
                 users = (await db.execute(select(User).order_by(User.email))).scalars()
                 for user in users:
+                    request = user.status != UserStatus.APPROVED
                     flags = ",".join(
                         f
-                        for f, on in (("admin", user.is_admin), ("disabled", not user.is_active))
+                        for f, on in (
+                            ("admin", user.is_admin),
+                            (str(user.status), request),
+                            ("disabled", not user.is_active and not request),
+                        )
                         if on
                     )
                     print(f"{user.email}\t{user.name}\t{flags}")
@@ -70,13 +80,32 @@ async def _run(args: argparse.Namespace) -> int:
             if user is None:
                 print(f"No account for {args.email}.", file=sys.stderr)
                 return 1
-            if args.command == "set-password":
+            if args.command == "set-password" and user.status == UserStatus.APPROVED:
                 password, generated = _password(args)
                 await set_password(db, user, password)
                 await db.commit()
                 print(f"New password set for {user.email}; their sessions ended.")
                 if generated:
                     print(f"Temporary password: {password}")
+            elif args.command in ("approve-user", "reject-user"):
+                settings = get_settings()
+                if args.command == "approve-user":
+                    mail: Mail | None = await registration.approve(db, settings, user)
+                else:
+                    mail = await registration.reject(db, settings, user)
+                await db.commit()
+                done = "approved" if args.command == "approve-user" else "rejected and deleted"
+                print(f"The request of {args.email} is {done}.")
+                if mail:
+                    try:
+                        await build_mailer(settings).send(mail)
+                    except MailError as exc:
+                        print(f"They were not told: {exc}", file=sys.stderr)
+                        return 1
+                    print("They were told by e-mail.")
+            elif user.status != UserStatus.APPROVED:
+                print(f"{user.email} is a request: approve-user or reject-user.", file=sys.stderr)
+                return 1
             elif args.command in ("disable-user", "enable-user"):
                 user.is_active = args.command == "enable-user"
                 if not user.is_active:
@@ -89,6 +118,30 @@ async def _run(args: argparse.Namespace) -> int:
         return 1
     finally:
         await database.dispose()
+
+
+async def _send_test_mail(settings: Settings, to: str) -> int:
+    """One message through the configured backend, to see that mail leaves this host."""
+    if settings.mail_backend == "none":
+        print("No mail backend: set ECHO_MAIL_BACKEND (smtp or file).", file=sys.stderr)
+        return 1
+    where = (
+        f"{settings.smtp_host}:{settings.smtp_port} ({settings.smtp_security})"
+        if settings.mail_backend == "smtp"
+        else str(settings.data_dir / "outbox")
+    )
+    mail = Mail(
+        to=to,
+        subject="Test message from the ECHOLOT Workbench",
+        body=f"This checks the mail settings of the workbench at {settings.site_address}.\n",
+    )
+    try:
+        await build_mailer(settings).send(mail)
+    except MailError as exc:
+        print(f"FAIL  {exc}", file=sys.stderr)
+        return 1
+    print(f"ok    sent to {to} through {where}")
+    return 0
 
 
 async def _check_runs(settings: Settings) -> int:
@@ -133,10 +186,18 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("list-users", help="list accounts")
     for name in ("disable-user", "enable-user"):
         commands.add_parser(name, help=f"{name.split('-')[0]} an account").add_argument("email")
+    commands.add_parser("approve-user", help="approve a request for an account").add_argument(
+        "email"
+    )
+    commands.add_parser("reject-user", help="reject and delete a request").add_argument("email")
+    test_mail = commands.add_parser("send-test-mail", help="send a message with the mail settings")
+    test_mail.add_argument("to")
     commands.add_parser("check-runs", help="check the Prefect server and the runner")
     args = parser.parse_args(argv)
     if args.command == "check-runs":
         return asyncio.run(_check_runs(get_settings()))
+    if args.command == "send-test-mail":
+        return asyncio.run(_send_test_mail(get_settings(), args.to))
     return asyncio.run(_run(args))
 
 

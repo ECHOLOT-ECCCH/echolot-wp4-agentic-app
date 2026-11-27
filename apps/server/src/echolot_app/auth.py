@@ -16,7 +16,7 @@ from datetime import timedelta
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from echolot_app.db import User, UserSession, Workspace, utcnow
+from echolot_app.db import User, UserSession, UserStatus, Workspace, utcnow
 
 SESSION_COOKIE = "echolot_session"
 # unsafe requests to /api must carry this header: a page on another site cannot add it without
@@ -148,7 +148,7 @@ async def user_for_token(db: AsyncSession, token: str | None, days: int) -> User
     if session is None or session.expires_at < now:
         return None
     user = await db.get(User, session.user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or user.status != UserStatus.APPROVED:
         return None
     if now - session.last_seen_at > _TOUCH_EVERY:
         session.last_seen_at = now

@@ -36,6 +36,12 @@ export default defineConfig({
             ECHO_MODEL_PROVIDER: 'test',
             ECHO_MODEL_ID: 'test',
             ECHO_ENABLE_TEST_MODEL: '1',
+            // where the runner fetches input and posts results: this server, whatever .env says
+            ECHO_PUBLIC_URL: apiURL,
+            // requests for an account (registration.spec.ts): mail goes to data/e2e/outbox
+            ECHO_ALLOW_REGISTRATION: '1',
+            ECHO_MAIL_BACKEND: 'file',
+            ECHO_SITE_URL: baseURL,
           },
           url: `${apiURL}/healthz`,
           reuseExistingServer: !ci,
