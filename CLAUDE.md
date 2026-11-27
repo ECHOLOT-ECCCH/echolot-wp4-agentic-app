@@ -53,6 +53,9 @@ images, Caddy, an optional runner and Prefect server; deploy/README.md)
 - Do not add Postgres, Redis, Celery, brokers, Procrastinate, Next.js or another agent framework.
 
 ## Git
-Conventional commits, one task per commit, `make check` green first. Follow the session's attribution instructions.
-Every commit that changes what the app does gets a row in CHANGELOG.md (in a follow-up commit if need be, since a
-commit cannot name its own hash), and so does every deployment.
+Work reaches `main` only through pull requests: a branch off `main`, conventional commits, one task per commit,
+`make check` green first; push the branch and open a pull request (`gh pr create`), where CI runs. The owner reviews
+and merges on GitHub with a merge commit, never squash or rebase (CHANGELOG.md cites hashes). Never push to `main`.
+Follow the session's attribution instructions. Every commit that changes what the app does gets a row in
+CHANGELOG.md (in a follow-up commit if need be, since a commit cannot name its own hash), and so does every
+deployment, whose record goes in through a pull request of its own.

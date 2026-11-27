@@ -16,8 +16,23 @@ its own changelog.
 | 2026-11-24 | https://echolot.ijs.si | `6a74095` | `ce6175f` | The runner fenced in (M6.1 to M6.3): only on the internal network `runs`, which ECHOLOT joins; limits on its container; the run timeout. The owner turned on the host's firewall (ufw), with the bridge refused first and port 80 only for the frontend |
 | 2026-11-24 | https://echolot.ijs.si | `096af15` | `ce6175f` | Scripts in a sandbox container (M6.4): no network, no secrets, a uid per run; the runner 1 GB, the sandbox 2 GB. Checked on the server with real ECHOLOT calls |
 | 2026-11-24 | https://echolot.ijs.si | `33c8cca` | `579e4f1` | Both from `main` after the merge. M6.5: the API docs pages off (the app's and ECHOLOT's), ECHOLOT's image as a user |
+| 2026-11-27 | https://echolot.ijs.si | `c4344c1` | `579e4f1` | Requests for an account (M4.5), with mail through the institute's relay; the database gains its columns and table on start. `main` also brought the local install, which the host does not use |
 
 The host keeps the same log, with the exact commits checked out, in `/opt/echolot/README.md`.
+
+## Branch `docs/pull-requests` (2026-11-27, the first through a pull request)
+
+| Commit | Date | What it adds | Where |
+|---|---|---|---|
+| (this commit) | 2026-11-27 | Work reaches `main` only through pull requests that the owner merges with a merge commit; nobody pushes to `main`. The hash of the deployment record filled in | `CLAUDE.md`, `docs/DECISIONS.md`, `CHANGELOG.md` |
+| `cac50a5` | 2026-11-27 | The deployment of `c4344c1` recorded (listed under `feat/registration`) | `CHANGELOG.md`, `docs/PLAN.md` |
+
+## Branch `feat/registration` (fast-forwarded into `main` on 2026-11-27)
+
+| Commit | Date | What it adds | Where |
+|---|---|---|---|
+| `cac50a5` | 2026-11-27 | The deployment of `c4344c1` recorded | `CHANGELOG.md`, `docs/PLAN.md` |
+| `c4344c1` | 2026-11-27 | **Requests for an account (M4.5):** people ask on the sign-in page, confirm their e-mail address by a link and wait for an admin's approval before they can sign in; off unless `ECHO_ALLOW_REGISTRATION` is set, which needs a mail backend. Admins are e-mailed about each confirmed request and approve or reject it in Settings → Users or with `echolot-admin approve-user|reject-user`; mail goes through SMTP or into `.eml` files (`echolot-admin send-test-mail`). The same answer for every address, limits per address and client, a hidden field for robots, at most 50 requests waiting. The e2e API gets its own `ECHO_PUBLIC_URL` | `apps/server/src/echolot_app/` (`registration.py`, `mail.py`, `routers/registration.py`, `db.py`, `settings.py`, `routers/auth.py`, `routers/admin.py`, `cli.py`), `apps/web/src/features/auth/`, `apps/web/src/features/settings/SettingsPage.tsx`, tests, `deploy/`, `CLAUDE.md`, docs |
 
 ## Branch `feat/local-install` (merged into `main` on 2026-11-25)
 
