@@ -988,3 +988,19 @@ contract.
   takes an existing mailbox as the From address; the settings are on the host, not in this
   repository. The reviewer is "An administrator at the Jožef Stefan Institute". A shared mailbox
   for the From address would be better than a person's (BACKLOG).
+
+## 2026-11-27 Work reaches `main` through pull requests
+
+The owner. Until now a feature branch stayed on the developer's machine and `main` was
+fast-forwarded and pushed from there, because the GitHub token in use could not open pull
+requests in ECHOLOT-ECCCH (2026-11-24). Nobody could see a change on GitHub before it was in
+`main`, and CI ran only after `main` had changed.
+
+- **From now on:** a branch per task, pushed to GitHub, with a pull request; CI runs on it
+  (`.github/workflows/ci.yml` runs on pull requests). The owner reviews and merges on GitHub.
+- **Merge commits, never squash or rebase,** as before: CHANGELOG.md cites commit hashes, and
+  a merge commit keeps them.
+- **Nobody pushes to `main`,** Claude included; deployments are made from `main` after a
+  merge, and their record goes in through a small pull request.
+- **Open:** branch protection on `main` (only merged pull requests with green CI), which would
+  bind partners' pushes too: a choice for the team.
