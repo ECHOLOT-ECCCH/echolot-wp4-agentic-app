@@ -38,9 +38,10 @@ chat, persistence and approval code being lifted, and are worth reading before t
   (the owner's choice for this host) and ECHOLOT's API at /service/ (DECISIONS 2026-11-11);
   what M4.3 still lacks is a tester completing the loop with their own key, and the Wikifier
   and OpenRouter keys on the host.
-- M4.5, requests for an account with approval by an admin (owner, 2026-11-26), is built on the
-  branch `feat/registration` (section 12e, 7.12). Its acceptance needs an SMTP server for
-  echolot.ijs.si, the From address, and a deployment.
+- M4.5, requests for an account with approval by an admin (owner, 2026-11-26), is on `main`
+  (`c4344c1`) and deployed on echolot.ijs.si since 2026-11-27, with mail through the
+  institute's relay (section 12e, 7.12). Its acceptance waits for a person outside the admins
+  to go through it.
 - Next task: M3.4, the owner's acceptance: it needs a real ehkultura export and a model key.
   M1.7 and the acceptance of M3.1 are waiting for the same key (none is configured here).
 - M2.3 done on this machine: app + Prefect 3.8.8 + `serve` + the real ECHOLOT API; a 10-record
@@ -761,6 +762,8 @@ and uses a model of their choice with their own key. Built on the branch `feat/u
     second request, rejection, robots, limits, expiry, a failing mail server, an old database,
     both mail backends, the command line; vitest for the pages; a Playwright test from the
     request to signing in, with the link read from the outbox.
+  - [x] Deployed on echolot.ijs.si (2026-11-27, `c4344c1`): mail through the institute's relay
+    with STARTTLS, the settings on the host; the relay took a test message from the server.
   - [ ] Acceptance: on echolot.ijs.si with the institute's mail server, a person outside the
     admins asks for an account, receives the link, an admin is e-mailed and approves, and the
     person signs in.
